@@ -147,7 +147,14 @@ export async function createInvite() {
 export async function acceptInvite(code) {
   const { sdp, ice } = await unpackSignal(code);
   // Usa anche i server TURN dell'host (le credenziali temporanee valgono per entrambi).
-  const servers = [...(await resolveIceServers()), ...(ice ?? []).filter((s) => s.username)];
+  // Senza doppioni: gli stessi TURN due volte raddoppiano i candidati e rallentano la raccolta (fino al timeout).
+  const servers = [];
+  const seen = new Set();
+  for (const sv of [...(await resolveIceServers()), ...(ice ?? []).filter((x) => x.username)]) {
+    const urls = [sv.urls].flat().filter((u) => !seen.has(u));
+    urls.forEach((u) => seen.add(u));
+    if (urls.length) servers.push({ ...sv, urls });
+  }
   const link = new PeerLink(servers, { initiator: false, trickle: false, forceRelay: settings.forceRelay });
   const answer = await link.handleSignal({ sdp });
   return { link, code: await packSignal({ v: 1, sdp: answer }) };
