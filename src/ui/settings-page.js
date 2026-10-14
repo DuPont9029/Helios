@@ -1,6 +1,6 @@
 import { h, clear, icon } from "./dom.js";
 import { toast, confirmModal } from "./modal.js";
-import { hasDefaultTurn, settings, resetSettings } from "../data/settings.js";
+import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
 
@@ -93,7 +93,7 @@ export function showSettings(app) {
           field("STUN servers (one per line)", area("stun"), "Used to discover your public address for direct connection."),
           turnPicker(field, text),
           check("forceRelay", "Force TURN relay (for testing)"),
-          field("Signaling server", text("signalUrl", { placeholder: location.origin }), "Empty = same address as this page. The server can also provide temporary TURN credentials."),
+          field("Signaling server", text("signalUrl", { placeholder: BUILD_SIGNAL_URL || location.origin }), BUILD_SIGNAL_URL ? "Used for Online Rooms. Leave empty to use this site's default server." : "Used for Online Rooms. Empty = same address as this page. The server can also provide temporary TURN credentials."),
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut
         ),

@@ -2,11 +2,11 @@
 //  1. server WebSocket (server/signal.mjs) con codice stanza;
 //  2. codice invito copia/incolla, senza alcun server oltre a STUN/TURN.
 import { PeerLink, packSignal, unpackSignal } from "./peer.js";
-import { localIceServers, settings, BUILD_ICE_URL } from "../data/settings.js";
+import { localIceServers, settings, BUILD_ICE_URL, BUILD_SIGNAL_URL } from "../data/settings.js";
 
 function signalBase() {
-  if (settings.signalUrl) return settings.signalUrl.replace(/\/+$/, "");
-  return location.origin;
+  const url = settings.signalUrl || BUILD_SIGNAL_URL;
+  return url ? url.replace(/\/+$/, "") : location.origin;
 }
 
 function wsUrl() {
@@ -14,6 +14,30 @@ function wsUrl() {
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   base.pathname = base.pathname.replace(/\/?$/, "/ws");
   return base.href;
+}
+
+/** Server TURN (con credenziali) da una risposta { iceServers } o da un array, senza la porta 53. */
+function turnFrom(data) {
+  const list = Array.isArray(data) ? data : data?.iceServers ?? [];
+  const out = [];
+  for (const s of list) {
+    // Porta 53 bloccata dai browser: senza trickle ICE farebbe solo aspettare un timeout.
+    const urls = [s?.urls ?? []].flat().filter((u) => typeof u === "string" && !/:53(\?|$)/.test(u));
+    if (urls.length && s.username) out.push({ urls, username: s.username, credential: s.credential });
+  }
+  return out;
+}
+
+/** Toglie gli URL ripetuti: gli stessi TURN due volte raddoppiano i candidati e rallentano la raccolta. */
+export function dedupeIce(servers) {
+  const seen = new Set();
+  const out = [];
+  for (const sv of servers) {
+    const urls = [sv.urls].flat().filter((u) => !seen.has(u));
+    urls.forEach((u) => seen.add(u));
+    if (urls.length) out.push({ ...sv, urls });
+  }
+  return out;
 }
 
 /** true se il server di segnalazione risponde (su un hosting statico come GitHub Pages di solito no). */
@@ -44,21 +68,12 @@ export async function resolveIceServers() {
       clearTimeout(t);
     }
   };
-  const [fromSignal, fromBuild] = await Promise.all([
-    getJson(signalBase() + "/api/ice"),
-    // TURN predefinito del sito (Cloudflare, credenziali temporanee dal Worker).
-    BUILD_ICE_URL && (settings.turnMode ?? "cloudflare") === "cloudflare" ? getJson(BUILD_ICE_URL) : null,
-  ]);
-  // "off": solo STUN, nessun relay (nemmeno quelli offerti dal server di segnalazione).
-  for (const data of settings.turnMode === "off" ? [] : [fromSignal, fromBuild]) {
-    const list = Array.isArray(data) ? data : data?.iceServers ?? [];
-    for (const s of list) {
-      // Porta 53 bloccata dai browser: senza trickle ICE farebbe solo aspettare un timeout.
-      const urls = [s?.urls ?? []].flat().filter((u) => typeof u === "string" && !/:53(\?|$)/.test(u));
-      if (urls.length && s.username) servers.push({ urls, username: s.username, credential: s.credential });
-    }
-  }
-  return servers;
+  // I TURN del sito (Worker di Cloudflare o server di segnalazione) si usano solo con turnMode "cloudflare":
+  // con "custom" vale solo il server dell'utente, con "off" nessun relay.
+  if ((settings.turnMode ?? "cloudflare") !== "cloudflare") return servers;
+  const iceUrl = BUILD_ICE_URL && BUILD_ICE_URL.replace(/\/+$/, "") !== signalBase() ? BUILD_ICE_URL : null;
+  const [fromSignal, fromBuild] = await Promise.all([getJson(signalBase() + "/api/ice"), iceUrl ? getJson(iceUrl) : null]);
+  return dedupeIce([...servers, ...turnFrom(fromSignal), ...turnFrom(fromBuild)]);
 }
 
 /**
@@ -95,8 +110,8 @@ export function connectViaServer({ room = null, onStatus = () => {} }) {
       }
       if (msg.type === "joined") {
         resolveRoom(msg.room);
-        const ice = localIceServers();
-        if (settings.turnMode !== "off") for (const s of msg.iceServers ?? []) if (s.username) ice.push(s);
+        // TURN offerto dal server solo con turnMode "cloudflare" (predefinito).
+        const ice = dedupeIce([...localIceServers(), ...((settings.turnMode ?? "cloudflare") === "cloudflare" ? turnFrom(msg.iceServers) : [])]);
         link = new PeerLink(ice, {
           initiator: !msg.host,
           forceRelay: settings.forceRelay,
@@ -147,14 +162,7 @@ export async function createInvite() {
 export async function acceptInvite(code) {
   const { sdp, ice } = await unpackSignal(code);
   // Usa anche i server TURN dell'host (le credenziali temporanee valgono per entrambi).
-  // Senza doppioni: gli stessi TURN due volte raddoppiano i candidati e rallentano la raccolta (fino al timeout).
-  const servers = [];
-  const seen = new Set();
-  for (const sv of [...(await resolveIceServers()), ...(ice ?? []).filter((x) => x.username)]) {
-    const urls = [sv.urls].flat().filter((u) => !seen.has(u));
-    urls.forEach((u) => seen.add(u));
-    if (urls.length) servers.push({ ...sv, urls });
-  }
+  const servers = dedupeIce([...(await resolveIceServers()), ...(ice ?? []).filter((x) => x.username)]);
   const link = new PeerLink(servers, { initiator: false, trickle: false, forceRelay: settings.forceRelay });
   const answer = await link.handleSignal({ sdp });
   return { link, code: await packSignal({ v: 1, sdp: answer }) };

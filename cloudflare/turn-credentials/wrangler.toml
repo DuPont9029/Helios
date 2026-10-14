@@ -1,3 +1,4 @@
+# Credenziali TURN di Cloudflare + server di segnalazione (stanze online) per Helios.
 name = "ygo-turn-credentials"
 main = "worker.js"
 compatibility_date = "2025-01-01"
@@ -15,3 +16,12 @@ TTL = "14400"
 # Secret, da impostare con:
 #   npx wrangler secret put TURN_KEY_ID
 #   npx wrangler secret put TURN_KEY_API_TOKEN
+
+# Stanze di segnalazione (WebSocket su /ws), in un Durable Object (incluso nel piano gratuito di Workers).
+[[durable_objects.bindings]]
+name = "ROOMS"
+class_name = "SignalRooms"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["SignalRooms"]

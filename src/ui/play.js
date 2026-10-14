@@ -246,7 +246,7 @@ export function showOnline(app) {
       label: "Online Room",
       body: h(
         "div.online-pane",
-        h("p.muted", "Uses the signaling server (npm run signal) to exchange WebRTC info automatically. Once connected, the Duel runs directly between the browsers."),
+        h("p.muted", "Create a Room and send the 6-character code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers."),
         h("div.row-group",
           h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
           h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
@@ -258,7 +258,7 @@ export function showOnline(app) {
       label: "Invite code (no server)",
       body: h(
         "div.online-pane",
-        h("p.muted", "No server: you exchange two codes (e.g. via chat). Only the STUN/TURN servers configured in Settings are needed."),
+        h("p.muted", "Fallback without a signaling server: you exchange two long codes (e.g. via chat). Paste them quickly: the connection may fail if the exchange takes more than about a minute."),
         h("div.row-group",
           h("div.card-box",
             h("h3", "1. You host"),

@@ -80,6 +80,9 @@ export const BUILD_TURN = (() => {
 // URL che restituisce i server ICE (JSON: [{urls, username, credential}] oppure {iceServers: [...]}),
 // per i provider che danno credenziali TURN temporanee (es. Metered).
 export const BUILD_ICE_URL = ENV.VITE_ICE_SERVERS_URL || "";
+// Server di segnalazione predefinito (stanze online con codice corto), es. lo stesso Worker di Cloudflare.
+// Vuoto = stesso indirizzo della pagina (server/signal.mjs). Le Settings possono indicarne un altro.
+export const BUILD_SIGNAL_URL = ENV.VITE_SIGNAL_URL || "";
 
 /** true se il sito ha un TURN predefinito configurato nella build. */
 export const hasDefaultTurn = () => !!(BUILD_TURN || BUILD_ICE_URL);
