@@ -26,6 +26,8 @@ const DEFAULTS = {
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega", // chiave di TIMER_PRESETS (src/duel/clock.js)
+  sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
+  lastDrawOrder: "random", // contro la CPU: "random" o "ordered" (si pesca nell'ordine del mazzo)
 };
 
 let current = load();

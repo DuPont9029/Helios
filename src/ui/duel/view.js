@@ -38,6 +38,9 @@ export class DuelView {
     });
     this.prompter = new Prompter(this);
     this.build();
+    // Sul documento: le finestre delle richieste stanno fuori dal campo (in <body>).
+    this.contextHandler = (e) => this.onContextMenu(e);
+    document.addEventListener("contextmenu", this.contextHandler);
   }
 
   hover(code) {
@@ -211,6 +214,21 @@ export class DuelView {
     this.menuOff = off;
   }
 
+  /**
+   * Tasto destro durante il duello: chiude il menu azioni, altrimenti rifiuta la richiesta aperta
+   * se si può (non attivare in catena, "No", annulla una selezione). Mai per scelte obbligatorie.
+   */
+  onContextMenu(e) {
+    const inDuel = this.el.contains(e.target) || e.target.closest?.(".modal-backdrop, .action-menu");
+    if (!inDuel) return;
+    e.preventDefault();
+    if (document.querySelector(".action-menu")) return this.closeActionMenu();
+    const decline = this.prompter.decline;
+    if (!decline) return;
+    this.prompter.decline = null;
+    decline();
+  }
+
   closeActionMenu() {
     this.menu?.remove();
     this.menu = null;
@@ -232,6 +250,7 @@ export class DuelView {
         const visible = this.board.canSee(p, loc, info);
         const actions = this.onPileActions?.(key(p, loc, i)) ?? [];
         const face = cardFace(visible ? info.code : 0, { faceDown: !visible });
+        face.dataset.owner = p;
         if (info.position & POS.FACEDOWN && loc === LOC.REMOVED) face.classList.add("facedown");
         const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) => h("button.btn.small.primary", { onclick: () => { m.close(); a.onClick(); } }, a.label))));
         if (actions.length) tile.classList.add("has-actions");
@@ -296,9 +315,10 @@ export class DuelView {
     return el?.getBoundingClientRect() ?? null;
   }
 
-  async fly(from, to, code, faceDown) {
+  async fly(from, to, code, faceDown, owner) {
     if (!this.speed || !from || !to) return;
     const ghost = cardFace(faceDown ? 0 : code, { faceDown });
+    if (owner != null) ghost.dataset.owner = owner;
     ghost.classList.add("fly-ghost");
     const w = 64;
     const host = this.overlay.getBoundingClientRect();
@@ -403,7 +423,7 @@ export class DuelView {
         const from = this.rectOf(m.player, LOC.DECK, 0);
         const to = this.board.handEl(m.player).getBoundingClientRect();
         for (const d of m.drawn) {
-          await this.fly(from, to, d.code, !(this.reveal || m.player === this.me));
+          await this.fly(from, to, d.code, !(this.reveal || m.player === this.me), m.player);
         }
         return;
       }
@@ -412,7 +432,7 @@ export class DuelView {
         if (from.location === 0 || to.location === 0) return;
         if (from.location & LOC.OVERLAY && to.location & LOC.OVERLAY) return;
         const visible = this.canSeeMsg(to.controller, to.location, to.position) || this.canSeeMsg(from.controller, from.location, from.position);
-        await this.fly(this.rectOf(from.controller, from.location, from.sequence), this.rectOf(to.controller, to.location, to.sequence), m.card, !visible);
+        await this.fly(this.rectOf(from.controller, from.location, from.sequence), this.rectOf(to.controller, to.location, to.sequence), m.card, !visible, from.controller);
         if (to.location === LOC.GRAVE && from.location & LOC.ONFIELD) this.board.flash(from.controller, from.location, from.sequence, "flash-destroy", 500);
         return;
       }
@@ -497,6 +517,7 @@ export class DuelView {
   }
 
   destroy() {
+    document.removeEventListener("contextmenu", this.contextHandler);
     this.prompter.abort();
     this.closeActionMenu();
     this.el.remove();

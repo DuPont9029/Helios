@@ -5,7 +5,8 @@
   grid-template-columns: minmax(230px, 280px) 1fr 200px;
   gap: 10px;
   padding: 10px;
-  --zh: min(calc((100vh - 270px) / 5.2), calc((100vw - 540px) / 7.6));
+  /* Campo piatto visto dall'alto: 5 righe di zone + le due mani devono stare nell'altezza dello schermo. */
+  --zh: min(calc((100vh - 110px) / 7.3), calc((100vw - 540px) / 7.6));
   --cw: calc(var(--zh) / 1.46 * 0.9);
 }
 .duel-screen.shake { animation: shake 0.35s; }
@@ -54,16 +55,15 @@
 .hud-bottom { min-height: calc(var(--cw) * 1.75 + 12px); padding: 0 12px 6px; align-items: flex-end; }
 
 /* ------------------------------------------------------------------ campo */
-.field-wrap { position: relative; display: grid; place-items: center; perspective: 1300px; min-height: 0; z-index: 1; }
-/* Il campo è inclinato in 3D: la metà alta (lato avversario) finisce "dietro" il contenitore, che non deve intercettare i clic. */
-.board { transform-style: preserve-3d; pointer-events: none; }
+.field-wrap { position: relative; display: grid; place-items: center; min-height: 0; z-index: 1; }
+/* Il contenitore del campo non intercetta i clic: li ricevono solo zone e carte. */
+.board { pointer-events: none; }
 .board > * { pointer-events: auto; }
 .duel-field {
   display: grid;
   grid-template-columns: repeat(7, var(--zh));
   grid-template-rows: repeat(5, var(--zh));
   gap: calc(var(--zh) * 0.07);
-  transform: rotateX(20deg);
   transform-origin: 50% 60%;
   padding: calc(var(--zh) * 0.1);
   border-radius: 0;
@@ -317,6 +317,17 @@
 .result-sub { font-size: 18px; color: var(--muted); }
 
 @media (max-width: 1100px) {
-  .duel-screen { grid-template-columns: 1fr 180px; --zh: min(calc((100vh - 270px) / 5.2), calc((100vw - 260px) / 7.6)); }
+  .duel-screen { grid-template-columns: 1fr 180px; --zh: min(calc((100vh - 110px) / 7.3), calc((100vw - 260px) / 7.6)); }
   .duel-side { display: none; }
 }
+.decline-hint { margin: 4px 0 0; text-align: right; font-family: var(--mono); letter-spacing: 0.04em; }
+
+/* ------------------------------------------------------------------ sleeve personalizzato
+   Le classi has-sleeve-N e le variabili --sleeve-N stanno su <html> (vedi src/data/sleeve.js),
+   così valgono anche per le finestre fuori dal campo. data-owner = giocatore a cui appartiene la carta. */
+.has-sleeve-0 .card[data-owner="0"] .card-back,
+.has-sleeve-1 .card[data-owner="1"] .card-back { background: #111 center / cover no-repeat; border: 3px solid #0b0b0b; }
+.has-sleeve-0 .card[data-owner="0"] .card-back { background-image: var(--sleeve-0); }
+.has-sleeve-1 .card[data-owner="1"] .card-back { background-image: var(--sleeve-1); }
+.has-sleeve-0 .card[data-owner="0"] .card-back::before, .has-sleeve-0 .card[data-owner="0"] .card-back::after,
+.has-sleeve-1 .card[data-owner="1"] .card-back::before, .has-sleeve-1 .card[data-owner="1"] .card-back::after { content: none; }

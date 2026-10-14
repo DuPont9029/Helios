@@ -471,3 +471,6 @@ input[type="range"] { accent-color: var(--accent); }
 .validity { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; border-radius: 0; }
 .turn-custom { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
 .paste-area { min-height: 200px; resize: vertical; font: 12px/1.4 var(--mono); }
+.sleeve-box { display: flex; gap: 14px; align-items: center; }
+.sleeve-preview { width: 70px; flex: none; }
+.sleeve-side { display: flex; flex-direction: column; gap: 8px; }

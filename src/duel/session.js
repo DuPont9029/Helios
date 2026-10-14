@@ -7,6 +7,7 @@ import { DuelView } from "../ui/duel/view.js";
 import { confirmModal, toast } from "../ui/modal.js";
 import { MSG } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
+import { applySleeves } from "../data/sleeve.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -76,6 +77,7 @@ export class DuelSession {
    *   me: indice del core visto in basso, names: [n0, n1], reveal,
    *   duel: { flags, seed, lp, hand, draw, decks },
    *   timer: chiave di TIMER_PRESETS ("omega" | "off"),
+   *   sleeves: [immagine del giocatore 0, del giocatore 1] (data URL o null),
    *   mux: LinkMux (solo P2P),
    *   onExit()
    * }
@@ -97,6 +99,7 @@ export class DuelSession {
       onLeave: () => this.leave(),
     });
     this.view.startLP = cfg.duel.lp;
+    this.clearSleeves = applySleeves(cfg.sleeves);
     const preset = TIMER_PRESETS[cfg.timer ?? "off"];
     this.clock = preset ? new DuelClock(preset) : null;
     if (this.clock) this.tick = setInterval(() => this.renderClock(), 200);
@@ -282,6 +285,7 @@ export class DuelSession {
 
   destroy() {
     this.over = true;
+    this.clearSleeves?.();
     clearTimeout(this.timeout);
     clearInterval(this.tick);
     this.view.destroy();

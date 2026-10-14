@@ -1,4 +1,5 @@
-import { h, clear, icon } from "./dom.js";
+import { h, clear, icon, pickFile } from "./dom.js";
+import { makeSleeve, validSleeve } from "../data/sleeve.js";
 import { toast, confirmModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
@@ -65,6 +66,37 @@ function turnPicker(field, text) {
   return h("div.field", h("span", "TURN server"), select, hint, custom);
 }
 
+/** Sleeve: immagine usata come dorso delle tue carte; nei duelli online la vede anche l'avversario. */
+function sleevePicker() {
+  const preview = h("div.card.back.sleeve-preview", { dataset: { owner: "0" } }, h("div.card-back"));
+  const status = h("small.muted");
+  const box = h("div.sleeve-box.has-sleeve-0", preview, h("div.sleeve-side", status));
+  const remove = h("button.btn.small.danger", { onclick: () => { settings.sleeve = null; update(); } }, icon("delete"), " Remove");
+  const update = () => {
+    const s = validSleeve(settings.sleeve);
+    box.classList.toggle("has-sleeve-0", !!s);
+    box.style.setProperty("--sleeve-0", s ? `url("${s}")` : "none");
+    status.textContent = s ? `Custom sleeve (${Math.round((s.length * 3) / 4 / 1024)} KB). Your opponent sees it on your cards in online Duels.` : "Default card back.";
+    remove.hidden = !s;
+  };
+  const choose = h("button.btn.primary.small", {
+    onclick: async () => {
+      const f = await pickFile("image/*");
+      if (!f) return;
+      try {
+        settings.sleeve = await makeSleeve(f);
+        toast("Sleeve updated");
+      } catch (e) {
+        toast(e.message || "Unable to read the image", { kind: "error" });
+      }
+      update();
+    },
+  }, icon("image"), " Choose image");
+  box.lastChild.append(h("div.row", choose, remove));
+  update();
+  return h("div.field", h("span", "Sleeve (card back)"), box);
+}
+
 export function showSettings(app) {
   const root = clear(app.root);
   const field = (label, input, hint) => h("label.field", h("span", label), input, hint && h("small.muted", hint));
@@ -85,7 +117,8 @@ export function showSettings(app) {
           field("Duelist name", text("name", { maxLength: 24 })),
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
-          check("autoPlace", "Auto-pick the zone when summoning/setting")
+          check("autoPlace", "Auto-pick the zone when summoning/setting"),
+          sleevePicker()
         ),
         h(
           "section.card-box",

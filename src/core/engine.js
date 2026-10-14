@@ -11,6 +11,39 @@ const FIELD_QUERY =
   QUERY.EQUIP_CARD | QUERY.TARGET_CARD;
 const PILE_QUERY = QUERY.CODE | QUERY.POSITION | QUERY.TYPE | QUERY.IS_PUBLIC | QUERY.ATTACK | QUERY.DEFENSE | QUERY.LEVEL | QUERY.RANK | QUERY.LINK;
 
+/** Generatore pseudo-casuale deterministico (xorshift128) dai quattro valori del seed del duello. */
+export function seededRandom(seed) {
+  const words = (seed ?? []).flatMap((v) => {
+    const b = BigInt(v);
+    return [Number(b & 0xffffffffn), Number((b >> 32n) & 0xffffffffn)];
+  });
+  let [x, y, z, w] = [0x9e3779b9, 0x243f6a88, 0xb7e15162, 0xdeadbeef];
+  for (let i = 0; i < words.length; i++) {
+    // Mescola ogni parola del seed nello stato (finalizzatore di murmur3).
+    let h = (words[i] ^ Math.imul(i + 1, 0x85ebca6b)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+    h = (h ^ (h >>> 16)) >>> 0;
+    [x, y, z, w] = [y, z, w, (x ^ h ^ Math.imul(w, 31)) >>> 0];
+  }
+  if (!(x | y | z | w)) w = 1;
+  return () => {
+    const t = (x ^ (x << 11)) >>> 0;
+    [x, y, z] = [y, z, w];
+    w = (w ^ (w >>> 19) ^ t ^ (t >>> 8)) >>> 0;
+    return w / 4294967296;
+  };
+}
+
+/** Fisher-Yates con il generatore dato. */
+export function shuffle(list, rand) {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+}
+
 export class DuelEngine {
   /**
    * @param lib   istanza di ocgcore-wasm creata con { sync: true }
@@ -54,13 +87,18 @@ export class DuelEngine {
       }
     }
 
-    // Stesso ordine di inserimento su entrambi i peer: il core mescola con il seed condiviso.
+    // Il core non mescola i mazzi a inizio duello (in EDOPro lo fa chi lo ospita): li mescoliamo qui con un
+    // generatore ricavato dal seed del duello, così entrambi i peer ottengono lo stesso ordine e online nessuno
+    // dei due può sceglierlo (il seed nasce da un commit-reveal). L'ultima carta inserita è la prima pescata.
+    // cfg.shuffle[p] === false: il giocatore p pesca nell'ordine del mazzo (prima carta = prima pescata).
+    const rand = seededRandom(cfg.seed);
     cfg.decks.forEach((deck, p) => {
       const add = (code, location) =>
         lib.duelNewCard(this.handle, {
           team: p, duelist: 0, code, controller: p, location, sequence: 0, position: 0x8,
         });
-      for (const code of deck.main) add(code, LOC.DECK);
+      const main = cfg.shuffle?.[p] === false ? [...deck.main].reverse() : shuffle([...deck.main], rand);
+      for (const code of main) add(code, LOC.DECK);
       for (const code of deck.extra) add(code, LOC.EXTRA);
     });
     lib.startDuel(this.handle);
