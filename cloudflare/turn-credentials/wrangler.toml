@@ -1,0 +1,17 @@
+name = "ygo-turn-credentials"
+main = "worker.js"
+compatibility_date = "2025-01-01"
+# Indirizzo pubblico https://ygo-turn-credentials.dupont9029.workers.dev; niente URL di anteprima per le versioni.
+workers_dev = true
+preview_urls = false
+
+[vars]
+# Siti autorizzati a chiedere credenziali (separati da virgola). Metti l'indirizzo esatto del tuo GitHub Pages,
+# senza percorso e senza "/" finale: es. "https://tuonome.github.io". Per provare in locale aggiungi "http://localhost:5173".
+ALLOWED_ORIGINS = "https://DuPont9029.github.io"
+# Durata delle credenziali in secondi (4 ore: più del duello più lungo).
+TTL = "14400"
+
+# Secret, da impostare con:
+#   npx wrangler secret put TURN_KEY_ID
+#   npx wrangler secret put TURN_KEY_API_TOKEN

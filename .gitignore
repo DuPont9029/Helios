@@ -1,0 +1,10 @@
+# segreti locali (es. token di Cloudflare): mai nel repository
+.env
+node_modules/
+dist/
+vendor/
+public/data/
+.DS_Store
+.env.local
+.env.*.local
+.wrangler/

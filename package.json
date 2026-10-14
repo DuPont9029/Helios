@@ -1,0 +1,20 @@
+{
+  "name": "helios",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Client web di Yu-Gi-Oh! con motore EDOPro (WASM) e duelli P2P via WebRTC",
+  "scripts": {
+    "postinstall": "node scripts/fetch-ocgcore.mjs",
+    "data": "node scripts/build-data.mjs",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "signal": "node server/signal.mjs",
+    "test:core": "node scripts/smoke-test.mjs"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0",
+    "ws": "^8.18.0"
+  }
+}

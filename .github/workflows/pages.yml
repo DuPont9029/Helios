@@ -1,0 +1,57 @@
+# Pubblica il client su GitHub Pages.
+# I dati (carte, script, banlist di Project Ignis) non sono nel repository:
+# vengono scaricati e generati a ogni build con `npm run data`.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  # Una volta a settimana, per avere carte e banlist aggiornate.
+  schedule:
+    - cron: "0 4 * * 1"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # build-data.mjs usa node:sqlite (Node 22.13+).
+          node-version: 24
+          cache: npm
+
+      # postinstall scarica e corregge ocgcore-wasm (scripts/fetch-ocgcore.mjs).
+      - run: npm ci
+
+      - run: npm run data
+
+      # Il TURN predefinito (Worker di Cloudflare) si configura in .env.production, letto da Vite.
+      - run: npm run build
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
