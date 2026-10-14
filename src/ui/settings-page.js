@@ -18,7 +18,8 @@ async function testIce(out) {
     if (t in found) found[t]++;
     if (t !== "host") lines.push(`${t}: ${e.candidate.address ?? "?"}:${e.candidate.port ?? ""} (${e.candidate.protocol})`);
   };
-  pc.onicecandidateerror = (e) => lines.push(`error ${e.errorCode} on ${e.url}: ${e.errorText}`);
+  // 701 = indirizzo non risolvibile (di solito la ricerca IPv6 su reti solo IPv4): normale, non va mostrato.
+  pc.onicecandidateerror = (e) => e.errorCode !== 701 && lines.push(`error ${e.errorCode} on ${e.url}: ${e.errorText}`);
   await pc.setLocalDescription(await pc.createOffer());
   await new Promise((r) => {
     const t = setTimeout(r, 8000);

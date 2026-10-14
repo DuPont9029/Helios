@@ -227,6 +227,15 @@ export function showOnline(app) {
   const inviteIn = h("textarea.code-area", { placeholder: "Paste the invite code you received here" });
   const answerOut = h("textarea.code-area", { readOnly: true, placeholder: "Your response code will appear here" });
   let hostLink = null;
+  const FAILED_HINT = "If it keeps failing, make sure both players use the published site (it has the Cloudflare TURN relay) and that TURN is set to \"Cloudflare\" in Settings.";
+  // La connessione dell'host è fallita o è stata chiusa: si riparte da un invito nuovo.
+  const resetHost = (why) => {
+    hostLink?.close();
+    hostLink = null;
+    inviteOut.value = "";
+    answerIn.value = "";
+    setStatus(`${why}\nGenerate a new invite code and send it to the other player again.\n${FAILED_HINT}`, "error");
+  };
   const copy = (ta) => {
     navigator.clipboard?.writeText(ta.value).then(() => toast("Copied to clipboard"), () => ta.select());
   };
@@ -263,7 +272,7 @@ export function showOnline(app) {
                   hostLink = link;
                   inviteOut.value = code;
                   setStatus("Send the invite code to the other player, then paste their response below.");
-                  waitOpen(link, 10 * 60 * 1000).then(() => onConnected(link, true)).catch((e) => setStatus(e.message, "error"));
+                  waitOpen(link, 10 * 60 * 1000).then(() => onConnected(link, true)).catch((e) => hostLink === link && resetHost(e.message));
                 } catch (e) {
                   setStatus(e.message, "error");
                 }
@@ -275,6 +284,8 @@ export function showOnline(app) {
             h("button.btn.primary", {
               onclick: async () => {
                 if (!hostLink) return setStatus("Generate the invite code first", "error");
+                if (hostLink.closed) return resetHost("This invite is no longer valid (the previous connection attempt failed).");
+                if (hostLink.pc.signalingState === "stable") return setStatus("Already connecting with this invite: wait a few seconds.");
                 try {
                   await completeInvite(hostLink, answerIn.value);
                   setStatus("Connecting...");
@@ -294,7 +305,7 @@ export function showOnline(app) {
                   const { link, code } = await acceptInvite(inviteIn.value);
                   answerOut.value = code;
                   setStatus("Send the response code to the host and wait.");
-                  waitOpen(link, 10 * 60 * 1000).then(() => onConnected(link, false)).catch((e) => setStatus(e.message, "error"));
+                  waitOpen(link, 10 * 60 * 1000).then(() => onConnected(link, false)).catch((e) => setStatus(`${e.message}\nAsk the host for a new invite code and generate a new response.\n${FAILED_HINT}`, "error"));
                 } catch (e) {
                   setStatus("Invalid invite code: " + e.message, "error");
                 }
