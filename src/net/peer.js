@@ -38,13 +38,20 @@ export class PeerLink extends EventTarget {
     this.pc.onconnectionstatechange = () => {
       const s = this.pc.connectionState;
       this.dispatchEvent(new CustomEvent("state", { detail: s }));
-      if (s === "failed" || s === "closed") this.close(s === "failed" ? "WebRTC connection failed (TURN server needed?)" : undefined);
+      // Con il codice invito chi risponde inizia i controlli ICE subito, ma l'host può rispondere solo dopo aver
+      // incollato la risposta (minuti, se passa da una chat): nel frattempo il browser segna "failed".
+      // Finché il canale non si è mai aperto non si chiude: quando arrivano i controlli dell'host, ICE si riprende.
+      // A tenere il conto del tempo massimo ci pensa waitOpen().
+      if (s === "closed" || (s === "failed" && this.everOpen)) this.close(s === "failed" ? "WebRTC connection failed (TURN server needed?)" : undefined);
     };
   }
 
   attach(channel) {
     this.channel = channel;
-    channel.onopen = () => this.dispatchEvent(new Event("open"));
+    channel.onopen = () => {
+      this.everOpen = true;
+      this.dispatchEvent(new Event("open"));
+    };
     channel.onclose = () => this.close("The data channel closed");
     channel.onmessage = (e) => {
       let msg;
