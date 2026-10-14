@@ -6,7 +6,9 @@ import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
 
-export const PROTOCOL = 1;
+// 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
+// Versioni diverse produrrebbero ordini diversi del mazzo: il controllo le rifiuta.
+export const PROTOCOL = 2;
 
 /** Smista i messaggi del DataChannel per tipo, tenendo in coda quelli non ancora attesi. */
 export class LinkMux {
