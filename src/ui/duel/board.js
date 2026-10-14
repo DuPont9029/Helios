@@ -141,6 +141,7 @@ export class Board {
     if (!z) return;
     const visible = this.canSee(p, loc, info);
     const el = cardFace(visible ? info.code : 0, { faceDown: !visible });
+    el.dataset.owner = p; // per lo sleeve del giocatore
     if (isFaceDown(info.position)) el.classList.add("facedown");
     if (isDefense(info.position) && loc === LOC.MZONE) el.classList.add("defense");
     if (info.status & STATUS_DISABLED && !isFaceDown(info.position)) el.classList.add("negated");
@@ -175,6 +176,7 @@ export class Board {
     if (count > 0) {
       const visible = top && this.canSee(p, loc, top);
       const el = cardFace(visible ? top.code : 0, { faceDown: !visible });
+      el.dataset.owner = p;
       el.classList.add("pile-top");
       if (count > 1) el.style.setProperty("--stack", Math.min(6, Math.ceil(count / 6)));
       z.append(el);
@@ -192,6 +194,7 @@ export class Board {
     hand.forEach((info, i) => {
       const visible = info && this.canSee(p, LOC.HAND, info);
       const c = cardFace(visible ? info.code : 0, { faceDown: !visible });
+      c.dataset.owner = p;
       c.style.setProperty("--i", i);
       if (info?.isPublic && p === this.me) c.classList.add("revealed");
       c.dataset.key = key(p, LOC.HAND, i);

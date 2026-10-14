@@ -7,6 +7,7 @@ import { loadDecks, validateDeck, banlistByName } from "../deck/deck.js";
 import { DUEL_MODES } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
+import { validSleeve } from "../data/sleeve.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable } from "../net/signaling.js";
 import { LinkMux, negotiate } from "../net/match.js";
 
@@ -98,12 +99,17 @@ export function showLocalSetup(app, { vsCpu }) {
   const other = deckSelect(decks, decks[1]?.id);
   const opts = optionsForm();
   const first = h("select.select", h("option", { value: "coin" }, "Coin toss"), h("option", { value: "me" }, "I go first"), h("option", { value: "other" }, "Opponent goes first"));
+  // Solo contro la CPU: si può pescare nell'ordine del mazzo (per provare una mano precisa). Online si mescola sempre.
+  const draws = h("select.select",
+    h("option", { value: "random" }, "Shuffled (random draws)"),
+    h("option", { value: "ordered" }, "In Deck order (first card = first draw)"));
+  draws.value = settings.lastDrawOrder === "ordered" ? "ordered" : "random";
   openModal({
     title: vsCpu ? "Vs CPU" : "Test Duel (you control both players)",
     className: "wide",
     body: [
       // Nel duello di prova chi inizia si sceglie sempre all'avvio (vedi askFirst).
-      h("div.form-grid", h("label.field", h("span", "Your Deck"), mine), h("label.field", h("span", vsCpu ? "CPU Deck" : "Player 2 Deck"), other), vsCpu && h("label.field", h("span", "Who goes first"), first)),
+      h("div.form-grid", h("label.field", h("span", "Your Deck"), mine), h("label.field", h("span", vsCpu ? "CPU Deck" : "Player 2 Deck"), other), vsCpu && h("label.field", h("span", "Who goes first"), first), vsCpu && h("label.field", h("span", "Your draws"), draws)),
       opts.el,
       vsCpu && h("p.muted.small", "The CPU is a simple AI: it plays legal moves but is not a real challenge. Useful for testing Decks."),
     ],
@@ -135,11 +141,17 @@ export function showLocalSetup(app, { vsCpu }) {
           controllers[me] = "local";
           controllers[1 - me] = vsCpu ? "ai" : "local";
           toast(meFirst ? "You go first!" : `${names[1 - me]} goes first`);
+          // Mazzo in ordine solo per il giocatore contro la CPU; il mazzo della CPU è sempre mescolato.
+          if (vsCpu) settings.lastDrawOrder = draws.value;
+          const shuffle = [true, true];
+          if (vsCpu && draws.value === "ordered") shuffle[me] = false;
+          const sleeves = [null, null];
+          sleeves[me] = validSleeve(settings.sleeve);
           startSession(app, {
-            controllers, me, names, reveal: !vsCpu, timer: options.timer,
+            controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves,
             duel: {
               flags: options.flags, seed: randSeed(), lp: options.lp, hand: options.hand, draw: options.draw,
-              decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })),
+              decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })), shuffle,
             },
           });
         },
@@ -179,6 +191,7 @@ export function showOnline(app) {
         host,
         name: settings.name,
         deck: getDeck(),
+        sleeve: validSleeve(settings.sleeve),
         options: host ? opts.read() : undefined,
         chooseFirst: (won) => {
           if (!won) {
@@ -199,7 +212,7 @@ export function showOnline(app) {
       }
       toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
       const controllers = result.me === 0 ? ["local", "remote"] : ["remote", "local"];
-      startSession(app, { controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, mux });
+      startSession(app, { controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, mux });
     } catch (err) {
       console.error(err);
       setStatus(err.message, "error");

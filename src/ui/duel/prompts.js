@@ -12,6 +12,9 @@ import { availableZones } from "../../core/zones.js";
 import { isValidSum, findSum } from "../../core/sum.js";
 import { isDeclarable } from "../../core/declarable.js";
 
+/** Promemoria nelle finestre che si possono rifiutare con il tasto destro. */
+const DECLINE_HINT = (what) => h("p.muted.small.decline-hint", `Right-click: ${what}`);
+
 const IDLE_LABELS = {
   [IDLE.SUMMON]: "Normal Summon",
   [IDLE.SPSUMMON]: "Special Summon",
@@ -27,6 +30,8 @@ export class Prompter {
     this.view = view;
     this.board = view.board;
     this.cancelCurrent = null;
+    // Risposta "no / non attivare / annulla" della richiesta aperta, se rifiutarla è lecito (tasto destro).
+    this.decline = null;
   }
 
   get me() {
@@ -74,6 +79,7 @@ export class Prompter {
   }
 
   ask(msg) {
+    this.decline = null;
     switch (msg.type) {
       case MSG.SELECT_IDLECMD: return this.idle(msg);
       case MSG.SELECT_BATTLECMD: return this.battle(msg);
@@ -220,10 +226,11 @@ export class Prompter {
       title,
       dismissable: false,
       className: "prompt",
-      body: [code ? h("div.prompt-card", cardFace(code)) : null, h("p", text)],
+      body: [code ? h("div.prompt-card", cardFace(code)) : null, h("p", text), DECLINE_HINT("No")],
       actions: [{ label: "No", value: false }, { label: "Yes", value: true, primary: true }],
     });
     this.cancelCurrent = () => m.close(false);
+    this.decline = () => m.close(false);
     return m.result;
   }
 
@@ -262,10 +269,12 @@ export class Prompter {
             )
           )
         ),
+        !msg.forced && DECLINE_HINT("don't activate"),
       ],
       actions: msg.forced ? [] : [{ label: "Don't activate", value: null, primary: true }],
     });
     this.cancelCurrent = () => m.close(msg.forced ? 0 : null);
+    this.decline = msg.forced ? null : () => m.close(null);
     return m.result.then((index) => {
       this.board.clearClickable();
       return { type: RESP.SELECT_CHAIN, index: index ?? null };
@@ -286,7 +295,9 @@ export class Prompter {
 
   cardTile(c, extraLabel) {
     const vis = this.visible(c);
-    const tile = h("button.pick-card", cardFace(vis ? c.code : 0, { faceDown: !vis }), h("div.pick-where", extraLabel ?? this.where(c)));
+    const face = cardFace(vis ? c.code : 0, { faceDown: !vis });
+    if (c.controller != null) face.dataset.owner = c.controller;
+    const tile = h("button.pick-card", face, h("div.pick-where", extraLabel ?? this.where(c)));
     tile.addEventListener("mouseenter", () => vis && this.view.hover(c.code));
     return tile;
   }
@@ -339,6 +350,7 @@ export class Prompter {
     confirmBtn = m.buttons[m.buttons.length - 1];
     update();
     this.cancelCurrent = () => m.close(msg.can_cancel ? null : Array.from({ length: Math.max(1, min) }, (_, i) => i));
+    this.decline = msg.can_cancel ? () => m.close(null) : null;
     return m.result.then((indicies) => ({ type: respType, indicies }));
   }
 
@@ -367,6 +379,7 @@ export class Prompter {
       ],
     });
     this.cancelCurrent = () => m.close(msg.can_finish || msg.can_cancel ? null : 0);
+    this.decline = msg.can_finish || msg.can_cancel ? () => m.close(null) : null;
     return m.result.then((index) => ({ type: RESP.SELECT_UNSELECT_CARD, index: index ?? null }));
   }
 
@@ -541,6 +554,7 @@ export class Prompter {
           "div.position-list",
           opts.map(([p, label]) => {
             const face = cardFace(p & POS.FACEDOWN ? 0 : msg.code, { faceDown: !!(p & POS.FACEDOWN) });
+            face.dataset.owner = msg.player;
             if (p & POS.DEFENSE) face.classList.add("defense");
             return h("button.position-opt", { onclick: () => m.close(p) }, h("div.position-card", face), h("span", label));
           })

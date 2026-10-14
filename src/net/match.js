@@ -4,6 +4,7 @@
 //  - lancio della moneta e scelta di chi inizia.
 import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
+import { validSleeve } from "../data/sleeve.js";
 
 export const PROTOCOL = 1;
 
@@ -96,6 +97,7 @@ export async function negotiate(mux, opts) {
     data: db.manifest?.version ?? "?",
     deck: { main: opts.deck.main, extra: opts.deck.extra },
     commit: hex(await sha256(myRand)),
+    sleeve: opts.sleeve ?? null,
     options: opts.host ? opts.options : undefined,
   });
   const hello = await mux.next("hello");
@@ -138,12 +140,16 @@ export async function negotiate(mux, opts) {
   const myDeck = { main: opts.deck.main, extra: opts.deck.extra };
   const decks = iAmFirst ? [myDeck, hello.deck] : [hello.deck, myDeck];
   const names = iAmFirst ? [opts.name, hello.name] : [hello.name, opts.name];
+  const theirSleeve = validSleeve(hello.sleeve);
+  const sleeves = iAmFirst ? [opts.sleeve ?? null, theirSleeve] : [theirSleeve, opts.sleeve ?? null];
   return {
     me: iAmFirst ? 0 : 1,
     names,
+    sleeves,
     sameData,
     iWinToss,
     options,
-    duel: { flags: String(options.flags), seed, lp: options.lp, hand: options.hand, draw: options.draw, decks },
+    // Online i mazzi si mescolano sempre (con il seed comune): nessuna opzione per pescare in ordine.
+    duel: { flags: String(options.flags), seed, lp: options.lp, hand: options.hand, draw: options.draw, decks, shuffle: [true, true] },
   };
 }
