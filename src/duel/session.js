@@ -5,7 +5,7 @@ import { DATA_URL, db, getCard } from "../data/db.js";
 import { SimpleAI, PassAI } from "../core/ai.js";
 import { DuelView } from "../ui/duel/view.js";
 import { confirmModal, toast } from "../ui/modal.js";
-import { MSG } from "../core/constants.js";
+import { MSG, DUEL } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { h } from "../ui/dom.js";
@@ -100,6 +100,8 @@ export class DuelSession {
       me: cfg.me,
       names: cfg.names,
       reveal: cfg.reveal,
+      // Master Rule 3: zone Pendulum separate; altrimenti sono la prima e l'ultima zona Magie/Trappole.
+      separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
       onSurrender: () => this.surrender(),
       onLeave: () => this.leave(),

@@ -33,6 +33,7 @@ export class DuelView {
     this.board = new Board({
       me: this.me,
       reveal: this.reveal,
+      separatePz: !!opts.separatePz,
       onHover: (code) => this.hover(code),
       onPile: (p, loc) => this.openPile(p, loc),
     });
@@ -237,12 +238,16 @@ export class DuelView {
   /**
    * Tasto destro durante il duello: chiude il menu azioni, altrimenti rifiuta la richiesta aperta
    * se si può (non attivare in catena, "No", annulla una selezione). Mai per scelte obbligatorie.
+   * Se la finestra della scelta è ridotta, invece, la riapre.
    */
   onContextMenu(e) {
     const inDuel = this.el.contains(e.target) || e.target.closest?.(".modal-backdrop, .action-menu, .prompt-pop");
     if (!inDuel) return;
     e.preventDefault();
     if (document.querySelector(".action-menu")) return this.closeActionMenu();
+    // Finestra di scelta ridotta: il tasto destro la riapre invece di rifiutare la richiesta.
+    const minimized = [...document.querySelectorAll(".modal-backdrop.minimized:not(.closing)")].at(-1);
+    if (minimized) return minimized.classList.remove("minimized");
     const decline = this.prompter.decline;
     if (!decline) return;
     this.prompter.decline = null;
