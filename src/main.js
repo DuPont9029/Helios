@@ -9,6 +9,7 @@ import { showLocalSetup, showOnline } from "./ui/play.js";
 import { showSettings } from "./ui/settings-page.js";
 import { loadDecks } from "./deck/deck.js";
 import { cardFace } from "./ui/card.js";
+import { fullscreenButton } from "./ui/fullscreen.js";
 
 const app = {
   root: document.getElementById("app"),
@@ -40,6 +41,7 @@ function home() {
         "header.home-head",
         h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", "v0.1")),
         h("div.home-user", "Welcome,", h("b", settings.name)),
+        fullscreenButton(),
         h("button.btn.ghost.round", { title: "Settings", onclick: go(() => showSettings(app)) }, icon("settings"))
       ),
       h(

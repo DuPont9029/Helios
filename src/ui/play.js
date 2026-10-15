@@ -220,6 +220,9 @@ function coinToss(state) {
  */
 async function playMatch(app, match, old = null) {
   const toss = {};
+  // Rivincita: chi ha perso inizia per primo, senza lancio della moneta (pareggio: si lancia la moneta).
+  const prev = old && (old.winner === 0 || old.winner === 1) ? old.winner : null;
+  const iFirst = prev == null ? null : prev !== old.cfg.me;
   let result;
   try {
     result = await negotiate(match.mux, {
@@ -229,6 +232,7 @@ async function playMatch(app, match, old = null) {
       sleeve: validSleeve(settings.sleeve),
       options: match.options,
       chooseFirst: coinToss(toss),
+      iFirst,
     });
   } catch (err) {
     toss.lost?.close();
@@ -239,7 +243,8 @@ async function playMatch(app, match, old = null) {
     const m = toss.lost;
     m.body.replaceChildren(h("p.coin-result", result.me === 0 ? "Your opponent chose to go second: you go first!" : "Your opponent chose to go first: you go second."));
     setTimeout(() => m.close(), 1800);
-  } else toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
+  } else if (iFirst != null) toast(iFirst ? "Rematch: you lost the last Duel, so you go first" : "Rematch: your opponent lost the last Duel, so they go first");
+  else toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
   if (!result.sameData) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
   }

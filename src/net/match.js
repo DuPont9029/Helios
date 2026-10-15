@@ -8,8 +8,9 @@ import { validSleeve } from "../data/sleeve.js";
 
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
 // 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
+// 4: nella rivincita inizia chi ha perso, senza lancio della moneta.
 // Versioni diverse produrrebbero ordini diversi del mazzo: il controllo le rifiuta.
-export const PROTOCOL = 3;
+export const PROTOCOL = 4;
 
 /**
  * Smista i messaggi del DataChannel per tipo, tenendo in coda quelli non ancora attesi.
@@ -116,7 +117,8 @@ function seedFrom(bytes) {
 
 /**
  * @param mux      LinkMux già connesso
- * @param opts     { host, name, deck, options: {mode, flags, lp, hand, draw, banlist} (solo host), chooseFirst() -> Promise<bool> }
+ * @param opts     { host, name, deck, options: {mode, flags, lp, hand, draw, banlist} (solo host), chooseFirst() -> Promise<bool>,
+ *                   iFirst (rivincita: true/false = chi ha perso inizia, già noto a entrambi; null = lancio della moneta) }
  * @returns { duel, me, names, options }
  */
 export async function negotiate(mux, opts) {
@@ -159,7 +161,10 @@ export async function negotiate(mux, opts) {
   const hostWinsToss = (digest[31] & 1) === 0;
   const iWinToss = hostWinsToss === opts.host;
   let hostFirst;
-  if (iWinToss) {
+  if (opts.iFirst != null) {
+    // Rivincita: inizia chi ha perso il duello precedente (entrambi lo sanno, il duello è in lockstep).
+    hostFirst = opts.host ? opts.iFirst : !opts.iFirst;
+  } else if (iWinToss) {
     const goFirst = await opts.chooseFirst(true);
     hostFirst = opts.host ? goFirst : !goFirst;
     mux.send({ t: "first", hostFirst });
