@@ -357,6 +357,40 @@ export class Prompter {
 
   // ---------------------------------------------------------------- selezione carte
 
+  // ---------------------------------------------------------------- scelta delle carte sul campo
+  // Durante una summon (Xyz, Link, Synchro, tributi...) i materiali si scelgono cliccandoli sul campo
+  // invece che in una finestra, se sono tutti sul campo. Le scelte chieste dagli effetti restano in finestra.
+
+  /** Chiavi delle carte sul campo da scegliere, oppure null (si usa la finestra). */
+  fieldKeys(cards) {
+    if (!this.summoning || !cards.length) return null;
+    const keys = cards.map((c) => (c.location & LOC.ONFIELD && !(c.location & LOC.OVERLAY) ? key(c.controller, c.location, c.sequence) : null));
+    return keys.every((k) => k && this.board.cardEls.has(k)) && new Set(keys).size === keys.length ? keys : null;
+  }
+
+  /**
+   * Scelta sul campo. onPick(i) al clic sulla carta i; chosen(i) = carta già scelta; locked = chiavi
+   * sempre scelte (non cliccabili); bar() = { text, buttons } della barra delle azioni.
+   * Restituisce { repaint, done } (done pulisce campo e barra).
+   */
+  fieldPicker(keys, { onPick, chosen, locked = [], bar }) {
+    const paint = () => {
+      keys.forEach((k, i) => this.board.cardEls.get(k)?.classList.toggle("field-chosen", chosen(i)));
+      locked.forEach((k) => this.board.cardEls.get(k)?.classList.add("field-chosen"));
+      this.view.setActionBar(bar());
+    };
+    this.board.setClickable(new Map(keys.map((k, i) => [k, (e) => { e?.stopPropagation?.(); onPick(i); paint(); }])), "pick");
+    paint();
+    const done = () => {
+      [...keys, ...locked].forEach((k) => this.board.cardEls.get(k)?.classList.remove("field-chosen"));
+      this.board.clearClickable();
+      this.view.setActionBar(null);
+      this.cancelCurrent = null;
+      this.decline = null;
+    };
+    return { repaint: paint, done };
+  }
+
   cardTile(c, extraLabel) {
     const vis = this.visible(c);
     const face = cardFace(vis ? c.code : 0, { faceDown: !vis });
@@ -376,6 +410,33 @@ export class Prompter {
       respType === RESP.SELECT_TRIBUTE
         ? tributeValue(chosen) >= min && chosen.size <= max
         : chosen.size >= min && chosen.size <= max;
+    const keys = this.fieldKeys(cards);
+    if (keys) {
+      const title = this.title("Select cards");
+      return new Promise((resolve) => {
+        const end = (out) => { picker.done(); resolve(out); };
+        const confirm = () => valid() && end({ type: respType, indicies: [...chosen] });
+        const picker = this.fieldPicker(keys, {
+          chosen: (i) => chosen.has(i),
+          onPick: (i) => {
+            if (chosen.has(i)) chosen.delete(i);
+            else if (chosen.size < max) chosen.add(i);
+            else if (max === 1) { chosen.clear(); chosen.add(i); }
+            if (max === 1 && min === 1 && valid()) confirm();
+          },
+          bar: () => ({
+            text: `${title} (${chosen.size}${min === max ? `/${max}` : `, min ${min}, max ${max}`})`,
+            buttons: [
+              ...(this.back ? [{ label: "Back", ghost: true, onClick: () => end({ back: true }) }] : []),
+              ...(msg.can_cancel ? [{ label: "Cancel", ghost: true, onClick: () => end({ type: respType, indicies: null }) }] : []),
+              { label: "Confirm", disabled: !valid(), onClick: confirm },
+            ],
+          }),
+        });
+        this.cancelCurrent = () => end({ type: respType, indicies: msg.can_cancel ? null : Array.from({ length: Math.max(1, min) }, (_, i) => i) });
+        this.decline = this.back ? () => end({ back: true }) : msg.can_cancel ? () => end({ type: respType, indicies: null }) : null;
+      });
+    }
     const counter = h("span.pick-counter");
     let confirmBtn;
     const update = () => {
@@ -421,6 +482,28 @@ export class Prompter {
   /** SELECT_UNSELECT_CARD: una carta alla volta, il core richiede finché non si termina. */
   selectUnselect(msg) {
     const all = [...msg.select_cards.map((c, i) => ({ c, i, sel: false })), ...msg.unselect_cards.map((c, i) => ({ c, i: msg.select_cards.length + i, sel: true }))];
+    const keys = this.fieldKeys(all.map((x) => x.c));
+    if (keys) {
+      const title = this.title("Select cards");
+      const out = (index) => ({ type: RESP.SELECT_UNSELECT_CARD, index });
+      return new Promise((resolve) => {
+        const end = (r) => { picker.done(); resolve(r); };
+        const picker = this.fieldPicker(keys, {
+          chosen: (i) => all[i].sel,
+          onPick: (i) => end(out(all[i].i)),
+          bar: () => ({
+            text: `${title} (selected ${msg.unselect_cards.length}${msg.max ? `, min ${msg.min}, max ${msg.max}` : ""})`,
+            buttons: [
+              ...(this.back ? [{ label: "Back", ghost: true, onClick: () => end({ back: true }) }] : []),
+              ...(msg.can_cancel && !msg.can_finish ? [{ label: "Cancel", ghost: true, onClick: () => end(out(null)) }] : []),
+              ...(msg.can_finish ? [{ label: "Finish", onClick: () => end(out(null)) }] : []),
+            ],
+          }),
+        });
+        this.cancelCurrent = () => end(out(msg.can_finish || msg.can_cancel ? null : 0));
+        this.decline = this.back ? () => end({ back: true }) : msg.can_finish || msg.can_cancel ? () => end(out(null)) : null;
+      });
+    }
     const m = openModal({
       title: this.title("Select cards"),
       dismissable: false,
@@ -449,6 +532,30 @@ export class Prompter {
 
   sum(msg) {
     const chosen = new Set();
+    const keys = this.fieldKeys(msg.selects);
+    const mustKeys = msg.selects_must.length ? this.fieldKeys(msg.selects_must) : [];
+    if (keys && mustKeys) {
+      const title = this.title("Select cards (sum)");
+      return new Promise((resolve) => {
+        const end = (r) => { picker.done(); resolve(r); };
+        const confirm = () => isValidSum(msg, [...chosen]) && end({ type: RESP.SELECT_SUM, indicies: [...chosen] });
+        const picker = this.fieldPicker(keys, {
+          locked: mustKeys,
+          chosen: (i) => chosen.has(i),
+          onPick: (i) => (chosen.has(i) ? chosen.delete(i) : chosen.add(i)),
+          bar: () => ({
+            text: `${title}: required value ${msg.amount}${msg.select_max === 0 ? ` (cards ${msg.min}-${msg.max})` : " (at least)"}`,
+            buttons: [
+              ...(this.back ? [{ label: "Back", ghost: true, onClick: () => end({ back: true }) }] : []),
+              { label: "Auto", ghost: true, onClick: () => { const f = findSum(msg); if (f) { chosen.clear(); f.forEach((i) => chosen.add(i)); picker.repaint(); } } },
+              { label: "Confirm", disabled: !isValidSum(msg, [...chosen]), onClick: confirm },
+            ],
+          }),
+        });
+        this.cancelCurrent = () => end({ type: RESP.SELECT_SUM, indicies: findSum(msg) ?? [] });
+        this.decline = this.back ? () => end({ back: true }) : null;
+      });
+    }
     let confirmBtn;
     const info = h("span.pick-counter");
     const update = () => {

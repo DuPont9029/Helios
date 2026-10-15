@@ -75,7 +75,8 @@ class Inbox {
 // all'avversario) mentre il core chiede costi, zona e posizione; "Back" ricostruisce lo stato di prima.
 const UNDOABLE_ACTIONS = new Set([IDLE.SUMMON, IDLE.SPSUMMON, IDLE.MSET, IDLE.SSET]);
 const UNDOABLE_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD]);
-const BACK_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION]);
+// Richieste in cui compare "Back" (le scelte delle carte solo quando si fanno sul campo).
+const BACK_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD]);
 // La summon/il set è avvenuto: non si torna più indietro.
 const DONE_MSGS = new Set([MSG.SUMMONING, MSG.SPSUMMONING, MSG.SET, MSG.FLIPSUMMONING]);
 
@@ -254,8 +255,11 @@ export class DuelSession {
         const asked = performance.now();
         this.startClock(prompt.player);
         this.view.prompter.back = this.pending && BACK_PROMPTS.has(prompt.type) ? true : null;
+        // Dentro una summon i materiali si scelgono sul campo (vedi Prompter.fieldKeys).
+        this.view.prompter.summoning = !!this.pending;
         response = await this.view.prompter.ask(prompt);
         this.view.prompter.back = null;
+        this.view.prompter.summoning = false;
         this.stopClock(prompt.player, performance.now() - asked >= AUTO_RESPONSE_MS);
         this.view.setStatus("");
         if (this.over) return;

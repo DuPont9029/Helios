@@ -245,7 +245,7 @@ export class DuelView {
     clear(this.actionBar);
     if (!cfg) return;
     if (cfg.text) this.actionBar.append(h("div.action-hint", cfg.text));
-    for (const b of cfg.buttons ?? []) this.actionBar.append(h("button.btn.primary.phase-btn", { onclick: b.onClick }, b.label));
+    for (const b of cfg.buttons ?? []) this.actionBar.append(h(`button.btn.phase-btn${b.ghost ? ".ghost" : ".primary"}`, { onclick: b.onClick, disabled: !!b.disabled }, b.label));
     if (cfg.all) this.actionBar.append(h("button.btn.ghost", { onclick: cfg.all }, "All actions"));
   }
 

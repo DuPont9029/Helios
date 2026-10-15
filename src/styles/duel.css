@@ -204,6 +204,13 @@
 /* azione semplice (evoca, posiziona, cambia posizione): contorno discreto */
 .card.selectable.glow-action { box-shadow: 0 0 0 2px #54d4ff, 0 0 10px 2px rgba(53, 198, 244, 0.45); }
 .card.selectable.glow-attack { box-shadow: 0 0 0 2px #ff9a3a, 0 0 16px 4px rgba(255, 120, 40, 0.7); animation: glow-pulse 1.1s infinite; }
+/* scelta dei materiali sul campo: carte selezionabili e carte scelte */
+.card.selectable.glow-pick { box-shadow: 0 0 0 2px #54d4ff, 0 0 14px 4px rgba(53, 198, 244, 0.6); animation: glow-pulse 1.2s infinite; }
+.card.field-chosen { box-shadow: 0 0 0 3px #ffd23a, 0 0 18px 6px rgba(255, 210, 58, 0.75) !important; animation: none; }
+.card.field-chosen::before {
+  content: "✓"; position: absolute; right: 4%; top: 4%; z-index: 4; width: 34%; aspect-ratio: 1; display: grid; place-items: center;
+  border-radius: 50%; background: #ffd23a; color: #1a1400; font: 700 calc(var(--zh) * 0.16) var(--display); box-shadow: 0 1px 4px #000;
+}
 .zone.selectable { box-shadow: 0 0 0 2px #54d4ff, 0 0 12px rgba(53, 198, 244, 0.45); }
 /* effetto attivabile: alone dorato che pulsa e riflesso che attraversa la carta */
 .card.selectable.glow-activate, .pile-item.can-activate .card {
