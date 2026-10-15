@@ -1,4 +1,5 @@
 // Schermata del duello: campo, HUD, registro/chat e animazioni dei messaggi.
+import { fullscreenButton } from "../fullscreen.js";
 import { h, clear, sleep, rect, viewportSize } from "../dom.js";
 import { cardFace } from "../card.js";
 import { openModal } from "../modal.js";
@@ -132,6 +133,7 @@ export class DuelView {
         this.chainMode,
         h("label.check", h("input", { type: "checkbox", checked: settings.autoPlace, onchange: (e) => (settings.autoPlace = e.target.checked) }), "Auto-place"),
         h("label.check", "Animations", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
+        fullscreenButton("btn", "Fullscreen"),
         this.opts.onSurrender && h("button.btn.danger", { onclick: () => this.opts.onSurrender() }, "Surrender"),
         h("button.btn", { onclick: () => this.opts.onLeave?.() }, "Leave")
       )

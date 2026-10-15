@@ -281,6 +281,7 @@ export class DuelSession {
   finish({ winner, reason, text, sub, rematch = true }) {
     if (this.over) return;
     this.over = true;
+    this.winner = winner; // indice del core del vincitore (2 o null = pareggio): serve alla rivincita
     clearTimeout(this.timeout);
     clearInterval(this.tick);
     this.clock?.pause(performance.now());
