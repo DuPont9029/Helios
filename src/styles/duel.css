@@ -187,7 +187,7 @@
 .action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px; border: 1px dashed rgba(182, 244, 0, 0.5); }
 .phase-btn { font: 700 16px var(--display); letter-spacing: 0.05em; text-transform: uppercase; padding: 11px; }
 .duel-controls input[type="range"] { width: 100%; }
-/* modo della catena: tre pulsanti esclusivi; "held" = forzato tenendo premuto il mouse */
+/* modo della catena: tre pulsanti esclusivi, colorato solo quello attivo adesso */
 .chain-mode { display: flex; flex-direction: column; gap: 4px; }
 .chain-label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .chain-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
@@ -197,7 +197,6 @@
 }
 .chain-btn:hover { color: #fff; border-color: var(--accent); }
 .chain-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); }
-.chain-btn.held { background: #ffd23a; border-color: #fff; color: #1a1400; box-shadow: 0 0 14px rgba(255, 210, 58, 0.7); }
 .duel-controls .check { font-size: 12px; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------ selezioni */

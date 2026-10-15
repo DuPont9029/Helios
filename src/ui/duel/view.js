@@ -56,12 +56,10 @@ export class DuelView {
     return this.heldChain ?? settings.chainMode;
   }
 
+  /** Un solo pulsante colorato: il modo attivo adesso (si sposta tenendo premuto il mouse). */
   paintChainMode() {
     const now = this.chainModeNow();
-    for (const b of this.chainBtns ?? []) {
-      b.classList.toggle("on", b.dataset.mode === settings.chainMode);
-      b.classList.toggle("held", !!this.heldChain && b.dataset.mode === now);
-    }
+    for (const b of this.chainBtns ?? []) b.classList.toggle("on", b.dataset.mode === now);
   }
 
   /** Pulsanti del mouse tenuti premuti (e.buttons): destro = never, sinistro = always ask. */
@@ -129,7 +127,7 @@ export class DuelView {
 
     // Catena: tre pulsanti esclusivi (auto / always ask / never). Tenendo premuto il mouse si cambia
     // modo al volo: sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
-    const CHAIN_MODES = [["auto", "Auto", "Ask only when a card or effect can be activated"], ["always", "Always", "Always ask (also hold the left mouse button)"], ["never", "Never", "Never ask (also hold the right mouse button)"]];
+    const CHAIN_MODES = [["auto", "Auto", "Ask only when a card or effect can be activated"], ["always", "On", "Always ask (also hold the left mouse button)"], ["never", "Off", "Never ask (also hold the right mouse button)"]];
     this.chainBtns = CHAIN_MODES.map(([mode, label, title]) =>
       h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label)
     );
