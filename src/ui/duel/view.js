@@ -6,6 +6,7 @@ import { openModal } from "../modal.js";
 import { createDetailPanel } from "../detail.js";
 import { Board, key } from "./board.js";
 import { Prompter } from "./prompts.js";
+import { ChainContext } from "./chain-context.js";
 import { describe } from "./describe.js";
 import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
@@ -40,6 +41,15 @@ export class DuelView {
       onCardMenu: (el, items) => this.openActionMenu(el, items),
     });
     this.prompter = new Prompter(this);
+    // A cosa risponde la prossima richiesta di catena (catena in corso, summon, attacco, fase...).
+    this.chainCtx = new ChainContext(
+      (p) => this.names[p] ?? `Player ${p + 1}`,
+      (p, loc, seq) => {
+        const ps = this.board.snapshot?.players[p];
+        const list = loc === LOC.MZONE ? ps?.mzone : loc === LOC.SZONE ? ps?.szone : null;
+        return list?.[seq]?.code ?? 0;
+      }
+    );
     this.build();
     // Sul documento: le finestre delle richieste stanno fuori dal campo (in <body>).
     this.contextHandler = (e) => this.onContextMenu(e);
@@ -537,6 +547,7 @@ export class DuelView {
         this.winLogged = true;
       }
       this.log(describe(m, this.names, (p, loc, pos) => this.canSeeMsg(p, loc, pos)));
+      this.chainCtx.track(m);
       await this.animate(m);
     }
   }

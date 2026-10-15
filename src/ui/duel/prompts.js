@@ -315,11 +315,14 @@ export class Prompter {
       );
       this.board.setClickable(handlers, "activate");
       this.view.onPileActions = (k) => (byCard.has(k) ? items(byCard.get(k)) : []);
+      // A cosa si sta rispondendo: catena in corso, summon, attacco, pescata, cambio di fase...
+      const ctx = this.view.chainCtx?.describe(msg) ?? { title: "Activate a card or effect in Chain?", detail: "" };
       m = openModal({
-        title: msg.forced ? "Choose the effect to activate" : "Activate a card or effect in Chain?",
+        title: msg.forced ? "Choose the effect to activate" : ctx.title,
         dismissable: false,
         className: "prompt wide",
         body: [
+          ctx.detail && h("p.chain-context", ctx.detail),
           h(
             "div.action-list",
             msg.selects.map((c, i) =>
