@@ -210,7 +210,16 @@ export class DuelView {
     const r = rect(anchor);
     const menu = h(
       "div.action-menu",
-      items.map((it) => h(`button.action-item${it.glow === "attack" ? ".attack" : ""}`, { title: it.title || null, onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } }, it.label))
+      items.map((it) =>
+        h(
+          `button.action-item${it.glow === "attack" ? ".attack" : ""}`,
+          { onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } },
+          it.label,
+          // Più effetti sulla stessa carta: il testo dell'effetto sta sotto la voce, non in un tooltip
+          // (che compariva tenendo premuto e sembrava ingrandire il menu).
+          /\(\d+\)$/.test(it.label) && it.title ? h("small", it.title) : null
+        )
+      )
     );
     document.body.append(menu);
     const mw = menu.offsetWidth;

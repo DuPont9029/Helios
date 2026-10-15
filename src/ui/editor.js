@@ -782,14 +782,34 @@ export function showEditor(app) {
   for (const el of [q, fLevel, fAtk, fDef]) el.addEventListener("input", debounced);
   for (const el of [fType, fSub, fAttr, fRace, fLimit, fFormat, fUnoff]) el.addEventListener("change", runSearch);
 
-  const search = h(
-    "aside.search-panel",
-    h("div.search-tabs", h("span.search-tab.on", icon("view_list"), " Card list")),
-    q,
+  // Filtri richiudibili: ridotti lasciano tutto lo spazio alla lista dei risultati.
+  const filters = h(
+    "div.search-filters",
     typeChips,
     attrChips,
     h("div.filter-grid", fSub, fRace, fLevel, fAtk, fDef, fLimit, fFormat),
-    h("label.check.small", fUnoff, "Include unofficial cards"),
+    h("label.check.small", fUnoff, "Include unofficial cards")
+  );
+  const activeFilters = () =>
+    [fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat].filter((el) => el.value !== "").length + (fUnoff.checked ? 1 : 0);
+  const filterCount = h("b.filter-count");
+  const filterToggle = h("button.search-tab.filter-toggle", { title: "Show or hide the filters", onclick: () => setFilters(!settings.editorFilters) });
+  function setFilters(open) {
+    settings.editorFilters = open;
+    filters.hidden = !open;
+    const n = activeFilters();
+    filterCount.textContent = n ? String(n) : "";
+    clear(filterToggle).append(icon("tune"), " Filters", filterCount, icon(open ? "expand_less" : "expand_more"));
+  }
+  for (const el of [fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat, fUnoff]) el.addEventListener("change", () => setFilters(settings.editorFilters));
+  for (const el of [fLevel, fAtk, fDef]) el.addEventListener("input", () => setFilters(settings.editorFilters));
+  setFilters(settings.editorFilters !== false);
+
+  const search = h(
+    "aside.search-panel",
+    h("div.search-tabs", h("span.search-tab.on", icon("view_list"), " Card list"), filterToggle),
+    q,
+    filters,
     resultInfo,
     results,
     h(

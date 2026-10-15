@@ -13,7 +13,10 @@
 .rematch-actions { display: flex; gap: 10px; }
 
 /* Lancio della moneta perso: attesa della scelta dell'avversario. */
-.coin-wait { display: grid; place-items: center; padding: 8px 0 2px; }
+/* Il cerchio che ruota occupa (in diagonale) più del suo riquadro: senza "overflow: hidden" e spazio
+   intorno la finestra faceva comparire e sparire la barra di scorrimento a ogni giro. */
+.coin-lost .modal-body { overflow: hidden; }
+.coin-wait { display: grid; place-items: center; padding: 10px 0 6px; overflow: hidden; }
 .coin-wait .spinner {
   width: 26px; height: 26px; border-radius: 50%;
   border: 3px solid var(--line); border-top-color: var(--accent); animation: spin 0.9s linear infinite;

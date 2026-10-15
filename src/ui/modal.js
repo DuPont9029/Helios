@@ -4,13 +4,20 @@ import { h } from "./dom.js";
  * Finestra modale. Restituisce { el, body, close(value), result }.
  * actions: [{ label, value, primary, disabled, onClick }]
  */
-export function openModal({ title, body = [], actions = [], dismissable = true, className = "", onClose } = {}) {
+export function openModal({ title, body = [], actions = [], dismissable = true, className = "", onClose, minimizable = /\bprompt\b/.test(className) } = {}) {
   let resolve;
   const result = new Promise((r) => (resolve = r));
   const footer = h("div.modal-actions");
   const bodyEl = h("div.modal-body", body);
-  const box = h(`div.modal.${className || "plain"}`, title && h("h2.modal-title", title), bodyEl, footer);
-  const backdrop = h("div.modal-backdrop", box);
+  // Le scelte del duello si possono ridurre a una piccola barra per guardare campo e pile, poi riaprire.
+  const minimize = (on) => backdrop.classList.toggle("minimized", on);
+  const titleEl = title && h("h2.modal-title", title);
+  const head = minimizable
+    ? h("div.modal-head", titleEl, h("button.modal-min", { title: "Minimize: look at the field, then reopen", onclick: () => minimize(true) }, h("span.icon", "remove")))
+    : titleEl;
+  const box = h(`div.modal.${className || "plain"}`, head, bodyEl, footer);
+  const restore = minimizable && h("button.modal-restore", { onclick: () => minimize(false) }, h("span.icon", "open_in_full"), h("span", title || "Show the choice"));
+  const backdrop = h("div.modal-backdrop", box, restore);
   let closed = false;
   const close = (value) => {
     if (closed) return;
