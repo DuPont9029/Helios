@@ -7,7 +7,7 @@ import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
-  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
+  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
 } from "../deck/deck.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
@@ -521,6 +521,7 @@ export function showEditor(app) {
       ["Download .ydk", () => download(`${deck.name}.ydk`, toYdk(deck))],
       ["Copy ydke://", () => navigator.clipboard?.writeText(toYdke(deck)).then(() => toast("ydke:// link copied"))],
       ["Copy Omega code", async () => navigator.clipboard?.writeText(await toOmega(deck)).then(() => toast("Omega deck code copied"))],
+      ["Clipboard (Recipe)", () => navigator.clipboard?.writeText(toRecipe(deck)).then(() => toast("Card list copied (Omega Recipe format)"))],
       ["Copy YDK text (Ctrl+C)", copyDeck],
     ]),
     h("div.spacer"),
