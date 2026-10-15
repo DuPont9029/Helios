@@ -519,7 +519,7 @@ export function showOnline(app) {
   root.append(
     h(
       "div.page.online",
-      h("div.page-head", h("button.btn.ghost.round", { title: "Menu", onclick: () => { cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
       h("div.online-grid",
         h("div.card-box",
           h("h3", "Your Profile"),

@@ -148,7 +148,7 @@ export function showDeckList(app) {
       "div.page.decks",
       h(
         "header.decks-head",
-        h("button.btn.ghost.round", { title: "Menu", onclick: () => app.home() }, icon("chevron_left")),
+        h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home() }, icon("chevron_left")),
         h("h1", "Deck"),
         h("span.decks-num", icon("inventory_2"), count),
         h("div.spacer"),
