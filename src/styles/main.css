@@ -190,8 +190,8 @@ input[type="range"] { accent-color: var(--accent); }
 .menu-item:hover .menu-sub, .menu-item:focus-visible .menu-sub { max-height: 20px; opacity: 1; }
 
 /* emblema astratto al posto dell'illustrazione */
-/* raggio triplo: ingrandito con transform (non sposta la griglia), stesso centro, dietro al menu */
-.emblem { grid-column: 2; grid-row: 2; align-self: center; justify-self: center; position: relative; z-index: 0; width: min(calc(var(--vh) * 46), calc(var(--vw) * 34)); aspect-ratio: 1; pointer-events: none; transform: scale(3); }
+/* raggio 2,4 volte l'originale: ingrandito con transform (non sposta la griglia), stesso centro, dietro al menu */
+.emblem { grid-column: 2; grid-row: 2; align-self: center; justify-self: center; position: relative; z-index: 0; width: min(calc(var(--vh) * 46), calc(var(--vw) * 34)); aspect-ratio: 1; pointer-events: none; transform: scale(2.4); }
 .emblem i { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(255, 70, 90, 0.55); box-shadow: 0 0 40px rgba(217, 35, 56, 0.45), inset 0 0 40px rgba(217, 35, 56, 0.3); animation: spin 40s linear infinite; }
 .emblem i:nth-child(1) { border-style: dashed; }
 .emblem i:nth-child(2) { inset: 14%; border-color: rgba(255, 255, 255, 0.35); border-width: 1px; animation-direction: reverse; animation-duration: 26s; border-top-color: var(--accent); }
