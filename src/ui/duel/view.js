@@ -56,6 +56,12 @@ export class DuelView {
     return this.heldChain ?? settings.chainMode;
   }
 
+  /** A inizio duello e a ogni nuovo turno la catena torna su On (chiedi sempre). */
+  resetChainMode() {
+    settings.chainMode = "always";
+    this.paintChainMode();
+  }
+
   /** Un solo pulsante colorato: il modo attivo adesso (si sposta tenendo premuto il mouse). */
   paintChainMode() {
     const now = this.chainModeNow();
@@ -132,7 +138,7 @@ export class DuelView {
       h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label)
     );
     this.chainMode = h("div.chain-mode", h("span.chain-label", "Chain"), h("div.chain-btns", this.chainBtns));
-    this.paintChainMode();
+    this.resetChainMode();
 
     this.overlay = h("div.fx-layer");
     // Richieste compatte (catena, "usare l'effetto?"): non coprono il campo, che resta cliccabile.
@@ -536,6 +542,7 @@ export class DuelView {
         if (m.hint_type === HINT.CODE) await this.confirmCards([{ code: Number(m.hint) }], "Declared");
         return;
       case MSG.NEW_TURN:
+        this.resetChainMode();
         this.setTurn(this.turn = (this.turn ?? 0) + 1, m.player, 0);
         this.turnPlayer = m.player;
         return this.banner(m.player === this.me ? "YOUR TURN" : "OPPONENT'S TURN", "turn");
