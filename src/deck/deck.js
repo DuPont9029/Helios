@@ -66,6 +66,27 @@ export async function toOmega(deck) {
 }
 
 // ------------------------------------------------------------- lista per nome ("Recipe" di Omega)
+
+/**
+ * Esporta come "Clipboard (Recipe)" di YGO Omega: sezioni Monster / Spell / Trap / Extra / Side
+ * (solo quelle non vuote), righe "N Nome" con le copie raggruppate nell'ordine del mazzo.
+ */
+export function toRecipe(deck) {
+  const group = (codes) => {
+    const counts = new Map();
+    for (const c of codes) counts.set(c, (counts.get(c) ?? 0) + 1);
+    return [...counts].map(([code, n]) => `${n} ${getCard(code)?.name ?? code}`);
+  };
+  const ofType = (t) => deck.main.filter((c) => (getCard(c)?.type ?? 0) & t);
+  const sections = [
+    ["Monster", ofType(TYPE.MONSTER)],
+    ["Spell", ofType(TYPE.SPELL)],
+    ["Trap", ofType(TYPE.TRAP)],
+    ["Extra", deck.extra],
+    ["Side", deck.side],
+  ];
+  return sections.filter(([, codes]) => codes.length).flatMap(([title, codes]) => [title, ...group(codes)]).join("\n");
+}
 // Righe "3 Nome carta" (anche "3x Nome"), con intestazioni come "Monster", "Extra", "Side".
 
 const normName = (n) => n.toLowerCase().normalize("NFKC").replace(/[\u2010-\u2015\u2212]/g, "-").replace(/[\u2018\u2019\u201c\u201d"']/g, "").replace(/\s+/g, " ").trim();
