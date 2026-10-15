@@ -1,13 +1,13 @@
 // Deck Editor: ricerca carte, costruzione del mazzo, banlist, import/export.
-import { h, clear, download, pickFile, icon } from "./dom.js";
-import { cardFace } from "./card.js";
+import { h, clear, download, pickFile, icon, rect } from "./dom.js";
+import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
-  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, banlistByName, cardLimit, validateDeck, sortDeckPart,
+  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
 } from "../deck/deck.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
@@ -165,11 +165,21 @@ export function showDeckList(app) {
   render();
 }
 
+// Copia di lavoro di un mazzo (la bozza modificata nell'editor).
+const cloneDeck = (d) => ({ ...d, main: [...d.main], extra: [...d.extra], side: [...d.side] });
+const isEmptyDeck = (d) => !d.main.length && !d.extra.length && !d.side.length;
+const LONG_PRESS = 450;
+
 export function showEditor(app) {
   const root = clear(app.root);
+  // decks contiene solo le versioni salvate; deck è la bozza su cui si lavora.
   let decks = loadDecks();
   if (!decks.length) decks = [emptyDeck()];
-  let deck = decks.find((d) => d.id === settings.lastDeck) ?? decks[0];
+  saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
+  let deck;
+  let baseline = "";
+  let undoStack = [];
+  let redoStack = [];
   let banlist = banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
   const detail = createDetailPanel({
     actions: (code) => {
@@ -181,21 +191,177 @@ export function showEditor(app) {
     },
   });
 
-  const persist = () => {
+  // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
+  const snap = () => JSON.stringify({ name: deck.name, main: deck.main, extra: deck.extra, side: deck.side });
+  const isDirty = () => snap() !== baseline;
+
+  function openDeck(d) {
+    deck = cloneDeck(d);
+    baseline = snap();
+    undoStack = [];
+    redoStack = [];
+    settings.lastDeck = deck.id;
+    refreshDeckSel();
+    renderDeck();
+  }
+
+  // Applica una modifica alla bozza registrandola nella cronologia (fn può non cambiare nulla).
+  function change(fn) {
+    const before = snap();
+    fn();
+    if (snap() === before) return false;
+    undoStack.push(before);
+    if (undoStack.length > 300) undoStack.shift();
+    redoStack = [];
+    renderDeck();
+    return true;
+  }
+
+  function restore(state) {
+    const s = JSON.parse(state);
+    Object.assign(deck, { name: s.name, main: s.main, extra: s.extra, side: s.side });
+    refreshDeckSel();
+    renderDeck();
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    redoStack.push(snap());
+    restore(undoStack.pop());
+  }
+  function redo() {
+    if (!redoStack.length) return;
+    undoStack.push(snap());
+    restore(redoStack.pop());
+  }
+
+  function save() {
+    const i = decks.findIndex((d) => d.id === deck.id);
+    if (i >= 0) decks[i] = cloneDeck(deck);
+    else decks.push(cloneDeck(deck));
     saveDecks(decks);
     settings.lastDeck = deck.id;
+    baseline = snap();
+    refreshDeckSel();
+    renderDeck();
+    toast("Deck saved");
+  }
+
+  // Prima di lasciare la bozza: Salva / Scarta / Annulla. true = si può procedere.
+  async function confirmLeave() {
+    if (!isDirty()) return true;
+    const v = await openModal({
+      title: "Unsaved changes",
+      body: [h("p", `"${deck.name}" has unsaved changes.`)],
+      actions: [{ label: "Cancel", value: null }, { label: "Discard", danger: true, value: "discard" }, { label: "Save", primary: true, value: "save" }],
+    }).result;
+    if (v === "save") save();
+    else if (v === "discard") openDeck(decks.find((d) => d.id === deck.id) ?? deck);
+    return v === "save" || v === "discard";
+  }
+
+  // Uscita dall'editor: chiede per le modifiche non salvate e stacca i listener globali.
+  async function leave(go) {
+    if (!(await confirmLeave())) return;
+    unmount();
+    go();
+  }
+
+  const onBeforeUnload = (e) => {
+    if (!isDirty()) return;
+    e.preventDefault();
+    e.returnValue = "";
   };
+  const onKey = (e) => {
+    if (!page.isConnected) return unmount();
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (document.querySelector(".modal-backdrop")) return; // c'è una finestra aperta
+    const k = e.key.toLowerCase();
+    if (k === "s") {
+      e.preventDefault();
+      save();
+      return;
+    }
+    const t = e.target;
+    if (t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+    if (k === "z" && !e.shiftKey) { e.preventDefault(); undo(); }
+    else if ((k === "z" && e.shiftKey) || k === "y") { e.preventDefault(); redo(); }
+    else if (k === "c" && !e.shiftKey) {
+      if (window.getSelection()?.toString()) return; // copia del testo selezionato
+      e.preventDefault();
+      copyDeck();
+    } else if (k === "v" && !e.shiftKey) {
+      e.preventDefault();
+      pasteDeck();
+    }
+  };
+  function unmount() {
+    document.removeEventListener("keydown", onKey);
+    window.removeEventListener("beforeunload", onBeforeUnload);
+    if (app.onLeave === unmount) app.onLeave = null;
+  }
+  document.addEventListener("keydown", onKey);
+  window.addEventListener("beforeunload", onBeforeUnload);
+  app.onLeave = unmount;
+
+  // ------------------------------------------------------------ copia/incolla e import
+  function copyDeck() {
+    if (!navigator.clipboard?.writeText) return toast("Clipboard not available", { kind: "error" });
+    navigator.clipboard.writeText(toYdk(deck)).then(
+      () => toast(`"${deck.name}" copied as YDK`),
+      () => toast("Could not write to the clipboard", { kind: "error" })
+    );
+  }
+
+  async function pasteDeck() {
+    let text = null;
+    try {
+      text = await navigator.clipboard.readText();
+    } catch {
+      /* permesso negato */
+    }
+    if (!text?.trim()) return toast("The clipboard is empty or not accessible", { kind: "error" });
+    try {
+      const { deck: d, format, missing } = await parseDeckText(text, "Imported Deck");
+      if (format === "omega") d.name = "Imported Deck (Omega)";
+      if (isEmptyDeck(d)) throw new Error("no card codes found");
+      if (missing.length) toast(`${missing.length} card name(s) not found and skipped`, { kind: "error" });
+      importHere(d);
+    } catch (e) {
+      toast(`Nothing to paste: ${e.message}`, { kind: "error" });
+    }
+  }
+
+  // Mazzo importato: dentro il mazzo aperto se è vuoto, altrimenti in un mazzo nuovo.
+  async function importHere(d) {
+    if (!d) return;
+    if (isEmptyDeck(deck)) {
+      change(() => {
+        if (deck.name === "New Deck") deck.name = d.name;
+        deck.main = [...d.main];
+        deck.extra = [...d.extra];
+        deck.side = [...d.side];
+      });
+      refreshDeckSel();
+      toast(`Imported into "${deck.name}" (not saved yet)`);
+      return;
+    }
+    if (!(await confirmLeave())) return;
+    addDeck(d);
+    toast(`Imported as new deck "${d.name}"`);
+  }
 
   // ------------------------------------------------------------ barra superiore
   const deckSel = h("select.select");
-  const refreshDeckSel = () => {
-    clear(deckSel).append(...decks.map((d) => h("option", { value: d.id }, d.name)));
+  function refreshDeckSel() {
+    clear(deckSel).append(...decks.map((d) => h("option", { value: d.id }, d.id === deck.id ? deck.name : d.name)));
+    if (!decks.some((d) => d.id === deck.id)) deckSel.append(h("option", { value: deck.id }, deck.name));
     deckSel.value = deck.id;
-  };
-  deckSel.addEventListener("change", () => {
-    deck = decks.find((d) => d.id === deckSel.value);
-    persist();
-    renderDeck();
+  }
+  deckSel.addEventListener("change", async () => {
+    const target = decks.find((d) => d.id === deckSel.value);
+    deckSel.value = deck.id;
+    if (!target || !(await confirmLeave())) return;
+    openDeck(target);
   });
   const banSel = h("select.select", h("option", { value: "" }, "No banlist"), db.banlists.map((b) => h("option", { value: b.name }, b.name)));
   banSel.value = banlist?.name ?? "";
@@ -209,11 +375,21 @@ export function showEditor(app) {
     const errs = validateDeck(deck, banlist);
     alertModal(errs.length ? "Deck issues" : "Valid deck", errs.length ? errs.join("\n") : "The deck follows the rules and the selected banlist.");
   } });
+  const saveBtn = h("button.btn.primary.save-btn", { title: "Save the deck (Ctrl+S)", onclick: () => save() });
+  const undoBtn = h("button.btn.ghost.round", { title: "Undo (Ctrl+Z)", onclick: undo }, icon("undo"));
+  const redoBtn = h("button.btn.ghost.round", { title: "Redo (Ctrl+Shift+Z / Ctrl+Y)", onclick: redo }, icon("redo"));
+  function refreshState() {
+    const dirty = isDirty();
+    saveBtn.classList.toggle("dirty", dirty);
+    saveBtn.replaceChildren(icon("save"), dirty ? " Save" : " Saved", ...(dirty ? [h("span.unsaved-dot", { title: "Unsaved changes" })] : []));
+    undoBtn.disabled = !undoStack.length;
+    redoBtn.disabled = !redoStack.length;
+  }
 
   const menu = (label, items) => {
     const btn = h("button.btn", label);
     btn.addEventListener("click", () => {
-      const r = btn.getBoundingClientRect();
+      const r = rect(btn);
       const m = h("div.dropdown", items.map(([text, fn]) => h("button.dropdown-item", { onclick: () => { m.remove(); fn(); } }, text)));
       Object.assign(m.style, { left: r.left + "px", top: r.bottom + 4 + "px" });
       document.body.append(m);
@@ -224,22 +400,20 @@ export function showEditor(app) {
     return btn;
   };
 
+  // Nuovo mazzo (creazione = salvataggio immediato) e apertura come bozza.
   const addDeck = (d) => {
-    decks.push(d);
-    deck = d;
-    persist();
-    refreshDeckSel();
-    renderDeck();
+    decks.push(cloneDeck(d));
+    saveDecks(decks);
+    openDeck(d);
   };
 
   // Elimina i mazzi indicati; ne resta sempre almeno uno (vuoto) da modificare.
   const deleteDecks = (ids) => {
     decks = decks.filter((d) => !ids.includes(d.id));
     if (!decks.length) decks.push(emptyDeck());
-    if (!decks.includes(deck)) deck = decks[0];
-    persist();
-    refreshDeckSel();
-    renderDeck();
+    saveDecks(decks);
+    if (ids.includes(deck.id)) openDeck(decks[0]); // la bozza del mazzo eliminato si perde
+    else refreshDeckSel();
     toast(ids.length === 1 ? "Deck deleted" : `${ids.length} decks deleted`);
   };
 
@@ -296,27 +470,37 @@ export function showEditor(app) {
 
   const toolbar = h(
     "div.editor-toolbar",
-    h("button.btn.ghost.round", { title: "Decks", onclick: () => showDeckList(app) }, icon("chevron_left")),
+    h("button.btn.ghost.round", { title: "Decks", onclick: () => leave(() => showDeckList(app)) }, icon("chevron_left")),
     deckSel,
+    saveBtn,
+    undoBtn,
+    redoBtn,
     h("button.btn.danger", { title: "Delete the selected deck", onclick: deleteCurrent }, icon("delete"), " Delete"),
     menu("Deck ▾", [
-      ["New Deck", async () => { const n = await promptModal("New Deck", "Name", "New Deck"); if (n) addDeck(emptyDeck(n)); }],
-      ["Rename", async () => { const n = await promptModal("Rename", "Name", deck.name); if (n) { deck.name = n; persist(); refreshDeckSel(); } }],
-      ["Duplicate", () => addDeck({ ...deck, id: crypto.randomUUID(), name: deck.name + " (copy)", main: [...deck.main], extra: [...deck.extra], side: [...deck.side] })],
-      ["Sort", () => { for (const p of ["main", "extra", "side"]) deck[p] = sortDeckPart(deck[p]); persist(); renderDeck(); }],
-      ["Clear", async () => { if (await confirmModal("Clear the deck?", deck.name, "Clear", "Cancel", { danger: true })) { deck.main = []; deck.extra = []; deck.side = []; persist(); renderDeck(); } }],
+      ["New Deck", async () => {
+        if (!(await confirmLeave())) return;
+        const n = await promptModal("New Deck", "Name", "New Deck");
+        if (n) addDeck(emptyDeck(n));
+      }],
+      ["Rename", async () => { const n = await promptModal("Rename", "Name", deck.name); if (n) { change(() => (deck.name = n)); refreshDeckSel(); } }],
+      ["Duplicate", async () => {
+        if (!(await confirmLeave())) return;
+        addDeck({ ...cloneDeck(deck), id: crypto.randomUUID(), name: deck.name + " (copy)" });
+      }],
+      ["Sort", () => change(() => { for (const p of ["main", "extra", "side"]) deck[p] = sortDeckPart(deck[p]); })],
+      ["Clear", async () => { if (await confirmModal("Clear the deck?", deck.name, "Clear", "Cancel", { danger: true })) change(() => { deck.main = []; deck.extra = []; deck.side = []; }); }],
       ["Manage decks…", manageDecks],
     ]),
     menu("Import ▾", [
-      ["From clipboard (Omega, YDK, ydke://)", async () => { const d = await importDeck("clipboard"); if (d) addDeck(d); }],
-      ["Paste text…", async () => { const d = await importDeck("paste"); if (d) addDeck(d); }],
-      ["File .ydk…", async () => { const d = await importDeck("file"); if (d) addDeck(d); }],
+      ["From clipboard (Omega, YDK, ydke://)", async () => importHere(await importDeck("clipboard"))],
+      ["Paste text…", async () => importHere(await importDeck("paste"))],
+      ["File .ydk…", async () => importHere(await importDeck("file"))],
     ]),
     menu("Export ▾", [
       ["Download .ydk", () => download(`${deck.name}.ydk`, toYdk(deck))],
       ["Copy ydke://", () => navigator.clipboard?.writeText(toYdke(deck)).then(() => toast("ydke:// link copied"))],
       ["Copy Omega code", async () => navigator.clipboard?.writeText(await toOmega(deck)).then(() => toast("Omega deck code copied"))],
-      ["Copy YDK text", () => navigator.clipboard?.writeText(toYdk(deck)).then(() => toast("YDK copied"))],
+      ["Copy YDK text (Ctrl+C)", copyDeck],
     ]),
     h("div.spacer"),
     banSel,
@@ -324,6 +508,21 @@ export function showEditor(app) {
   );
 
   // ------------------------------------------------------------ area mazzo
+  const PART_NAME = { main: "Main", extra: "Extra", side: "Side" };
+  // Dati del trascinamento: { code } dai risultati, { code, from, index } da una carta del mazzo.
+  const dragData = (e) => {
+    try {
+      return JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
+    } catch {
+      return {};
+    }
+  };
+  // Rilascio su una parte del mazzo (at = indice della carta davanti a cui inserire, null = in fondo).
+  function dropInto(data, p, at = null) {
+    if (!data.code) return;
+    if (data.from) moveCard(data.from, data.index, p, at);
+    else addCard(data.code, p, at);
+  }
   const parts = {};
   for (const p of ["main", "extra", "side"]) {
     const grid = h(`div.deck-grid.${p}`);
@@ -331,10 +530,7 @@ export function showEditor(app) {
     grid.addEventListener("dragover", (e) => e.preventDefault());
     grid.addEventListener("drop", (e) => {
       e.preventDefault();
-      const data = JSON.parse(e.dataTransfer.getData("text/plain") || "{}");
-      if (!data.code) return;
-      if (data.from) removeAt(data.from, data.index);
-      addCard(data.code, p);
+      dropInto(dragData(e), p);
     });
     parts[p] = { grid, head, el: h(`section.deck-part.${p}`, head, grid) };
   }
@@ -353,25 +549,105 @@ export function showEditor(app) {
     }).length;
   };
 
-  function addCard(code, target) {
+  // Main ed Extra si scelgono dal tipo della carta; il Side accetta tutto.
+  const routePart = (c, target) => (target === "side" ? "side" : isExtraDeckCard(c) ? "extra" : "main");
+
+  function addCard(code, target, at = null) {
     const c = getCard(code);
     if (!c || c.type & TYPE.TOKEN) return;
-    let part = target ?? (isExtraDeckCard(c) ? "extra" : "main");
-    if (part === "main" && isExtraDeckCard(c)) part = "extra";
-    if (part === "extra" && !isExtraDeckCard(c)) part = "main";
-    if (deck[part].length >= MAX[part]) return toast(`${part === "main" ? "Main" : part === "extra" ? "Extra" : "Side"} Deck is full`, { kind: "error" });
+    const part = routePart(c, target ?? "main");
+    if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
     const limit = Math.min(3, cardLimit(banlist, code));
     if (limit === 0) return toast(`${c.name} is forbidden in the selected banlist`, { kind: "error" });
     if (countCopies(code) >= limit) return toast(`Maximum ${limit} copies of ${c.name}`, { kind: "error" });
-    deck[part].push(code);
-    persist();
-    renderDeck();
+    change(() => deck[part].splice(at ?? deck[part].length, 0, code));
   }
 
   function removeAt(part, index) {
-    deck[part].splice(index, 1);
-    persist();
-    renderDeck();
+    change(() => deck[part].splice(index, 1));
+  }
+
+  // Sposta una carta (tra parti o nella stessa parte per riordinare): il numero di copie non cambia.
+  function moveCard(from, index, target, at = null) {
+    const code = deck[from][index];
+    const c = getCard(code);
+    if (code == null || !c) return;
+    const part = routePart(c, target);
+    if (part === from) {
+      // La carta prende il posto di quella su cui cade (davanti se va indietro, dopo se va avanti).
+      const to = at ?? deck[part].length - 1;
+      if (to === index) return;
+      change(() => {
+        deck[part].splice(index, 1);
+        deck[part].splice(to, 0, code);
+      });
+      return;
+    }
+    if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
+    // Main↔Extra non cambia per tipo: l'indice di destinazione vale solo se la parte è quella richiesta
+    change(() => {
+      deck[from].splice(index, 1);
+      deck[part].splice(part === target && at != null ? at : deck[part].length, 0, code);
+    });
+  }
+
+  // Pressione lunga: il rilascio non deve contare come clic (che rimuove la carta).
+  let longPressed = false;
+  let pointerKind = "mouse";
+
+  function deckCard(code, p, index) {
+    const el = h("div.deck-card", { draggable: true, dataset: { part: p, index } }, cardFace(code), limitBadge(code), regionBadge(code));
+    let timer = null;
+    let start = null;
+    const cancel = () => {
+      clearTimeout(timer);
+      timer = null;
+    };
+    el.addEventListener("mouseenter", () => detail.show(code));
+    el.addEventListener("pointerdown", (e) => {
+      pointerKind = e.pointerType;
+      longPressed = false;
+      detail.show(code);
+      if (e.button !== 0) return;
+      start = [e.clientX, e.clientY];
+      cancel();
+      timer = setTimeout(() => {
+        timer = null;
+        longPressed = true;
+        addCard(code, p, index + 1); // un'altra copia accanto, con i limiti di addCard
+      }, LONG_PRESS);
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 6) cancel();
+    });
+    for (const ev of ["pointerup", "pointercancel", "pointerleave", "dragstart"]) el.addEventListener(ev, cancel);
+    // Clic: rimuove. Tasto destro: Main/Extra → Side, Side → Main/Extra.
+    el.addEventListener("click", () => {
+      if (longPressed) return void (longPressed = false);
+      removeAt(p, index);
+    });
+    el.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (pointerKind === "touch" || longPressed) return; // su touch il menu arriva dalla pressione lunga
+      moveCard(p, index, p === "side" ? "main" : "side");
+    });
+    el.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", JSON.stringify({ code, from: p, index }));
+      e.dataTransfer.effectAllowed = "move";
+    });
+    // Rilascio su una carta: si inserisce davanti (riordino nella stessa parte).
+    el.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      el.classList.add("drop-before");
+    });
+    el.addEventListener("dragleave", () => el.classList.remove("drop-before"));
+    el.addEventListener("drop", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      el.classList.remove("drop-before");
+      dropInto(dragData(e), p, index);
+    });
+    return el;
   }
 
   function renderDeck() {
@@ -384,29 +660,17 @@ export function showEditor(app) {
         ? [pill("fusion", count(TYPE.FUSION), "Fusion"), pill("synchro", count(TYPE.SYNCHRO), "Synchro"), pill("xyz", count(TYPE.XYZ), "Xyz"), pill("link", count(TYPE.LINK), "Link")]
         : [pill("monster", count(TYPE.MONSTER), "Monsters"), pill("spell", count(TYPE.SPELL), "Spells"), pill("trap", count(TYPE.TRAP), "Traps")];
       clear(head).append(
-        h("b", p === "main" ? "Main Deck" : p === "extra" ? "Extra Deck" : "Side Deck"),
+        h("b", `${PART_NAME[p]} Deck`),
         h("span.count", `${codes.length}`),
         h("span.spacer"),
         ...counts
       );
-      clear(grid).append(
-        ...codes.map((code, index) => {
-          const el = h("div.deck-card", { draggable: true }, cardFace(code), limitBadge(code));
-          el.addEventListener("mouseenter", () => detail.show(code));
-          // Clic: dettaglio (utile su touch). Tasto destro: rimuove dal mazzo. Per spostare nel/dal Side si trascina.
-          el.addEventListener("click", () => detail.show(code));
-          el.addEventListener("contextmenu", (e) => {
-            e.preventDefault();
-            removeAt(p, index);
-          });
-          el.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code, from: p, index })));
-          return el;
-        })
-      );
+      clear(grid).append(...codes.map((code, index) => deckCard(code, p, index)));
     }
     const errs = validateDeck(deck, banlist);
     validity.textContent = errs.length ? `⚠ ${errs.length} issues` : "✓ Valid";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
+    refreshState();
   }
 
   // ------------------------------------------------------------ ricerca
@@ -420,6 +684,7 @@ export function showEditor(app) {
   const fAtk = h("input.input", { placeholder: "ATK ≥", type: "number", min: 0, step: 100 });
   const fDef = h("input.input", { placeholder: "DEF ≥", type: "number", min: 0, step: 100 });
   const fLimit = h("select.select", h("option", { value: "" }, "Any status"), h("option", { value: "0" }, "Forbidden"), h("option", { value: "1" }, "Limited"), h("option", { value: "2" }, "Semi-Limited"), h("option", { value: "legal" }, "Legal only"));
+  const fFormat = h("select.select.format-filter", h("option", { value: "" }, "Any format"), h("option", { value: "TCG" }, "TCG legal"), h("option", { value: "OCG" }, "OCG legal"));
   const fUnoff = h("input", { type: "checkbox" });
   // Pulsanti colorati per tipo e attributo (pilotano i select nascosti fType e fAttr).
   const chipRow = (select, items, cls) => {
@@ -452,10 +717,12 @@ export function showEditor(app) {
     const atk = fAtk.value === "" ? null : +fAtk.value;
     const def = fDef.value === "" ? null : +fDef.value;
     const lim = fLimit.value;
+    const fmt = fFormat.value ? OT[fFormat.value] : 0;
     found = db.list.filter((c) => {
       if (c.type & TYPE.TOKEN || c.type & TYPE.SKILL) return false;
       if (!fUnoff.checked && c.source === 1) return false;
       if (c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
+      if (fmt && !(c.ot & fmt)) return false;
       if (type === "monster" && !(c.type & TYPE.MONSTER)) return false;
       if (type === "spell" && !(c.type & TYPE.SPELL)) return false;
       if (type === "trap" && !(c.type & TYPE.TRAP)) return false;
@@ -486,7 +753,14 @@ export function showEditor(app) {
     clear(results).append(
       ...found.slice(0, shown).map((c) => {
         const plus = h("button.result-add", { title: "Add (right-click: Side)" }, icon("add"));
-        const row = h("div.result-row", { draggable: true }, cardFace(c.code), h("div.result-text", h("div.result-name", c.name), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))), limitBadge(c.code), plus);
+        const row = h(
+          "div.result-row",
+          { draggable: true },
+          cardFace(c.code),
+          h("div.result-text", h("div.result-name", c.name, regionBadge(c.code)), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))),
+          limitBadge(c.code),
+          plus
+        );
         row.addEventListener("mouseenter", () => detail.show(c.code));
         row.addEventListener("click", () => addCard(c.code));
         row.addEventListener("contextmenu", (e) => {
@@ -506,7 +780,7 @@ export function showEditor(app) {
     timer = setTimeout(runSearch, 150);
   };
   for (const el of [q, fLevel, fAtk, fDef]) el.addEventListener("input", debounced);
-  for (const el of [fType, fSub, fAttr, fRace, fLimit, fUnoff]) el.addEventListener("change", runSearch);
+  for (const el of [fType, fSub, fAttr, fRace, fLimit, fFormat, fUnoff]) el.addEventListener("change", runSearch);
 
   const search = h(
     "aside.search-panel",
@@ -514,17 +788,18 @@ export function showEditor(app) {
     q,
     typeChips,
     attrChips,
-    h("div.filter-grid", fSub, fRace, fLevel, fAtk, fDef, fLimit),
+    h("div.filter-grid", fSub, fRace, fLevel, fAtk, fDef, fLimit, fFormat),
     h("label.check.small", fUnoff, "Include unofficial cards"),
     resultInfo,
     results,
-    h("p.muted.small.hint", "Click: add · Right-click: add to Side · In deck: right-click removes, drag to move between Main, Extra and Side")
+    h(
+      "p.muted.small.hint",
+      "Search: click adds, right-click adds to Side. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
+    )
   );
 
-  root.append(
-    h("div.page.editor", toolbar, h("div.editor-body", detail.el, h("div.deck-area", parts.main.el, parts.extra.el, parts.side.el), search))
-  );
-  refreshDeckSel();
-  renderDeck();
+  const page = h("div.page.editor", toolbar, h("div.editor-body", detail.el, h("div.deck-area", parts.main.el, parts.extra.el, parts.side.el), search));
+  root.append(page);
+  openDeck(decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
   runSearch();
 }

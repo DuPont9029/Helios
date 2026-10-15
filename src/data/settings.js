@@ -27,6 +27,9 @@ const DEFAULTS = {
   lastBanlist: null,
   lastTimer: "omega", // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
+  pendulumIcon: null, // figura per le gemme delle zone Pendulum (data URL PNG con trasparenza)
+  testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)
+  testOpponent: "deck", // Test Duel: "deck" (il giocatore 2 ha un mazzo) o "none" (nessun mazzo, passa sempre il turno)
   lastDrawOrder: "random", // contro la CPU: "random" o "ordered" (si pesca nell'ordine del mazzo)
 };
 

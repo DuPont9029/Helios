@@ -198,6 +198,28 @@ export function cardLimit(banlist, code) {
   return banlist.whitelist ? 0 : 3;
 }
 
+// ------------------------------------------------------------- formato TCG/OCG
+// ot di EDOPro: 0x1 OCG, 0x2 TCG. Una carta con solo uno dei due bit esiste solo in quella regione.
+export const OT = { OCG: 0x1, TCG: 0x2 };
+
+/** "OCG" o "TCG" se la carta esiste in una sola delle due regioni, altrimenti null. */
+export function cardRegion(c) {
+  if (!c) return null;
+  const o = c.ot & OT.OCG;
+  const t = c.ot & OT.TCG;
+  if (o && !t) return "OCG";
+  if (t && !o) return "TCG";
+  return null;
+}
+
+/** Formato di una banlist dedotto dal nome: "TCG", "OCG" o null (Rush, nessuna banlist...). */
+export function banlistFormat(banlist) {
+  const n = banlist?.name ?? "";
+  if (/TCG|Traditional|Worlds|GOAT|Speed/i.test(n)) return "TCG";
+  if (/OCG/i.test(n)) return "OCG";
+  return null;
+}
+
 const baseCode = (code) => {
   const c = getCard(code);
   // Le versioni alternative (alias) contano come la stessa carta.
@@ -211,6 +233,7 @@ export function validateDeck(deck, banlist, { allowUnofficial = false } = {}) {
   if (deck.main.length > 60) errors.push(`Main Deck: ${deck.main.length}/60 cards maximum`);
   if (deck.extra.length > 15) errors.push(`Extra Deck: ${deck.extra.length}/15 cards maximum`);
   if (deck.side.length > 15) errors.push(`Side Deck: ${deck.side.length}/15 cards maximum`);
+  const format = banlistFormat(banlist);
   const counts = new Map();
   for (const code of [...deck.main, ...deck.extra, ...deck.side]) {
     const c = getCard(code);
@@ -220,6 +243,8 @@ export function validateDeck(deck, banlist, { allowUnofficial = false } = {}) {
     }
     if (c.type & TYPE.TOKEN) errors.push(`${c.name}: tokens cannot be in the deck`);
     if (!allowUnofficial && c.source === 1) errors.push(`${c.name}: unofficial card`);
+    const region = cardRegion(c);
+    if (format && region && region !== format) errors.push(`${c.name} is ${region}-only`);
     const k = baseCode(code);
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }

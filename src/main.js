@@ -1,6 +1,6 @@
 import "./styles/main.css";
 import "./styles/duel.css";
-import { h, clear, icon } from "./ui/dom.js";
+import { h, clear, icon, measureRectScale } from "./ui/dom.js";
 import { loadDatabase, db, getCard } from "./data/db.js";
 import { settings } from "./data/settings.js";
 import { showEditor, showDeckList } from "./ui/editor.js";
@@ -102,6 +102,26 @@ async function aiVsAi() {
   app.current = session;
   session.start(clear(app.root));
 }
+
+// Stessa schermata su ogni dispositivo: l'interfaccia è disegnata per la finestra del browser su un
+// MacBook Pro 14" (circa 1512×860 punti) e viene scalata con uno zoom uniforme. L'altezza di riferimento
+// resta sempre 860 punti; la larghezza si adatta all'aspetto dello schermo, con un minimo di 1180.
+// --vh/--vw sostituiscono vh/vw nel CSS: sono l'1% della finestra *dopo* lo zoom.
+const REF_HEIGHT = 860;
+const MIN_WIDTH = 1180;
+
+function fitScreen() {
+  const w = window.innerWidth;
+  const hgt = window.innerHeight;
+  const k = Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / MIN_WIDTH)));
+  const root = document.documentElement;
+  root.style.zoom = k;
+  root.style.setProperty("--vh", `${hgt / k / 100}px`);
+  root.style.setProperty("--vw", `${w / k / 100}px`);
+  if (document.body) measureRectScale();
+}
+fitScreen();
+window.addEventListener("resize", fitScreen);
 
 async function boot() {
   const status = h("div.boot-status", "Loading…");

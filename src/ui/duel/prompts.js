@@ -5,7 +5,7 @@ import { cardFace } from "../card.js";
 import { openModal } from "../modal.js";
 import { key } from "./board.js";
 import { locName } from "./describe.js";
-import { db, getCard, cardName, descString, hintString, sysString, counterName } from "../../data/db.js";
+import { db, cardName, descString, hintString, sysString, counterName } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { ATTRIBUTES, BATTLE, IDLE, LOC, MSG, POS, RACES, RESP } from "../../core/constants.js";
 import { availableZones } from "../../core/zones.js";
@@ -14,6 +14,16 @@ import { isDeclarable } from "../../core/declarable.js";
 
 /** Promemoria nelle finestre che si possono rifiutare con il tasto destro. */
 const DECLINE_HINT = (what) => h("p.muted.small.decline-hint", `Right-click: ${what}`);
+
+/**
+ * Più effetti attivabili sulla stessa carta: "Activate (1)", "Activate (2)"...
+ * Il testo completo dell'effetto resta nel suggerimento (title) della voce.
+ */
+function numberActivations(list) {
+  const acts = list.filter((e) => e.glow === "activate");
+  if (acts.length > 1) acts.forEach((e, n) => (e.label = `Activate (${n + 1})`));
+  return list;
+}
 
 const IDLE_LABELS = {
   [IDLE.SUMMON]: "Normal Summon",
@@ -125,8 +135,10 @@ export class Prompter {
         resolve(resp);
       };
       const handlers = new Map();
+      const menuItems = (list) => list.map((e) => ({ label: e.label, title: e.desc, glow: e.glow, onClick: () => done(e.response) }));
       for (const [k, list] of byCard) {
-        handlers.set(k, (ev, el) => this.view.openActionMenu(el, list.map((e) => ({ label: e.label, glow: e.glow, onClick: () => done(e.response) }))));
+        numberActivations(list);
+        handlers.set(k, (ev, el) => this.view.openActionMenu(el, menuItems(list)));
       }
       // Ogni carta brilla secondo l'azione più importante che ha: effetto attivabile > attacco > altro.
       const glows = new Map();
@@ -135,7 +147,7 @@ export class Prompter {
       }
       this.board.setClickable(handlers, glows);
       // Azioni da pile (Cimitero, Esilio, Extra Deck...): disponibili dall'elenco della pila.
-      this.view.onPileActions = (k) => (byCard.get(k) ?? []).map((e) => ({ label: e.label, glow: e.glow, onClick: () => done(e.response) }));
+      this.view.onPileActions = (k) => menuItems(byCard.get(k) ?? []);
       this.view.setActionBar({
         buttons: phaseButtons.map((b) => ({ ...b, onClick: () => done(b.response) })),
         all: entries.length ? () => this.allActions(entries, done) : null,
@@ -170,7 +182,7 @@ export class Prompter {
       list.forEach((card, index) =>
         entries.push({
           card, label: label(card), glow: action === IDLE.ACTIVATE ? "activate" : "action",
-          desc: card.description != null ? descString(card.description, this.descArgs(card)) : "",
+          desc: action === IDLE.ACTIVATE && card.description != null ? descString(card.description, this.descArgs(card)) : "",
           response: { type: RESP.SELECT_IDLECMD, action, index },
         })
       );
@@ -179,10 +191,7 @@ export class Prompter {
     add(msg.pos_changes, IDLE.REPOS, () => IDLE_LABELS[IDLE.REPOS]);
     add(msg.monster_sets, IDLE.MSET, () => IDLE_LABELS[IDLE.MSET]);
     add(msg.spell_sets, IDLE.SSET, () => IDLE_LABELS[IDLE.SSET]);
-    add(msg.activates, IDLE.ACTIVATE, (c) => {
-      const d = descString(c.description, this.descArgs(c));
-      return d && d !== getCard(c.code)?.name ? `Activate: ${d}` : "Activate";
-    });
+    add(msg.activates, IDLE.ACTIVATE, () => IDLE_LABELS[IDLE.ACTIVATE]);
     const phase = [];
     if (msg.to_bp) phase.push({ label: "Battle Phase", response: { type: RESP.SELECT_IDLECMD, action: IDLE.TO_BP, index: 0 } });
     if (msg.to_ep) phase.push({ label: "End Phase", response: { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 } });
@@ -211,10 +220,35 @@ export class Prompter {
 
   // ---------------------------------------------------------------- domande semplici
 
+  /** "Usare l'effetto di X?": richiesta compatta accanto alla carta, il campo resta visibile. */
   effectYN(msg) {
     const text = msg.description ? descString(msg.description, this.descArgs(msg)) : `Activate the effect of "${cardName(msg.code)}"?`;
-    this.board.flash(msg.controller, msg.location, msg.sequence, "flash-target", 4000);
-    return this.question(cardName(msg.code), text, msg.code).then((yes) => ({ type: RESP.SELECT_EFFECTYN, yes }));
+    const anchor = this.board.cardEls.get(key(msg.controller, msg.location, msg.sequence)) ?? this.board.zoneEl(msg.controller, msg.location, msg.sequence);
+    return new Promise((resolve) => {
+      const done = (yes) => {
+        closeBox();
+        anchor?.classList.remove("flash-target");
+        this.cancelCurrent = null;
+        this.decline = null;
+        resolve({ type: RESP.SELECT_EFFECTYN, yes });
+      };
+      anchor?.classList.add("flash-target");
+      const closeBox = this.view.showPrompt(
+        [
+          h(
+            "div.prompt-q",
+            h("div.prompt-thumb", { onmouseenter: () => this.view.hover(msg.code), onclick: () => this.view.hover(msg.code) }, cardFace(msg.code)),
+            h("div.prompt-text", h("b", cardName(msg.code)), h("span", text))
+          ),
+          h("div.prompt-btns", h("button.btn.small", { onclick: () => done(false) }, "No"), h("button.btn.small.primary", { onclick: () => done(true) }, "Yes")),
+          DECLINE_HINT("No"),
+        ],
+        anchor && document.body.contains(anchor) && anchor !== this.board.handEl(msg.controller) ? anchor : null
+      );
+      this.view.hover(msg.code);
+      this.cancelCurrent = () => done(false);
+      this.decline = () => done(false);
+    });
   }
 
   yesNo(msg) {
@@ -245,39 +279,79 @@ export class Prompter {
     return m.result.then((index) => ({ type: RESP.SELECT_OPTION, index }));
   }
 
+  /**
+   * Catena: barra compatta "Chain?" nell'angolo del campo. Le carte attivabili brillano e si
+   * attivano cliccandole; quelle in posti nascosti (Deck, pile...) restano raggiungibili da "List".
+   */
   chain(msg) {
     const n = msg.selects.length;
     const auto = settings.chainMode;
     if (!msg.forced && (n === 0 || auto === "never")) return Promise.resolve({ type: RESP.SELECT_CHAIN, index: null });
     if (msg.forced && n === 1 && auto !== "always") return Promise.resolve({ type: RESP.SELECT_CHAIN, index: 0 });
-    // Le carte che si possono attivare in catena brillano sul campo finché la domanda è aperta.
-    const glowing = new Map(msg.selects.map((c, i) => [key(c.controller, c.location, c.sequence), () => m.close(i)]));
-    this.board.setClickable(glowing, "activate");
-    const m = openModal({
-      title: msg.forced ? "Choose the effect to activate" : "Activate a card or effect in Chain?",
-      dismissable: false,
-      className: "prompt wide",
-      body: [
-        h(
-          "div.action-list",
-          msg.selects.map((c, i) =>
+    return new Promise((resolve) => {
+      let list = null;
+      const done = (index) => {
+        this.view.closeActionMenu();
+        closeBar();
+        list?.close();
+        this.board.clearClickable();
+        this.view.onPileActions = null;
+        this.cancelCurrent = null;
+        this.decline = null;
+        resolve({ type: RESP.SELECT_CHAIN, index: index ?? null });
+      };
+      const desc = (c) => descString(c.description, this.descArgs(c));
+      const byCard = new Map();
+      msg.selects.forEach((c, i) => {
+        const k = key(c.controller, c.location, c.sequence);
+        if (!byCard.has(k)) byCard.set(k, []);
+        byCard.get(k).push({ c, i });
+      });
+      const items = (group) => group.map(({ c, i }, j) => ({ label: group.length > 1 ? `Activate (${j + 1})` : "Activate", title: desc(c), glow: "activate", onClick: () => done(i) }));
+      // Un solo effetto: il clic sulla carta lo attiva; più effetti: piccolo menu "Activate (1)/(2)".
+      const handlers = new Map(
+        [...byCard].map(([k, group]) => [k, (ev, el) => (group.length === 1 ? done(group[0].i) : this.view.openActionMenu(el, items(group)))])
+      );
+      this.board.setClickable(handlers, "activate");
+      this.view.onPileActions = (k) => (byCard.has(k) ? items(byCard.get(k)) : []);
+      const openList = () => {
+        list = openModal({
+          title: msg.forced ? "Choose the effect to activate" : "Activate a card or effect in Chain?",
+          className: "prompt wide",
+          body: [
             h(
-              "button.action-row",
-              { onclick: () => m.close(i), onmouseenter: () => this.view.hover(c.code) },
-              cardFace(c.code),
-              h("div", h("b", cardName(c.code)), h("div.muted", descString(c.description, this.descArgs(c))), h("div.muted.small", this.where(c)))
-            )
-          )
+              "div.action-list",
+              msg.selects.map((c, i) =>
+                h(
+                  "button.action-row",
+                  { onclick: () => done(i), onmouseenter: () => this.view.hover(c.code) },
+                  cardFace(c.code),
+                  h("div", h("b", cardName(c.code)), h("div.muted", desc(c)), h("div.muted.small", this.where(c)))
+                )
+              )
+            ),
+          ],
+          actions: [{ label: "Back", value: null }],
+        });
+        list.result.then(() => (list = null));
+      };
+      // Dove sono le carte che non si vedono sul campo né in mano.
+      const hidden = [...new Set(msg.selects.filter((c) => !(c.location & LOC.ONFIELD) && c.location !== LOC.HAND).map((c) => locName(c.location)))];
+      const closeBar = this.view.showPrompt([
+        h(
+          "div.prompt-head",
+          h("b", msg.forced ? "Activate an effect" : "Chain?"),
+          h("span.muted.small", `${n} effect${n === 1 ? "" : "s"} can be activated${hidden.length ? ` (also in: ${hidden.join(", ")})` : ""}`)
+        ),
+        h(
+          "div.prompt-btns",
+          h("button.btn.small.ghost", { title: "Show all activatable cards", onclick: openList }, "List"),
+          !msg.forced && h("button.btn.small.primary", { onclick: () => done(null) }, "Don't activate")
         ),
         !msg.forced && DECLINE_HINT("don't activate"),
-      ],
-      actions: msg.forced ? [] : [{ label: "Don't activate", value: null, primary: true }],
-    });
-    this.cancelCurrent = () => m.close(msg.forced ? 0 : null);
-    this.decline = msg.forced ? null : () => m.close(null);
-    return m.result.then((index) => {
-      this.board.clearClickable();
-      return { type: RESP.SELECT_CHAIN, index: index ?? null };
+      ]);
+      this.cancelCurrent = () => done(msg.forced ? 0 : null);
+      this.decline = msg.forced ? null : () => done(null);
     });
   }
 

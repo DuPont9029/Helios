@@ -4,6 +4,7 @@ import { h } from "./dom.js";
 import { getCard, attributeName } from "../data/db.js";
 import { imageUrl } from "../data/settings.js";
 import { TYPE } from "../core/constants.js";
+import { cardRegion } from "../deck/deck.js";
 
 const failed = new Set();
 
@@ -61,4 +62,10 @@ export function cardFace(code, opts = {}) {
     el.append(img);
   }
   return el;
+}
+
+/** Etichetta "OCG"/"TCG" per le carte uscite in una sola regione (null se esiste in entrambe). */
+export function regionBadge(code) {
+  const r = cardRegion(getCard(code));
+  return r ? h(`span.region-badge.${r.toLowerCase()}`, { title: `${r}-only card` }, r) : null;
 }

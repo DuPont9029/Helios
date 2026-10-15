@@ -154,3 +154,30 @@ function pickBits(mask, count) {
   for (let bit = 1n; bit <= mask && out.length < count; bit <<= 1n) if (mask & bit) out.push(bit);
   return out;
 }
+
+/**
+ * Avversario passivo per il duello di prova senza mazzo: chiude subito il turno, non attiva mai nulla
+ * e quando il core lo obbliga a scegliere fa la scelta minima consentita.
+ */
+export class PassAI extends SimpleAI {
+  respond(msg, state = {}) {
+    switch (msg.type) {
+      case MSG.SELECT_IDLECMD:
+        if (msg.to_ep) return { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 };
+        if (msg.to_bp) return { type: RESP.SELECT_IDLECMD, action: IDLE.TO_BP, index: 0 };
+        break;
+      case MSG.SELECT_BATTLECMD:
+        if (msg.to_ep) return { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_EP, index: 0 };
+        if (msg.to_m2) return { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_M2, index: 0 };
+        break;
+      case MSG.SELECT_CHAIN:
+        return { type: RESP.SELECT_CHAIN, index: msg.forced && msg.selects.length ? 0 : null };
+      case MSG.SELECT_EFFECTYN: return { type: RESP.SELECT_EFFECTYN, yes: false };
+      case MSG.SELECT_YESNO: return { type: RESP.SELECT_YESNO, yes: false };
+      case MSG.SELECT_CARD:
+        if (msg.can_cancel && msg.min === 0) return { type: RESP.SELECT_CARD, indicies: null };
+        return { type: RESP.SELECT_CARD, indicies: range(Math.max(1, msg.min)).slice(0, msg.selects.length) };
+    }
+    return super.respond(msg, state);
+  }
+}

@@ -1,5 +1,6 @@
 import { h, clear, icon, pickFile } from "./dom.js";
 import { makeSleeve, validSleeve } from "../data/sleeve.js";
+import { makePendulumIcons, pendulumIcons } from "../data/pendulum.js";
 import { toast, confirmModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
@@ -97,6 +98,41 @@ function sleevePicker() {
   return h("div.field", h("span", "Sleeve (card back)"), box);
 }
 
+/** Gemme delle zone Pendulum: una figura su sfondo bianco/trasparente diventa una gemma rossa e una blu. */
+function pendulumPicker() {
+  const gem = (color) => h(`div.pz-preview.${color}`);
+  const red = gem("red");
+  const blue = gem("blue");
+  const status = h("small.muted");
+  const remove = h("button.btn.small.danger", { onclick: () => { settings.pendulumIcon = null; update(); } }, icon("delete"), " Remove");
+  const update = () => {
+    const icons = pendulumIcons();
+    for (const [el, color] of [[blue, "blue"], [red, "red"]]) {
+      // Anteprima: la gemma personalizzata oppure quella predefinita disegnata in CSS (come sul campo).
+      clear(el).append(icons ? h(`img.pz-gem.${color}.custom`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}`, h("i")));
+    }
+    status.textContent = icons
+      ? "Custom gems, shown in the Pendulum Zones (left scale blue, right scale red)."
+      : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem.";
+    remove.hidden = !icons;
+  };
+  const choose = h("button.btn.primary.small", {
+    onclick: async () => {
+      const f = await pickFile("image/*");
+      if (!f) return;
+      try {
+        settings.pendulumIcon = await makePendulumIcons(f);
+        toast("Pendulum gems updated");
+      } catch (e) {
+        toast(e.message || "Unable to read the image", { kind: "error" });
+      }
+      update();
+    },
+  }, icon("image"), " Choose image");
+  update();
+  return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, h("div.row", choose, remove))));
+}
+
 export function showSettings(app) {
   const root = clear(app.root);
   const field = (label, input, hint) => h("label.field", h("span", label), input, hint && h("small.muted", hint));
@@ -120,6 +156,7 @@ export function showSettings(app) {
           check("autoPlace", "Auto-pick the zone when summoning/setting"),
           sleevePicker()
         ),
+        h("section.card-box", h("h3", "Field"), pendulumPicker()),
         h(
           "section.card-box",
           h("h3", "Network (WebRTC)"),

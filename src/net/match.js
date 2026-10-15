@@ -7,20 +7,35 @@ import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
 
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
+// 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
 // Versioni diverse produrrebbero ordini diversi del mazzo: il controllo le rifiuta.
-export const PROTOCOL = 2;
+export const PROTOCOL = 3;
 
-/** Smista i messaggi del DataChannel per tipo, tenendo in coda quelli non ancora attesi. */
+/**
+ * Smista i messaggi del DataChannel per tipo, tenendo in coda quelli non ancora attesi.
+ * Ogni messaggio inviato porta l'id della partita corrente (g): con la rivincita il collegamento resta lo
+ * stesso, quindi i messaggi rimasti della partita precedente vanno scartati e quelli della successiva
+ * (l'avversario può arrivarci prima di noi) vanno tenuti da parte finché non ci arriviamo anche noi.
+ */
 export class LinkMux {
   constructor(link) {
     this.link = link;
+    this.game = 0;
     this.handlers = new Map();
     this.queue = new Map();
     this.waiters = new Map();
+    this.future = [];
     link.addEventListener("message", (e) => this.dispatch(e.detail));
   }
 
+  get closed() {
+    return this.link.closed;
+  }
+
   dispatch(msg) {
+    const g = msg?.g ?? this.game;
+    if (g < this.game) return; // residuo di una partita già chiusa
+    if (g > this.game) return void this.future.push(msg);
     const t = msg?.t;
     const w = this.waiters.get(t)?.shift();
     if (w) return w(msg);
@@ -28,6 +43,17 @@ export class LinkMux {
     if (h) return h(msg);
     if (!this.queue.has(t)) this.queue.set(t, []);
     this.queue.get(t).push(msg);
+  }
+
+  /** Passa alla partita successiva: svuota code e gestori di quella vecchia, consegna i messaggi già arrivati della nuova. */
+  newGame() {
+    this.game++;
+    this.handlers.clear();
+    this.queue.clear();
+    // Le attese pendenti (next) della partita vecchia non riceveranno più nulla: restano a scadere sul timeout.
+    this.waiters.clear();
+    const early = this.future.splice(0);
+    for (const m of early) this.dispatch(m);
   }
 
   on(t, fn) {
@@ -55,11 +81,14 @@ export class LinkMux {
   }
 
   send(msg) {
-    this.link.send(msg);
+    this.link.send({ ...msg, g: this.game });
   }
 
+  /** Restituisce la funzione per smettere di ascoltare. */
   onClose(fn) {
-    this.link.addEventListener("close", (e) => fn(e.detail));
+    const l = (e) => fn(e.detail);
+    this.link.addEventListener("close", l);
+    return () => this.link.removeEventListener("close", l);
   }
 
   close() {

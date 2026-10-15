@@ -2,12 +2,13 @@
 // stesso seed e gli stessi mazzi (lockstep): sulla rete viaggiano solo le
 // risposte del giocatore di turno, più un checksum per scoprire divergenze.
 import { DATA_URL, db, getCard } from "../data/db.js";
-import { SimpleAI } from "../core/ai.js";
+import { SimpleAI, PassAI } from "../core/ai.js";
 import { DuelView } from "../ui/duel/view.js";
 import { confirmModal, toast } from "../ui/modal.js";
 import { MSG } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
+import { h } from "../ui/dom.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -73,12 +74,14 @@ class Inbox {
 export class DuelSession {
   /**
    * @param cfg {
-   *   controllers: ["local"|"ai"|"remote", ...] per giocatore del core (0 = chi inizia),
+   *   controllers: ["local"|"ai"|"remote"|"pass", ...] per giocatore del core (0 = chi inizia);
+   *     "pass" = avversario passivo del duello di prova senza mazzo (chiude subito il turno),
    *   me: indice del core visto in basso, names: [n0, n1], reveal,
    *   duel: { flags, seed, lp, hand, draw, decks },
    *   timer: chiave di TIMER_PRESETS ("omega" | "off"),
    *   sleeves: [immagine del giocatore 0, del giocatore 1] (data URL o null),
    *   mux: LinkMux (solo P2P),
+   *   onRematch(session): solo P2P, chiamata (in modo sincrono) quando entrambi hanno chiesto la rivincita,
    *   onExit()
    * }
    */
@@ -89,6 +92,9 @@ export class DuelSession {
     this.seq = 0;
     this.over = false;
     this.ai = new SimpleAI({ getCard, allCards: db.list });
+    this.passer = cfg.controllers.includes("pass") ? new PassAI({ getCard, allCards: db.list }) : null;
+    // Rivincita (solo P2P): chi l'ha chiesta tra noi e l'avversario.
+    this.rematch = { me: false, opp: false, oppLeft: false, started: false, ui: null };
     const p2p = cfg.controllers.includes("remote");
     this.view = new DuelView({
       me: cfg.me,
@@ -110,7 +116,7 @@ export class DuelSession {
 
   /** Giocatori il cui tempo viene misurato (la CPU non ha timer). */
   timed(p) {
-    return this.clock && this.cfg.controllers[p] !== "ai";
+    return this.clock && (this.cfg.controllers[p] === "local" || this.cfg.controllers[p] === "remote");
   }
 
   renderClock() {
@@ -172,9 +178,17 @@ export class DuelSession {
       }
       this.finish({ winner: 1 - p, sub: `${this.cfg.names[p]} ran out of time` });
     });
-    mux.on("bye", () => this.finish({ winner: this.cfg.me, text: "Your opponent left the Duel" }));
-    mux.onClose((reason) => {
-      if (!this.over) this.finish({ winner: null, text: "Connection lost", sub: reason });
+    mux.on("bye", () => {
+      this.opponentLeft("Your opponent left");
+      this.finish({ winner: this.cfg.me, text: "Your opponent left the Duel", rematch: false });
+    });
+    mux.on("rematch", () => {
+      this.rematch.opp = true;
+      this.updateRematch();
+    });
+    this.offClose = mux.onClose((reason) => {
+      this.opponentLeft("Connection closed: your opponent left");
+      if (!this.over) this.finish({ winner: null, text: "Connection lost", sub: reason, rematch: false });
     });
   }
 
@@ -184,6 +198,8 @@ export class DuelSession {
 
   async start(container) {
     container.append(this.view.el);
+    // Il collegamento può essersi chiuso durante l'accordo (es. rivincita abbandonata).
+    if (this.mux?.closed) return this.finish({ winner: null, text: "Connection lost", rematch: false });
     this.view.setStatus("Starting engine...");
     try {
       await this.engine.call("init", { dataUrl: DATA_URL });
@@ -228,6 +244,8 @@ export class DuelSession {
         if (this.over) return;
         const clock = this.timed(prompt.player) ? { left: this.clock.left[prompt.player], bonus: this.clock.bonus[prompt.player] } : undefined;
         if (this.mux) this.send({ t: "resp", seq: this.seq, response, sum: res.checksum, clock });
+      } else if (who === "pass") {
+        response = this.passer.respond(prompt, { turn: res.snapshot.turn });
       } else if (who === "ai") {
         if (prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD) await this.view.wait(350);
         response = this.ai.respond(prompt, { turn: res.snapshot.turn });
@@ -257,7 +275,8 @@ export class DuelSession {
     }
   }
 
-  finish({ winner, reason, text, sub }) {
+  /** rematch=false: duello chiuso da un abbandono o da una disconnessione (niente rivincita). */
+  finish({ winner, reason, text, sub, rematch = true }) {
     if (this.over) return;
     this.over = true;
     clearTimeout(this.timeout);
@@ -267,6 +286,69 @@ export class DuelSession {
     this.view.setStatus("Duel over");
     this.view.showResult({ winner, reason, text, sub });
     this.inbox.push({ t: "end" });
+    if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch();
+  }
+
+  // ---------------------------------------------------------------- rivincita
+
+  showRematch() {
+    const btn = h("button.btn.primary", { onclick: () => this.askRematch() }, "Rematch");
+    const text = h("div.rematch-status");
+    const el = h("div.rematch-panel", text, h("div.rematch-actions", h("button.btn", { onclick: () => this.leave() }, "Leave"), btn));
+    this.rematch.ui = { el, btn, text };
+    this.view.overlay.append(el);
+    this.updateRematch();
+  }
+
+  askRematch() {
+    const r = this.rematch;
+    if (r.me || r.oppLeft || r.started) return;
+    r.me = true;
+    this.send({ t: "rematch" });
+    this.updateRematch();
+  }
+
+  opponentLeft(text) {
+    if (this.rematch.oppLeft) return;
+    this.rematch.oppLeft = text;
+    this.updateRematch();
+  }
+
+  /** Aggiorna il pannello e, quando entrambi sono d'accordo, avvia la nuova negoziazione. */
+  updateRematch() {
+    const r = this.rematch;
+    if (this.over && r.me && r.opp && !r.oppLeft && !r.started) {
+      r.started = true;
+      // Sincrono: play.js passa subito il collegamento alla partita successiva (mux.newGame).
+      this.cfg.onRematch(this);
+    }
+    const ui = r.ui;
+    if (!ui) return;
+    if (r.started && !r.failed) {
+      ui.text.textContent = "Starting the rematch...";
+      ui.btn.disabled = true;
+    } else if (r.failed) {
+      ui.text.textContent = r.failed;
+      ui.btn.disabled = true;
+    } else if (r.oppLeft) {
+      ui.text.textContent = r.oppLeft;
+      ui.btn.disabled = true;
+    } else if (r.me) {
+      ui.text.textContent = "Waiting for opponent...";
+      ui.btn.disabled = true;
+    } else if (r.opp) {
+      ui.text.textContent = "Your opponent wants a rematch";
+      ui.btn.textContent = "Accept rematch";
+    } else {
+      ui.text.textContent = "Play again with the same opponent?";
+    }
+    ui.el.classList.toggle("asked", !!(r.opp && !r.me && !r.oppLeft));
+  }
+
+  /** La negoziazione della rivincita è fallita: resta la schermata del risultato con il motivo. */
+  rematchFailed(message) {
+    this.rematch.failed = `Rematch failed: ${message}`;
+    this.updateRematch();
   }
 
   async surrender() {
@@ -283,13 +365,15 @@ export class DuelSession {
     this.cfg.onExit?.();
   }
 
-  destroy() {
+  /** keepLink: il collegamento resta aperto per la rivincita. */
+  destroy({ keepLink = false } = {}) {
     this.over = true;
+    this.offClose?.();
     this.clearSleeves?.();
     clearTimeout(this.timeout);
     clearInterval(this.tick);
     this.view.destroy();
     this.engine.terminate();
-    this.mux?.close();
+    if (!keepLink) this.mux?.close();
   }
 }

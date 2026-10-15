@@ -64,13 +64,15 @@ export class DuelEngine {
 
   start(cfg) {
     const { lib, opts } = this;
-    const team = { startingLP: cfg.lp, startingDrawCount: cfg.hand, drawCountPerTurn: cfg.draw };
+    // cfg.noDraw[p]: il giocatore p non pesca mai (duello di prova senza mazzo: un mazzo vuoto non fa perdere).
+    const teams = [0, 1].map((p) =>
+      cfg.noDraw?.[p] ? { startingLP: cfg.lp, startingDrawCount: 0, drawCountPerTurn: 0 } : { startingLP: cfg.lp, startingDrawCount: cfg.hand, drawCountPerTurn: cfg.draw });
     this.lp = [cfg.lp, cfg.lp];
     this.handle = lib.createDuel({
       flags: BigInt(cfg.flags),
       seed: cfg.seed.map((s) => BigInt(s)),
-      team1: team,
-      team2: { ...team },
+      team1: teams[0],
+      team2: teams[1],
       cardReader: (code) => {
         const c = opts.getCard(code);
         return c ? toCoreCard(c) : null;
