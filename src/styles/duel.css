@@ -1,6 +1,10 @@
 /* ------------------------------------------------------------------ layout duello */
+/* Tela fissa 1512×860, uguale su ogni dispositivo (main.js la scala con lo zoom e la centra):
+   --vh/--vw qui dentro sono quelli della tela, non della finestra. */
+#app:has(> .duel-screen) { display: grid; place-items: center; overflow: hidden; }
 .duel-screen {
-  height: 100%;
+  --vh: 8.6px; --vw: 15.12px;
+  width: 1512px; height: 860px; box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(230px, 280px) 1fr 200px;
   gap: 10px;
@@ -229,15 +233,22 @@
   border: 0; padding: 8px 14px; text-align: left; cursor: pointer;
   background: rgba(255, 255, 255, 0.06); font: 600 14px var(--display); text-transform: uppercase; letter-spacing: 0.04em;
 }
+.action-item small {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  margin-top: 2px; font: 400 11px/1.3 var(--font); text-transform: none; letter-spacing: 0; opacity: 0.75;
+}
 .action-item:hover { background: var(--accent); color: var(--on-gold); }
 .action-item.attack { background: linear-gradient(180deg, rgba(255, 140, 40, 0.45), rgba(200, 70, 20, 0.45)); }
 .action-item.attack:hover { background: linear-gradient(180deg, #ff9a3a, #c84614); }
 
 /* ------------------------------------------------------------------ dialoghi duello */
 .prompt-card { width: 140px; align-self: center; }
-.option-list { display: flex; flex-direction: column; gap: 6px; }
+/* Finestre di scelta del duello: più larghe, con testi e pulsanti grandi e leggibili. */
+.modal.prompt:not(.wide):not(.picker) { width: min(680px, 100%); }
+.modal.prompt .modal-body { font-size: 16px; }
+.option-list { display: flex; flex-direction: column; gap: 8px; }
 .option-list.row { flex-direction: row; justify-content: center; }
-.btn.option { text-align: left; white-space: normal; }
+.btn.option { text-align: left; white-space: normal; padding: 14px 18px; font: 600 16px/1.35 var(--font); text-transform: none; letter-spacing: 0.01em; }
 .action-list { display: flex; flex-direction: column; gap: 6px; }
 .action-row {
   display: grid; grid-template-columns: 54px 1fr; gap: 12px; align-items: center; text-align: left; cursor: pointer;

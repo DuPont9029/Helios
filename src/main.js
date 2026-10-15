@@ -108,13 +108,17 @@ async function aiVsAi() {
 // MacBook Pro 14" (circa 1512×860 punti) e viene scalata con uno zoom uniforme. L'altezza di riferimento
 // resta sempre 860 punti; la larghezza si adatta all'aspetto dello schermo, con un minimo di 1180.
 // --vh/--vw sostituiscono vh/vw nel CSS: sono l'1% della finestra *dopo* lo zoom.
+// Il duello invece è una "tela" fissa di 1512×860 (vedi .duel-screen in duel.css), scalata per starci tutta:
+// il campo è identico su ogni schermo, con al massimo due bande ai lati (o sopra e sotto).
 const REF_HEIGHT = 860;
 const MIN_WIDTH = 1180;
+const DUEL_WIDTH = 1512;
 
 function fitScreen() {
   const w = window.innerWidth;
   const hgt = window.innerHeight;
-  const k = Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / MIN_WIDTH)));
+  const duel = !!app.root.querySelector(":scope > .duel-screen");
+  const k = Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
   const root = document.documentElement;
   root.style.zoom = k;
   root.style.setProperty("--vh", `${hgt / k / 100}px`);
@@ -123,6 +127,8 @@ function fitScreen() {
 }
 fitScreen();
 window.addEventListener("resize", fitScreen);
+// Entrando e uscendo dal duello cambia la larghezza di riferimento.
+new MutationObserver(fitScreen).observe(app.root, { childList: true });
 
 async function boot() {
   const status = h("div.boot-status", "Loading…");
