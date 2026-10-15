@@ -361,6 +361,9 @@
 .log-card { font-weight: 600; cursor: pointer; border-bottom: 1px dotted currentColor; }
 .log-card:hover { color: var(--accent); border-bottom-style: solid; }
 
+/* richiesta di catena: a cosa si sta rispondendo */
+.chain-context { margin: 0; padding: 8px 12px; border-left: 3px solid #ffd23a; background: rgba(255, 210, 58, 0.08); color: #ffe9a6; font-size: 15px; line-height: 1.4; }
+
 /* "Usare l'effetto?": carta grande accanto al testo */
 .activate-q { display: grid; grid-template-columns: 150px 1fr; gap: 18px; align-items: start; }
 .activate-card { cursor: pointer; }
