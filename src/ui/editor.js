@@ -860,6 +860,36 @@ export function showEditor(app) {
     const n = (settings.bookmarks ?? []).length;
     clear(tabMarks).append(icon("bookmarks"), " Bookmarks", h("b.filter-count", n ? String(n) : ""));
   };
+  // Trascinare una carta (dal mazzo o dai risultati) sulla scheda Bookmarks, o sui risultati quando
+  // la scheda è aperta, la salva tra i preferiti; il mazzo non cambia.
+  const dropBookmark = (target, active = () => true) => {
+    target.addEventListener("dragover", (e) => {
+      if (!active()) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      target.classList.add("bm-drop");
+    });
+    target.addEventListener("dragleave", (e) => !target.contains(e.relatedTarget) && target.classList.remove("bm-drop"));
+    target.addEventListener("drop", (e) => {
+      target.classList.remove("bm-drop");
+      if (!active()) return;
+      e.preventDefault();
+      e.stopPropagation();
+      let code = 0;
+      try {
+        code = JSON.parse(e.dataTransfer.getData("text/plain") || "{}").code;
+      } catch {
+        return;
+      }
+      if (!code) return;
+      if (isBookmarked(code)) return toast(`${getCard(code)?.name ?? "Card"} is already in your Bookmarks`);
+      toggleBookmark(code);
+      toast(`${getCard(code)?.name ?? "Card"} added to Bookmarks`);
+    });
+  };
+  dropBookmark(tabMarks);
+  dropBookmark(results, () => tab === "bookmarks");
+
   function setTab(t) {
     tab = t;
     refreshTabs();
@@ -877,7 +907,7 @@ export function showEditor(app) {
     results,
     h(
       "p.muted.small.hint",
-      "Search: click adds, right-click adds to Side, the bookmark icon saves the card in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
+      "Search: click adds, right-click adds to Side, the bookmark icon (or dragging a card onto Bookmarks) saves it in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
     )
   );
 
