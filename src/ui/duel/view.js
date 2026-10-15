@@ -108,6 +108,8 @@ export class DuelView {
     this.chainMode.value = settings.chainMode;
 
     this.overlay = h("div.fx-layer");
+    // Richieste compatte (catena, "usare l'effetto?"): non coprono il campo, che resta cliccabile.
+    this.promptDock = h("div.prompt-dock");
     this.el = h(
       "div.duel-screen",
       h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.log, panes.chat)),
@@ -116,7 +118,8 @@ export class DuelView {
         h("div.hud-top", this.lpEls[1].el, this.board.handEls[1]),
         h("div.field-wrap", this.board.el),
         h("div.hud-bottom", this.board.handEls[0], this.lpEls[0].el),
-        this.overlay
+        this.overlay,
+        this.promptDock
       ),
       h(
         "div.duel-controls",
@@ -199,7 +202,7 @@ export class DuelView {
     const r = anchor.getBoundingClientRect();
     const menu = h(
       "div.action-menu",
-      items.map((it) => h(`button.action-item${it.glow === "attack" ? ".attack" : ""}`, { onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } }, it.label))
+      items.map((it) => h(`button.action-item${it.glow === "attack" ? ".attack" : ""}`, { title: it.title || null, onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } }, it.label))
     );
     document.body.append(menu);
     const mw = menu.offsetWidth;
@@ -219,7 +222,7 @@ export class DuelView {
    * se si può (non attivare in catena, "No", annulla una selezione). Mai per scelte obbligatorie.
    */
   onContextMenu(e) {
-    const inDuel = this.el.contains(e.target) || e.target.closest?.(".modal-backdrop, .action-menu");
+    const inDuel = this.el.contains(e.target) || e.target.closest?.(".modal-backdrop, .action-menu, .prompt-pop");
     if (!inDuel) return;
     e.preventDefault();
     if (document.querySelector(".action-menu")) return this.closeActionMenu();
@@ -236,12 +239,36 @@ export class DuelView {
     this.menuOff = null;
   }
 
+  /**
+   * Mostra una richiesta compatta. Senza `anchor` va nell'angolo in basso a destra del campo;
+   * con `anchor` (elemento di una carta) compare accanto alla carta, dal lato con più spazio.
+   * Restituisce la funzione che la chiude.
+   */
+  showPrompt(content, anchor = null) {
+    const box = h("div.prompt-pop", content);
+    if (!anchor) {
+      clear(this.promptDock).append(box);
+    } else {
+      box.classList.add("floating");
+      document.body.append(box);
+      const r = anchor.getBoundingClientRect();
+      const bw = box.offsetWidth;
+      const bh = box.offsetHeight;
+      const right = r.right + 12 + bw < innerWidth - 8;
+      const left = right ? r.right + 12 : Math.max(8, r.left - 12 - bw);
+      const top = Math.max(8, Math.min(innerHeight - bh - 8, r.top + r.height / 2 - bh / 2));
+      Object.assign(box.style, { left: left + "px", top: top + "px" });
+      box.classList.add(right ? "at-right" : "at-left");
+    }
+    return () => box.remove();
+  }
+
   openPile(p, loc) {
     const snap = this.board.snapshot;
     if (!snap) return;
     const ps = snap.players[p];
     const list = loc === LOC.GRAVE ? ps.grave : loc === LOC.REMOVED ? ps.removed : ps.extra;
-    const title = `${this.names[p]}'s ${loc === LOC.GRAVE ? "GY" : loc === LOC.REMOVED ? "Banished cards" : "Extra Deck"}`;
+    const title = `${this.names[p]}'s ${loc === LOC.GRAVE ? "GY" : loc === LOC.REMOVED ? "Banishment" : "Extra Deck"}`;
     const items = list
       .map((info, i) => ({ info, i }))
       .filter(({ info }) => info)
@@ -252,7 +279,7 @@ export class DuelView {
         const face = cardFace(visible ? info.code : 0, { faceDown: !visible });
         face.dataset.owner = p;
         if (info.position & POS.FACEDOWN && loc === LOC.REMOVED) face.classList.add("facedown");
-        const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) => h("button.btn.small.primary", { onclick: () => { m.close(); a.onClick(); } }, a.label))));
+        const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) => h("button.btn.small.primary", { title: a.title || null, onclick: () => { m.close(); a.onClick(); } }, a.label))));
         if (actions.length) tile.classList.add("has-actions");
         if (actions.some((a) => a.glow === "activate")) tile.classList.add("can-activate");
         tile.addEventListener("mouseenter", () => visible && this.hover(info.code));
@@ -270,7 +297,15 @@ export class DuelView {
 
   log(entry) {
     if (!entry) return;
-    const line = h(`div.log-line.${entry.cls || "plain"}`, entry.text);
+    // I nomi delle carte sono cliccabili: mostrano la carta nel pannello dei dettagli.
+    const parts = (entry.parts ?? [entry.text]).map((p) =>
+      typeof p === "string"
+        ? p
+        : p.code
+          ? h("span.log-card", { title: "Show card", onclick: () => this.hover(p.code) }, cardName(p.code))
+          : "a card"
+    );
+    const line = h(`div.log-line.${entry.cls || "plain"}`, parts);
     this.logEl.append(line);
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
     this.logEl.scrollTop = this.logEl.scrollHeight;
@@ -373,17 +408,24 @@ export class DuelView {
     this.el.querySelectorAll(".chain-badge").forEach((b) => b.remove());
   }
 
-  async confirmCards(cards, title = "Revealed cards") {
-    if (!cards.length) return;
-    const m = openModal({
-      title,
-      className: "prompt picker",
-      body: [h("div.pick-grid", cards.map((c) => h("div.pick-card.static", cardFace(c.code), h("div.pick-where", cardName(c.code)))))],
-      actions: [{ label: "OK", value: true, primary: true }],
-    });
-    cards.forEach((c) => this.hover(c.code));
-    await Promise.race([m.result, this.wait(2200 + cards.length * 300)]);
-    m.close(true);
+  /** Carte rivelate: grandi al centro del campo per poco più di un secondo, come gli effetti in catena. */
+  async confirmCards(cards, label = "Revealed") {
+    const codes = cards.map((c) => c.code).filter(Boolean);
+    if (!this.speed || !codes.length) return;
+    const shown = codes.slice(0, 8);
+    const row = h("div.reveal-row", shown.map((code) => h("div.splash-card", cardFace(code))));
+    row.style.setProperty("--n", shown.length);
+    const s = h(
+      "div.splash.reveal",
+      row,
+      h("div.splash-label", label),
+      h("div.splash-name", shown.length === 1 ? cardName(shown[0]) : `${codes.length} cards`)
+    );
+    this.overlay.append(s);
+    this.hover(shown[0]);
+    await this.wait(1300 + (shown.length - 1) * 150);
+    s.classList.add("out");
+    setTimeout(() => s.remove(), 250);
   }
 
   canSeeMsg(p, loc, pos) {
@@ -411,6 +453,8 @@ export class DuelView {
         if (m.hint_type === HINT.SELECTMSG && this.reveal) this.selectHint = m.hint;
         if (m.hint_type === HINT.MESSAGE && (m.player === this.me || this.reveal)) await this.banner(descString(m.hint), "hint");
         if (m.hint_type === HINT.OPSELECTED && m.player === this.me) await this.banner(descString(m.hint), "hint");
+        // Nome di carta dichiarato: lo si mostra come una carta rivelata.
+        if (m.hint_type === HINT.CODE) await this.confirmCards([{ code: Number(m.hint) }], "Declared");
         return;
       case MSG.NEW_TURN:
         this.setTurn(this.turn = (this.turn ?? 0) + 1, m.player, 0);
@@ -479,9 +523,11 @@ export class DuelView {
         for (const c of m.cards) this.board.flash(c.controller, c.location, c.sequence, "flash-target", 900);
         return this.wait(250);
       case MSG.CONFIRM_CARDS:
-      case MSG.CONFIRM_DECKTOP:
-      case MSG.CONFIRM_EXTRATOP:
         return this.confirmCards(m.cards);
+      case MSG.CONFIRM_DECKTOP:
+        return this.confirmCards(m.cards, "Top of the Deck");
+      case MSG.CONFIRM_EXTRATOP:
+        return this.confirmCards(m.cards, "Revealed from the Extra Deck");
       case MSG.TOSS_COIN:
         return this.banner(`Coin toss: ${m.results.map((r) => (r ? "Heads" : "Tails")).join(", ")}`, "hint");
       case MSG.TOSS_DICE:

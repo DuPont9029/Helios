@@ -85,11 +85,11 @@
 .zone.grave::before { content: "GY"; }
 .zone.deck::before { content: "DECK"; }
 .zone.extra::before { content: "EXTRA"; }
-.zone.removed::before { content: "BANISHED"; }
+.zone.removed::before { content: "BANISHMENT"; font-size: calc(var(--zh) * 0.1); }
 .zone.removed { border-style: dashed; opacity: 0.85; }
 .zone.pz { display: none; }
 .duel-field.has-pz .zone.pz { display: grid; }
-.zone.pz::before { content: "PEND."; }
+.zone.pz::before { content: "PEND."; bottom: 5%; }
 .zone.occupied::before { content: none; }
 .zone.pile { cursor: pointer; }
 .zone .card { width: var(--cw); transition: transform 0.2s; }
@@ -106,7 +106,9 @@
 .zone-badge.count { bottom: 2px; right: 2px; }
 .zone-badge.overlay { top: 2px; right: 2px; border-color: var(--gold); color: var(--gold); }
 .zone-badge.counter { top: 2px; left: 2px; border-color: #7bffb0; color: #7bffb0; }
-.materials { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
+.materials { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; z-index: 0; }
+/* il mostro sta sopra le sue materiali Xyz */
+.zone .materials ~ .card { z-index: 1; }
 .mat { position: absolute; width: var(--cw); aspect-ratio: 59/86; border-radius: 4px; background: linear-gradient(135deg, #3a2a10, #1a1206); border: 1px solid #7a5a20; }
 .mat:nth-child(1) { transform: translate(-4px, -4px); } .mat:nth-child(2) { transform: translate(-7px, -7px); }
 .mat:nth-child(3) { transform: translate(-10px, -10px); } .mat:nth-child(4) { transform: translate(-13px, -13px); }
@@ -331,3 +333,54 @@
 .has-sleeve-1 .card[data-owner="1"] .card-back { background-image: var(--sleeve-1); }
 .has-sleeve-0 .card[data-owner="0"] .card-back::before, .has-sleeve-0 .card[data-owner="0"] .card-back::after,
 .has-sleeve-1 .card[data-owner="1"] .card-back::before, .has-sleeve-1 .card[data-owner="1"] .card-back::after { content: none; }
+
+/* ------------------------------------------------------------------ registro: nomi cliccabili */
+.log-card { font-weight: 600; cursor: pointer; border-bottom: 1px dotted currentColor; }
+.log-card:hover { color: var(--accent); border-bottom-style: solid; }
+
+/* ------------------------------------------------------------------ richieste compatte (catena, effetti) */
+.prompt-dock { position: absolute; right: 14px; bottom: 14px; z-index: 25; display: flex; flex-direction: column; align-items: flex-end; pointer-events: none; }
+.prompt-pop {
+  pointer-events: auto; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; max-width: 280px;
+  background: rgba(6, 7, 11, 0.94); border: 1px solid var(--line-strong); border-left: 3px solid #ffd23a;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.7), 0 0 18px rgba(255, 196, 40, 0.25); animation: pop-in 0.15s;
+}
+.prompt-pop.floating { position: fixed; z-index: 95; width: 260px; }
+.prompt-head { display: flex; flex-direction: column; gap: 1px; }
+.prompt-head b { font: 700 18px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: #ffd23a; }
+.prompt-btns { display: flex; gap: 6px; justify-content: flex-end; }
+.prompt-btns .btn { padding: 5px 12px; }
+.prompt-q { display: grid; grid-template-columns: 44px 1fr; gap: 8px; align-items: start; }
+.prompt-thumb { width: 44px; cursor: pointer; }
+.prompt-text { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 1.3; max-height: 7.5em; overflow: auto; }
+.prompt-text b { font: 700 13px var(--display); letter-spacing: 0.02em; }
+.prompt-pop .decline-hint { margin: 0; font-size: 10px; }
+
+/* ------------------------------------------------------------------ carte rivelate */
+.splash.reveal { gap: 8px; }
+.reveal-row { display: flex; gap: 14px; justify-content: center; max-width: 90%; }
+.reveal-row .splash-card { width: clamp(90px, calc(min(14vw, 200px) * 3.2 / (var(--n, 1) + 2.2)), 200px); filter: drop-shadow(0 0 26px rgba(255, 226, 122, 0.8)); }
+
+/* ------------------------------------------------------------------ gemme delle zone Pendulum */
+.pz-gem {
+  position: absolute; left: 25%; top: 18%; width: 50%; aspect-ratio: 1; pointer-events: none;
+  display: grid; place-items: center; filter: drop-shadow(0 0 7px var(--gem-glow)); opacity: 0.92;
+}
+.pz-gem.red { --gem-a: #ffb3b3; --gem-b: #ef1f36; --gem-c: #6e0012; --gem-glow: rgba(255, 40, 60, 0.75); }
+.pz-gem.blue { --gem-a: #bfe4ff; --gem-b: #2378ff; --gem-c: #081f74; --gem-glow: rgba(40, 130, 255, 0.75); }
+.pz-gem i {
+  position: relative; width: 82%; height: 82%;
+  clip-path: polygon(22% 8%, 78% 8%, 100% 36%, 50% 100%, 0 36%);
+  background: conic-gradient(from 200deg at 50% 40%, var(--gem-b), var(--gem-a), var(--gem-b), var(--gem-c), var(--gem-b));
+}
+/* faccetta superiore e riflesso */
+.pz-gem i::before { content: ""; position: absolute; left: 22%; right: 22%; top: 8%; height: 28%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15)); clip-path: polygon(0 0, 100% 0, 85% 100%, 15% 100%); }
+.pz-gem i::after { content: ""; position: absolute; inset: 36% 0 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 45%, rgba(255, 255, 255, 0.18) 55%, rgba(0, 0, 0, 0.3)); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+.pz-gem.custom { object-fit: contain; }
+/* zona occupata: la gemma diventa un piccolo segno sul bordo superiore, sopra la carta */
+.zone.pz.occupied > .pz-gem, .pz-gem.pz-mark { width: 26%; left: 37%; top: -11%; z-index: 3; opacity: 1; }
+/* anteprima delle gemme nelle impostazioni */
+.pz-picker { display: flex; gap: 14px; align-items: center; }
+.pz-previews { display: flex; gap: 8px; flex: none; }
+.pz-preview { position: relative; width: 64px; height: 64px; border: 1px solid var(--line); background: radial-gradient(circle, rgba(255, 255, 255, 0.05), rgba(0, 0, 0, 0.35)); }
+.pz-preview .pz-gem { left: 12%; top: 12%; width: 76%; }

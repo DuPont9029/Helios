@@ -474,3 +474,20 @@ input[type="range"] { accent-color: var(--accent); }
 .sleeve-box { display: flex; gap: 14px; align-items: center; }
 .sleeve-preview { width: 70px; flex: none; }
 .sleeve-side { display: flex; flex-direction: column; gap: 8px; }
+
+/* ------------------------------------------------------------------ editor: bozza, badge regione, riordino */
+.save-btn { position: relative; }
+.save-btn:not(.dirty) { opacity: 0.7; }
+.unsaved-dot { width: 9px; height: 9px; border-radius: 50%; background: #e0203a; border: 2px solid #fff; margin-left: 6px; display: inline-block; vertical-align: middle; }
+.editor-toolbar .btn.round:disabled { opacity: 0.35; cursor: default; }
+.region-badge { display: inline-block; font: 700 9px/1 var(--mono); letter-spacing: 0.04em; padding: 2px 4px; border-radius: 3px; margin-left: 6px; vertical-align: middle; color: #fff; }
+.region-badge.ocg { background: #b8336a; }
+.region-badge.tcg { background: #1f6bd6; }
+.deck-card .region-badge { position: absolute; top: 2px; right: 2px; margin: 0; font-size: 8px; padding: 2px 3px; box-shadow: 0 1px 3px #000; pointer-events: none; }
+.deck-card { touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.deck-card.drop-before::before { content: ""; position: absolute; left: -3px; top: 0; bottom: 0; width: 3px; background: var(--accent); box-shadow: 0 0 8px var(--accent); z-index: 2; }
+.filter-grid .format-filter { grid-column: 1 / -1; }
+/* dettaglio: immagine ferma, scorre solo il testo */
+/* se il pannello è più basso dell'immagine scorre tutto (min-height del testo), come prima */
+.detail-card, .detail-actions { flex: none; }
+.detail-scroll { flex: 1 1 auto; min-height: 72px; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }

@@ -3,9 +3,21 @@
 import { h, clear } from "../dom.js";
 import { cardFace } from "../card.js";
 import { getCard, counterName } from "../../data/db.js";
+import { pendulumIcons } from "../../data/pendulum.js";
 import { LOC, POS, STATUS_DISABLED, TYPE } from "../../core/constants.js";
 
 export const key = (p, loc, seq) => `${p}:${loc}:${seq}`;
+
+// Colore delle gemme delle zone Pendulum, come sulle carte: scala sinistra blu, scala destra rossa.
+const SCALE_COLOR = { left: "blue", right: "red" };
+
+/** Gemma di una zona Pendulum: l'immagine scelta nelle impostazioni o quella disegnata in CSS. */
+function pendulumGem(scale, extraCls = "") {
+  const color = SCALE_COLOR[scale];
+  const custom = pendulumIcons();
+  const cls = `pz-gem.${color}${extraCls ? "." + extraCls : ""}`;
+  return custom ? h(`img.${cls}.custom`, { src: custom[color], alt: "", draggable: false }) : h(`div.${cls}`, h("i"));
+}
 
 const isFaceDown = (pos) => (pos & POS.FACEDOWN) !== 0;
 const isDefense = (pos) => (pos & POS.DEFENSE) !== 0;
@@ -70,10 +82,11 @@ export class Board {
     zone(op, LOC.REMOVED, 0, "pile removed", 3, 1);
     zone(me, LOC.REMOVED, 0, "pile removed", 3, 7);
     // Zone pendulum separate (solo Master Rule 3).
-    zone(op, LOC.SZONE, 7, "pz pz-op", 3, 2);
-    zone(op, LOC.SZONE, 6, "pz pz-op", 3, 6);
-    zone(me, LOC.SZONE, 6, "pz", 3, 2);
-    zone(me, LOC.SZONE, 7, "pz", 3, 6);
+    // Ogni zona ha la gemma della sua scala (sinistra = 6, destra = 7 dal punto di vista del proprietario).
+    zone(op, LOC.SZONE, 7, "pz pz-op", 3, 2).append(pendulumGem("right"));
+    zone(op, LOC.SZONE, 6, "pz pz-op", 3, 6).append(pendulumGem("left"));
+    zone(me, LOC.SZONE, 6, "pz", 3, 2).append(pendulumGem("left"));
+    zone(me, LOC.SZONE, 7, "pz", 3, 6).append(pendulumGem("right"));
     this.centerEl = h("div.field-center");
     this.centerEl.style.gridRow = 3;
     this.centerEl.style.gridColumn = 4;
@@ -117,7 +130,7 @@ export class Board {
     this.snapshot = snap;
     this.cardEls.clear();
     for (const z of new Set(this.zoneEls.values())) {
-      z.querySelectorAll(".card, .zone-badge, .stat, .materials").forEach((n) => n.remove());
+      z.querySelectorAll(".card, .zone-badge, .stat, .materials, .pz-mark").forEach((n) => n.remove());
       z.classList.remove("occupied");
     }
     for (let p = 0; p < 2; p++) {
@@ -150,8 +163,13 @@ export class Board {
     z.classList.add("occupied");
     z.append(el);
     if (info.overlayCards?.length) {
-      z.append(h("div.materials", info.overlayCards.slice(0, 4).map(() => h("div.mat"))));
+      // Le materiali stanno sotto il mostro (prima nel DOM) e ne spuntano dietro.
+      z.insertBefore(h("div.materials", info.overlayCards.slice(0, 4).map(() => h("div.mat"))), el);
       z.append(h("div.zone-badge.overlay", { title: "Xyz Materials" }, info.overlayCards.length));
+    }
+    // Master Rule 4/2020: le zone Pendulum sono la prima e l'ultima zona Magie/Trappole.
+    if (loc === LOC.SZONE && (seq === 0 || seq === 4) && !isFaceDown(info.position) && ((info.type ?? getCard(info.code)?.type ?? 0) & TYPE.PENDULUM)) {
+      z.append(pendulumGem(seq === 0 ? "left" : "right", "pz-mark"));
     }
     const counters = Object.entries(info.counters ?? {}).filter(([, n]) => n > 0);
     if (counters.length) {
