@@ -3,7 +3,7 @@ import { h, clear, download, pickFile, icon, rect } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
-import { db, getCard, isExtraDeckCard } from "../data/db.js";
+import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
@@ -734,6 +734,18 @@ export function showEditor(app) {
   const attrChips = chipRow(fAttr, ATTRIBUTES.map(([v, l]) => [v, l, ATTR_CLS[v]]), "attrs");
   const results = h("div.results");
   const resultInfo = h("div.muted.small");
+  // Vista dei risultati: griglia di carte o lista (ricordata nelle impostazioni).
+  const viewToggle = h("div.view-toggle", ["grid", "list"].map((v) =>
+    h(`button.view-btn${v === (settings.editorView === "list" ? "list" : "grid") ? ".on" : ""}`, {
+      dataset: { view: v },
+      title: v === "grid" ? "Show as cards" : "Show as a list",
+      onclick: () => {
+        settings.editorView = v;
+        viewToggle.querySelectorAll(".view-btn").forEach((b) => b.classList.toggle("on", b.dataset.view === v));
+        renderResults();
+      },
+    }, icon(v === "grid" ? "grid_view" : "view_list"))
+  ));
   let shown = 120;
   let found = [];
 
@@ -779,19 +791,23 @@ export function showEditor(app) {
     renderResults();
   }
 
-  // Risultati come carte in griglia, come nel mazzo: il nome compare nel pannello dei dettagli.
+  // Risultati come carte in griglia (come nel mazzo) o come lista con nome e statistiche.
   function renderResults() {
     resultInfo.textContent = tab === "bookmarks" && !(settings.bookmarks ?? []).length ? "No bookmarks yet: use the bookmark icon on a card" : `${found.length} cards`;
+    const list = settings.editorView === "list";
+    results.classList.toggle("as-list", list);
     clear(results).append(
       ...found.slice(0, shown).map((c) => {
-        const tile = h(
-          "div.result-card",
-          { draggable: true, title: c.name },
-          cardFace(c.code),
-          limitBadge(c.code),
-          regionBadge(c.code),
-          bookmarkButton(c.code)
-        );
+        const tile = list
+          ? h(
+              "div.result-row",
+              { draggable: true },
+              cardFace(c.code),
+              h("div.result-text", h("div.result-name", c.name, regionBadge(c.code)), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))),
+              limitBadge(c.code),
+              bookmarkButton(c.code)
+            )
+          : h("div.result-card", { draggable: true, title: c.name }, cardFace(c.code), limitBadge(c.code), regionBadge(c.code), bookmarkButton(c.code));
         tile.addEventListener("mouseenter", () => detail.show(c.code));
         tile.addEventListener("click", () => addCard(c.code));
         tile.addEventListener("contextmenu", (e) => {
@@ -857,7 +873,7 @@ export function showEditor(app) {
     h("div.search-tabs", tabAll, tabMarks, filterToggle),
     q,
     filters,
-    resultInfo,
+    h("div.results-head", resultInfo, viewToggle),
     results,
     h(
       "p.muted.small.hint",
