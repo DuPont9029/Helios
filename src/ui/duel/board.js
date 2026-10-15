@@ -3,7 +3,7 @@
 import { h, clear } from "../dom.js";
 import { cardFace } from "../card.js";
 import { getCard, counterName } from "../../data/db.js";
-import { pendulumIcons } from "../../data/pendulum.js";
+import { pendulumIcons, mirrorFor } from "../../data/pendulum.js";
 import { LOC, POS, STATUS_DISABLED, TYPE } from "../../core/constants.js";
 
 export const key = (p, loc, seq) => `${p}:${loc}:${seq}`;
@@ -16,7 +16,8 @@ function pendulumGem(scale, extraCls = "") {
   const color = SCALE_COLOR[scale];
   const custom = pendulumIcons();
   const cls = `pz-gem.${color}${extraCls ? "." + extraCls : ""}`;
-  return custom ? h(`img.${cls}.custom`, { src: custom[color], alt: "", draggable: false }) : h(`div.${cls}`, h("i"));
+  // L'immagine personalizzata è disegnata per una sola zona: nell'altra si mostra specchiata.
+  return custom ? h(`img.${cls}.custom${mirrorFor(custom, scale) ? ".mirror" : ""}`, { src: custom[color], alt: "", draggable: false }) : h(`div.${cls}`, h("i"));
 }
 
 const isFaceDown = (pos) => (pos & POS.FACEDOWN) !== 0;

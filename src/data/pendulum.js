@@ -13,11 +13,17 @@ const TINTS = {
   blue: [[8, 30, 125], [150, 205, 255]],
 };
 
-/** Le gemme salvate { red, blue } se valide, altrimenti null (si usano quelle disegnate in CSS). */
+/**
+ * Le gemme salvate { red, blue, side } se valide, altrimenti null (si usano quelle disegnate in CSS).
+ * side: la zona per cui l'immagine è disegnata ("left" o "right"); sull'altra zona si mostra specchiata.
+ */
 export function pendulumIcons() {
   const v = settings.pendulumIcon;
-  return v && valid(v.red) && valid(v.blue) ? { red: v.red, blue: v.blue } : null;
+  return v && valid(v.red) && valid(v.blue) ? { red: v.red, blue: v.blue, side: v.side === "right" ? "right" : "left" } : null;
 }
+
+/** L'immagine personalizzata va specchiata nella zona `scale` ("left"/"right")? */
+export const mirrorFor = (icons, scale) => !!icons && icons.side !== scale;
 
 /** Converte il file scelto nelle due gemme { red, blue }. */
 export async function makePendulumIcons(file) {

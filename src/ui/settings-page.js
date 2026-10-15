@@ -1,7 +1,7 @@
 import { h, clear, icon, pickFile } from "./dom.js";
 import { makeSleeve, validSleeve } from "../data/sleeve.js";
-import { makePendulumIcons, pendulumIcons } from "../data/pendulum.js";
-import { toast, confirmModal } from "./modal.js";
+import { makePendulumIcons, pendulumIcons, mirrorFor } from "../data/pendulum.js";
+import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
@@ -105,23 +105,35 @@ function pendulumPicker() {
   const blue = gem("blue");
   const status = h("small.muted");
   const remove = h("button.btn.small.danger", { onclick: () => { settings.pendulumIcon = null; update(); } }, icon("delete"), " Remove");
+  // Per quale zona è disegnata l'immagine: nell'altra compare specchiata.
+  const side = h(
+    "select.select.pz-side",
+    { onchange: () => { settings.pendulumIcon = { ...settings.pendulumIcon, side: side.value }; update(); } },
+    h("option", { value: "left" }, "Image drawn for the left zone"),
+    h("option", { value: "right" }, "Image drawn for the right zone")
+  );
   const update = () => {
     const icons = pendulumIcons();
-    for (const [el, color] of [[blue, "blue"], [red, "red"]]) {
+    for (const [el, color, scale] of [[blue, "blue", "left"], [red, "red", "right"]]) {
       // Anteprima: la gemma personalizzata oppure quella predefinita disegnata in CSS (come sul campo).
-      clear(el).append(icons ? h(`img.pz-gem.${color}.custom`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}`, h("i")));
+      clear(el).append(icons ? h(`img.pz-gem.${color}.custom${mirrorFor(icons, scale) ? ".mirror" : ""}`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}`, h("i")));
     }
     status.textContent = icons
-      ? "Custom gems, shown in the Pendulum Zones (left scale blue, right scale red)."
+      ? "Custom gems, shown in the Pendulum Zones (left scale blue, right scale red). The other zone shows the image mirrored."
       : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem.";
     remove.hidden = !icons;
+    side.hidden = !icons;
+    if (icons) side.value = icons.side;
   };
   const choose = h("button.btn.primary.small", {
     onclick: async () => {
       const f = await pickFile("image/*");
       if (!f) return;
       try {
-        settings.pendulumIcon = await makePendulumIcons(f);
+        const icons = await makePendulumIcons(f);
+        const chosen = await askPendulumSide(icons);
+        if (!chosen) return;
+        settings.pendulumIcon = { ...icons, side: chosen };
         toast("Pendulum gems updated");
       } catch (e) {
         toast(e.message || "Unable to read the image", { kind: "error" });
@@ -130,7 +142,22 @@ function pendulumPicker() {
     },
   }, icon("image"), " Choose image");
   update();
-  return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, h("div.row", choose, remove))));
+  return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, side, h("div.row", choose, remove))));
+}
+
+/** Chiede per quale zona Pendulum è disegnata l'immagine appena caricata ("left"/"right", null = annulla). */
+function askPendulumSide(icons) {
+  const option = (scale, color, label) =>
+    h("button.btn", { onclick: () => m.close(scale) }, h(`div.pz-preview.${color}`, h(`img.pz-gem.${color}.custom`, { src: icons[color], alt: "" })), label);
+  const m = openModal({
+    title: "Which side is this image for?",
+    body: [
+      h("p", "Is the image drawn for the left or the right Pendulum Zone? It is shown as it is there, and mirrored in the other zone."),
+      h("div.pz-side-pick", option("left", "blue", "Left zone"), option("right", "red", "Right zone")),
+    ],
+    actions: [{ label: "Cancel", value: null }],
+  });
+  return m.result.then((v) => v ?? null);
 }
 
 export function showSettings(app) {
