@@ -374,6 +374,23 @@ input[type="range"] { accent-color: var(--accent); }
 .filter-grid .select, .filter-grid .input { padding: 6px 8px; font-size: 12px; }
 .results { flex: 1; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 5px; align-content: start; padding: 4px 2px 2px; }
 .results .more { grid-column: 1 / -1; }
+/* vista a lista */
+.results.as-list { display: flex; flex-direction: column; gap: 3px; padding: 0; }
+.result-row {
+  display: grid; grid-template-columns: 40px 1fr auto auto; gap: 10px; align-items: center; padding: 5px 8px 5px 5px; cursor: pointer;
+  position: relative; background: rgba(0, 0, 0, 0.35); border-left: 3px solid transparent; user-select: none; -webkit-user-select: none;
+}
+.result-row:hover { background: rgba(182, 244, 0, 0.08); border-left-color: var(--accent); }
+.result-row .limit { position: static; }
+.result-name { font-weight: 600; font-size: 13px; }
+.result-row .bm { position: static; opacity: 0.5; }
+.result-row:hover .bm, .result-row .bm.on { opacity: 1; }
+.results-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.view-toggle { display: flex; gap: 2px; }
+.view-btn { width: 28px; height: 26px; padding: 0; display: grid; place-items: center; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--muted); }
+.view-btn .icon { font-size: 17px; }
+.view-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); }
+.view-btn:not(.on):hover { color: #fff; border-color: var(--accent); }
 /* risultati della ricerca come carte, con le stesse etichette delle carte nel mazzo */
 .result-card { position: relative; cursor: pointer; transition: transform 0.1s; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 .result-card:hover { transform: translateY(-3px); z-index: 1; }
