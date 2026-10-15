@@ -1,10 +1,12 @@
 /* ------------------------------------------------------------------ layout duello */
-/* Tela fissa 1512×860, uguale su ogni dispositivo (main.js la scala con lo zoom e la centra):
+/* Tela fissa 1180×860, uguale su ogni dispositivo (main.js la scala con lo zoom e la centra):
    --vh/--vw qui dentro sono quelli della tela, non della finestra. */
 #app:has(> .duel-screen) { display: grid; place-items: center; overflow: hidden; }
 .duel-screen {
-  --vh: 8.6px; --vw: 15.12px;
-  width: 1512px; height: 860px; box-sizing: border-box;
+  --vh: 8.6px; --vw: 11.8px;
+  --lp-w: 300px; /* larghezza riservata a LP + timer accanto alla mano */
+  --hand-w: 340px; /* spazio per le carte in mano: oltre, le carte si sovrappongono */
+  width: 1180px; height: 860px; box-sizing: border-box;
   display: grid;
   grid-template-columns: minmax(230px, 280px) 1fr 200px;
   gap: 10px;
@@ -55,8 +57,9 @@
   mask-image: radial-gradient(ellipse at 50% 55%, black 30%, transparent 75%);
 }
 .hud-top, .hud-bottom { position: relative; z-index: 3; display: flex; align-items: center; justify-content: center; }
-.hud-top { min-height: calc(var(--cw) * 1.1 + 10px); padding: 6px 12px 0; }
-.hud-bottom { min-height: calc(var(--cw) * 1.75 + 12px); padding: 0 12px 6px; align-items: flex-end; }
+/* LP e timer stanno nell'angolo (posizione assoluta): la mano usa lo spazio che resta, senza coprirli. */
+.hud-top { min-height: calc(var(--cw) * 1.1 + 10px); padding: 6px var(--lp-w) 0 12px; }
+.hud-bottom { min-height: calc(var(--cw) * 1.75 + 12px); padding: 0 12px 6px var(--lp-w); align-items: flex-end; }
 
 /* ------------------------------------------------------------------ campo */
 .field-wrap { position: relative; display: grid; place-items: center; min-height: 0; z-index: 1; }
@@ -127,7 +130,7 @@
 
 /* ------------------------------------------------------------------ mani */
 .hand { display: flex; justify-content: center; align-items: flex-end; min-width: 0; flex: 1; }
-.hand .card { width: calc(var(--cw) * 1.2); margin: 0 calc(min(0px, (calc(var(--vw) * 60) - var(--n, 5) * var(--cw) * 1.25) / var(--n, 5) / 2)); transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
+.hand .card { width: calc(var(--cw) * 1.2); margin: 0 calc(min(0px, (var(--hand-w) - var(--n, 5) * var(--cw) * 1.25) / var(--n, 5) / 2)); transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
 .hand-0 .card:hover { transform: translateY(-18%) scale(1.06); z-index: 5; }
 .hand-0 .card.revealed { box-shadow: 0 0 0 2px var(--gold); }
 .hand-1 .card { width: calc(var(--cw) * 0.75); }
