@@ -220,34 +220,33 @@ export class Prompter {
 
   // ---------------------------------------------------------------- domande semplici
 
-  /** "Usare l'effetto di X?": richiesta compatta accanto alla carta, il campo resta visibile. */
+  /** "Usare l'effetto di X?": finestra grande (si può ridurre per guardare il campo), la carta lampeggia. */
   effectYN(msg) {
     const text = msg.description ? descString(msg.description, this.descArgs(msg)) : `Activate the effect of "${cardName(msg.code)}"?`;
     const anchor = this.board.cardEls.get(key(msg.controller, msg.location, msg.sequence)) ?? this.board.zoneEl(msg.controller, msg.location, msg.sequence);
-    return new Promise((resolve) => {
-      const done = (yes) => {
-        closeBox();
-        anchor?.classList.remove("flash-target");
-        this.cancelCurrent = null;
-        this.decline = null;
-        resolve({ type: RESP.SELECT_EFFECTYN, yes });
-      };
-      anchor?.classList.add("flash-target");
-      const closeBox = this.view.showPrompt(
-        [
-          h(
-            "div.prompt-q",
-            h("div.prompt-thumb", { onmouseenter: () => this.view.hover(msg.code), onclick: () => this.view.hover(msg.code) }, cardFace(msg.code)),
-            h("div.prompt-text", h("b", cardName(msg.code)), h("span", text))
-          ),
-          h("div.prompt-btns", h("button.btn.small", { onclick: () => done(false) }, "No"), h("button.btn.small.primary", { onclick: () => done(true) }, "Yes")),
-          DECLINE_HINT("No"),
-        ],
-        anchor && document.body.contains(anchor) && anchor !== this.board.handEl(msg.controller) ? anchor : null
-      );
-      this.view.hover(msg.code);
-      this.cancelCurrent = () => done(false);
-      this.decline = () => done(false);
+    anchor?.classList.add("flash-target");
+    const m = openModal({
+      title: "Activate the effect?",
+      dismissable: false,
+      className: "prompt activate",
+      body: [
+        h(
+          "div.activate-q",
+          h("div.activate-card", { onmouseenter: () => this.view.hover(msg.code), onclick: () => this.view.hover(msg.code) }, cardFace(msg.code)),
+          h("div.activate-text", h("b", cardName(msg.code)), h("span", text))
+        ),
+        DECLINE_HINT("No"),
+      ],
+      actions: [{ label: "No", value: false }, { label: "Yes", value: true, primary: true }],
+    });
+    this.view.hover(msg.code);
+    this.cancelCurrent = () => m.close(false);
+    this.decline = () => m.close(false);
+    return m.result.then((yes) => {
+      anchor?.classList.remove("flash-target");
+      this.cancelCurrent = null;
+      this.decline = null;
+      return { type: RESP.SELECT_EFFECTYN, yes: !!yes };
     });
   }
 
@@ -280,8 +279,8 @@ export class Prompter {
   }
 
   /**
-   * Catena: barra compatta "Chain?" nell'angolo del campo. Le carte attivabili brillano e si
-   * attivano cliccandole; quelle in posti nascosti (Deck, pile...) restano raggiungibili da "List".
+   * Catena: finestra grande con le carte attivabili (si può ridurre per guardare il campo).
+   * Le carte attivabili brillano anche sul campo e si possono attivare cliccandole.
    */
   chain(msg) {
     const n = msg.selects.length;
@@ -289,11 +288,13 @@ export class Prompter {
     if (!msg.forced && (n === 0 || auto === "never")) return Promise.resolve({ type: RESP.SELECT_CHAIN, index: null });
     if (msg.forced && n === 1 && auto !== "always") return Promise.resolve({ type: RESP.SELECT_CHAIN, index: 0 });
     return new Promise((resolve) => {
-      let list = null;
+      let finished = false;
+      let m = null;
       const done = (index) => {
+        if (finished) return;
+        finished = true;
         this.view.closeActionMenu();
-        closeBar();
-        list?.close();
+        m?.close(undefined);
         this.board.clearClickable();
         this.view.onPileActions = null;
         this.cancelCurrent = null;
@@ -314,42 +315,28 @@ export class Prompter {
       );
       this.board.setClickable(handlers, "activate");
       this.view.onPileActions = (k) => (byCard.has(k) ? items(byCard.get(k)) : []);
-      const openList = () => {
-        list = openModal({
-          title: msg.forced ? "Choose the effect to activate" : "Activate a card or effect in Chain?",
-          className: "prompt wide",
-          body: [
-            h(
-              "div.action-list",
-              msg.selects.map((c, i) =>
-                h(
-                  "button.action-row",
-                  { onclick: () => done(i), onmouseenter: () => this.view.hover(c.code) },
-                  cardFace(c.code),
-                  h("div", h("b", cardName(c.code)), h("div.muted", desc(c)), h("div.muted.small", this.where(c)))
-                )
+      m = openModal({
+        title: msg.forced ? "Choose the effect to activate" : "Activate a card or effect in Chain?",
+        dismissable: false,
+        className: "prompt wide",
+        body: [
+          h(
+            "div.action-list",
+            msg.selects.map((c, i) =>
+              h(
+                "button.action-row",
+                { onclick: () => done(i), onmouseenter: () => this.view.hover(c.code) },
+                cardFace(c.code),
+                h("div", h("b", cardName(c.code)), h("div.muted", desc(c)), h("div.muted.small", this.where(c)))
               )
-            ),
-          ],
-          actions: [{ label: "Back", value: null }],
-        });
-        list.result.then(() => (list = null));
-      };
-      // Dove sono le carte che non si vedono sul campo né in mano.
-      const hidden = [...new Set(msg.selects.filter((c) => !(c.location & LOC.ONFIELD) && c.location !== LOC.HAND).map((c) => locName(c.location)))];
-      const closeBar = this.view.showPrompt([
-        h(
-          "div.prompt-head",
-          h("b", msg.forced ? "Activate an effect" : "Chain?"),
-          h("span.muted.small", `${n} effect${n === 1 ? "" : "s"} can be activated${hidden.length ? ` (also in: ${hidden.join(", ")})` : ""}`)
-        ),
-        h(
-          "div.prompt-btns",
-          h("button.btn.small.ghost", { title: "Show all activatable cards", onclick: openList }, "List"),
-          !msg.forced && h("button.btn.small.primary", { onclick: () => done(null) }, "Don't activate")
-        ),
-        !msg.forced && DECLINE_HINT("don't activate"),
-      ]);
+            )
+          ),
+          !msg.forced && DECLINE_HINT("don't activate"),
+        ],
+        actions: msg.forced ? [] : [{ label: "Don't activate", value: null, primary: true }],
+      });
+      m.result.then((v) => v === null && done(null));
+      this.view.hover(msg.selects[0].code);
       this.cancelCurrent = () => done(msg.forced ? 0 : null);
       this.decline = msg.forced ? null : () => done(null);
     });
