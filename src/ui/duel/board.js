@@ -242,8 +242,21 @@ export class Board {
       if (fn) {
         e.stopPropagation();
         fn(e, el);
+      } else if (this.materialsAt(el.dataset.key).length) {
+        // Nessuna azione su questa carta, ma ha materiali Xyz: menu con solo "View materials".
+        e.stopPropagation();
+        this.opts.onCardMenu?.(el, []);
       }
     });
+  }
+
+  /** Codici dei materiali Xyz del mostro nella zona `k` (chiave della carta), [] se non ne ha. */
+  materialsAt(k) {
+    if (!k || !this.snapshot) return [];
+    const [p, loc, seq] = k.split(":").map(Number);
+    if (loc !== LOC.MZONE) return [];
+    const mats = this.snapshot.players[p]?.mzone?.[seq]?.overlayCards ?? [];
+    return mats.map((m) => (typeof m === "object" ? m?.code : m)).filter(Boolean);
   }
 
   onZoneClick(player, loc, seq, e) {

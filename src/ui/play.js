@@ -154,37 +154,48 @@ export function showLocalSetup(app, { vsCpu }) {
             meFirst = await askFirst(a, b);
             if (meFirst == null) return; // annullato: resta aperta la configurazione
           }
+          // Avvio del duello; il duello di prova si può rigiocare con gli stessi mazzi (rivincita).
+          const launch = (meFirst) => {
+            const decksByTurn = meFirst ? [a, b] : [b, a];
+            const me = meFirst ? 0 : 1;
+            const names = [];
+            names[me] = settings.name;
+            names[1 - me] = vsCpu ? "CPU" : "Player 2";
+            const controllers = [];
+            controllers[me] = "local";
+            controllers[1 - me] = vsCpu ? "ai" : noDeck ? "pass" : "local";
+            toast(meFirst ? "You go first!" : `${names[1 - me]} goes first`);
+            // Mazzo in ordine solo per il giocatore contro la CPU; il mazzo della CPU è sempre mescolato.
+            if (vsCpu) settings.lastDrawOrder = draws.value;
+            const shuffle = [true, true];
+            if (vsCpu && draws.value === "ordered") shuffle[me] = false;
+            if (!vsCpu) {
+              settings.testDrawOrder = testDraws.value;
+              settings.testOpponent = opponent.value;
+              if (testDraws.value === "ordered") shuffle.fill(false);
+            }
+            // Senza mazzo il giocatore 2 non pesca mai (un mazzo vuoto altrimenti farebbe perdere il duello).
+            const noDraw = [false, false];
+            if (noDeck) noDraw[1 - me] = true;
+            const sleeves = [null, null];
+            sleeves[me] = validSleeve(settings.sleeve);
+            startSession(app, {
+              controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves,
+              // Test Duel: "Rematch" a fine duello, chiedendo di nuovo chi inizia.
+              onLocalRematch: vsCpu ? null : async (old) => {
+                const again = await askFirst(a, b);
+                if (again == null) return;
+                old.destroy();
+                launch(again);
+              },
+              duel: {
+                flags: options.flags, seed: randSeed(), lp: options.lp, hand: options.hand, draw: options.draw,
+                decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })), shuffle, noDraw,
+              },
+            });
+          };
           close();
-          const decksByTurn = meFirst ? [a, b] : [b, a];
-          const me = meFirst ? 0 : 1;
-          const names = [];
-          names[me] = settings.name;
-          names[1 - me] = vsCpu ? "CPU" : "Player 2";
-          const controllers = [];
-          controllers[me] = "local";
-          controllers[1 - me] = vsCpu ? "ai" : noDeck ? "pass" : "local";
-          toast(meFirst ? "You go first!" : `${names[1 - me]} goes first`);
-          // Mazzo in ordine solo per il giocatore contro la CPU; il mazzo della CPU è sempre mescolato.
-          if (vsCpu) settings.lastDrawOrder = draws.value;
-          const shuffle = [true, true];
-          if (vsCpu && draws.value === "ordered") shuffle[me] = false;
-          if (!vsCpu) {
-            settings.testDrawOrder = testDraws.value;
-            settings.testOpponent = opponent.value;
-            if (testDraws.value === "ordered") shuffle.fill(false);
-          }
-          // Senza mazzo il giocatore 2 non pesca mai (un mazzo vuoto altrimenti farebbe perdere il duello).
-          const noDraw = [false, false];
-          if (noDeck) noDraw[1 - me] = true;
-          const sleeves = [null, null];
-          sleeves[me] = validSleeve(settings.sleeve);
-          startSession(app, {
-            controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves,
-            duel: {
-              flags: options.flags, seed: randSeed(), lp: options.lp, hand: options.hand, draw: options.draw,
-              decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })), shuffle, noDraw,
-            },
-          });
+          launch(meFirst);
         },
       },
     ],

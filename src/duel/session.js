@@ -290,6 +290,17 @@ export class DuelSession {
     this.view.showResult({ winner, reason, text, sub });
     this.inbox.push({ t: "end" });
     if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch();
+    else if (!this.mux && this.cfg.onLocalRematch) this.showLocalRematch();
+  }
+
+  /** Duello di prova: rivincita immediata con gli stessi mazzi (nessun avversario da aspettare). */
+  showLocalRematch() {
+    const el = h(
+      "div.rematch-panel",
+      h("div.rematch-status", "Play again with the same Decks?"),
+      h("div.rematch-actions", h("button.btn", { onclick: () => this.leave() }, "Leave"), h("button.btn.primary", { onclick: () => this.cfg.onLocalRematch(this) }, "Rematch"))
+    );
+    this.view.overlay.append(el);
   }
 
   // ---------------------------------------------------------------- rivincita

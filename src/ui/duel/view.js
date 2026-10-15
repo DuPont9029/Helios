@@ -37,6 +37,7 @@ export class DuelView {
       separatePz: !!opts.separatePz,
       onHover: (code) => this.hover(code),
       onPile: (p, loc) => this.openPile(p, loc),
+      onCardMenu: (el, items) => this.openActionMenu(el, items),
     });
     this.prompter = new Prompter(this);
     this.build();
@@ -210,12 +211,16 @@ export class DuelView {
 
   openActionMenu(anchor, items) {
     this.closeActionMenu();
+    // Mostro Xyz con materiali: sotto le azioni c'è sempre "View materials".
+    const mats = this.board.materialsAt(anchor.dataset?.key);
+    if (mats.length) items = [...items, { label: `View materials (${mats.length})`, view: true, onClick: () => this.showMaterials(anchor.dataset.key, mats) }];
+    if (!items.length) return;
     const r = rect(anchor);
     const menu = h(
       "div.action-menu",
       items.map((it) =>
         h(
-          `button.action-item${it.glow === "attack" ? ".attack" : ""}`,
+          `button.action-item${it.glow === "attack" ? ".attack" : ""}${it.view ? ".view" : ""}`,
           { onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } },
           it.label,
           // Più effetti sulla stessa carta: il testo dell'effetto sta sotto la voce, non in un tooltip
@@ -286,6 +291,23 @@ export class DuelView {
       box.classList.add(right ? "at-right" : "at-left");
     }
     return () => box.remove();
+  }
+
+  /** Finestra con i materiali Xyz di un mostro (informazione pubblica: si vedono anche quelli dell'avversario). */
+  showMaterials(k, mats) {
+    const [p, , seq] = k.split(":").map(Number);
+    const owner = this.board.snapshot?.players[p]?.mzone?.[seq];
+    const items = mats.map((code) => {
+      const tile = h("div.pile-item", cardFace(code));
+      tile.addEventListener("mouseenter", () => this.hover(code));
+      return tile;
+    });
+    openModal({
+      title: `Xyz Materials${owner?.code ? ` of ${getCard(owner.code)?.name ?? ""}` : ""} (${mats.length})`,
+      className: "wide pile-modal",
+      body: [h("div.pile-grid", items)],
+      actions: [{ label: "Close", value: null }],
+    });
   }
 
   openPile(p, loc) {
