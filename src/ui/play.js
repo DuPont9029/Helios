@@ -7,6 +7,7 @@ import { loadDecks, validateDeck, banlistByName } from "../deck/deck.js";
 import { DUEL_MODES } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
+import { BEST_OF, newSeries } from "../duel/series.js";
 import { validSleeve } from "../data/sleeve.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable } from "../net/signaling.js";
 import { LinkMux, negotiate } from "../net/match.js";
@@ -31,6 +32,9 @@ function optionsForm({ host = true } = {}) {
   const draw = h("input.input", { type: "number", value: 1, min: 0, max: 10 });
   const unofficial = h("input", { type: "checkbox" });
   const timer = h("select.select", Object.entries(TIMER_PRESETS).map(([k, t]) => h("option", { value: k }, t ? t.label : "Off")));
+  // Partita al meglio di 3 o 5 duelli (online la sceglie l'host).
+  const bestOf = h("select.select", Object.entries(BEST_OF).map(([n, label]) => h("option", { value: n }, label)));
+  bestOf.value = String(settings.lastBestOf ?? 1);
   timer.value = settings.lastTimer in TIMER_PRESETS ? settings.lastTimer : "omega";
   const el = h(
     "div.form-grid",
@@ -40,6 +44,7 @@ function optionsForm({ host = true } = {}) {
     h("label.field", h("span", "Starting hand"), hand),
     h("label.field", h("span", "Draws per turn"), draw),
     h("label.field", h("span", "Timer"), timer),
+    h("label.field", h("span", "Match"), bestOf),
     h("label.check", unofficial, "Allow unofficial cards (anime/custom)")
   );
   if (!host) el.hidden = true;
@@ -48,7 +53,9 @@ function optionsForm({ host = true } = {}) {
     read() {
       settings.lastBanlist = banlist.value;
       settings.lastTimer = timer.value;
+      settings.lastBestOf = +bestOf.value;
       return {
+        bestOf: +bestOf.value,
         mode: mode.value,
         flags: String(DUEL_MODES[mode.value].flags),
         banlist: banlist.value || null,
@@ -154,6 +161,8 @@ export function showLocalSetup(app, { vsCpu }) {
             meFirst = await askFirst(a, b);
             if (meFirst == null) return; // annullato: resta aperta la configurazione
           }
+          // Partita al meglio di N: punteggio condiviso tra i duelli (giocatore 1 / umano = "me").
+          let series = newSeries(options.bestOf);
           // Avvio del duello; il duello di prova si può rigiocare con gli stessi mazzi (rivincita).
           const launch = (meFirst) => {
             const decksByTurn = meFirst ? [a, b] : [b, a];
@@ -181,10 +190,19 @@ export function showLocalSetup(app, { vsCpu }) {
             sleeves[me] = validSleeve(settings.sleeve);
             startSession(app, {
               controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves,
-              // Test Duel: "Rematch" a fine duello, chiedendo di nuovo chi inizia.
+              match: series,
+              // Duello successivo della partita: inizia chi ha perso (pareggio: stesso ordine).
+              onNextGame: (old) => {
+                const p1 = old.cfg.me;
+                const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : meFirst;
+                old.destroy();
+                launch(next);
+              },
+              // Test Duel: "Rematch" a fine duello (o a fine partita), chiedendo di nuovo chi inizia.
               onLocalRematch: vsCpu ? null : async (old) => {
                 const again = await askFirst(a, b);
                 if (again == null) return;
+                series = newSeries(options.bestOf);
                 old.destroy();
                 launch(again);
               },
@@ -259,6 +277,8 @@ async function playMatch(app, match, old = null) {
   if (!result.sameData) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
   }
+  // Partita al meglio di N (opzione dell'host): punteggio condiviso dalle rivincite, nuova a partita finita.
+  if (!match.series || match.series.over) match.series = newSeries(result.options.bestOf);
   const controllers = result.me === 0 ? ["local", "remote"] : ["remote", "local"];
   // Rivincita: la sessione precedente si chiude solo ora (senza chiudere il collegamento).
   if (old) {
@@ -267,6 +287,7 @@ async function playMatch(app, match, old = null) {
   }
   startSession(app, {
     controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, mux: match.mux,
+    match: match.series,
     onRematch: (old) => {
       // Sincrono rispetto al messaggio "rematch": da qui in poi i messaggi appartengono alla partita nuova.
       match.mux.newGame();
