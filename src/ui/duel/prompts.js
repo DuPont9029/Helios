@@ -578,7 +578,14 @@ export class Prompter {
       return { type: respType, places: (mine.length ? mine : zones).slice(0, count) };
     }
     const places = [];
-    this.view.setActionBar({ text: this.title(isPlace ? "Select a zone" : "Select a zone to make unusable", 569) });
+    // Summon in sospeso: "Back" (o tasto destro) annulla la summon e torna alla scelta dell'azione.
+    let goBack = null;
+    const back = this.back ? new Promise((r) => (goBack = () => r("back"))) : null;
+    if (goBack) this.decline = () => goBack();
+    this.view.setActionBar({
+      text: this.title(isPlace ? "Select a zone" : "Select a zone to make unusable", 569),
+      buttons: goBack ? [{ label: "Back", onClick: () => goBack() }] : [],
+    });
     let cancelled = false;
     this.cancelCurrent = () => {
       cancelled = true;
@@ -586,7 +593,13 @@ export class Prompter {
     };
     for (let i = 0; i < count; i++) {
       const left = zones.filter((z) => !places.some((p) => p.player === z.player && p.location === z.location && p.sequence === z.sequence));
-      const pick = await Promise.race([this.board.pickZone(left), new Promise((r) => (this.cancelCurrent = () => r(null)))]);
+      const pick = await Promise.race([this.board.pickZone(left), new Promise((r) => (this.cancelCurrent = () => r(null))), ...(back ? [back] : [])]);
+      if (pick === "back") {
+        this.board.cancelZonePick();
+        this.view.setActionBar(null);
+        this.decline = null;
+        return { back: true };
+      }
       if (pick == null || cancelled) {
         this.board.cancelZonePick();
         this.view.setActionBar(null);
@@ -596,6 +609,7 @@ export class Prompter {
       places.push({ player, location, sequence });
     }
     this.view.setActionBar(null);
+    this.decline = null;
     return { type: respType, places };
   }
 
@@ -620,10 +634,14 @@ export class Prompter {
             return h("button.position-opt", { onclick: () => m.close(p) }, h("div.position-card", face), h("span", label));
           })
         ),
+        this.back && DECLINE_HINT("back"),
       ],
+      // Summon in sospeso: si può ancora tornare indietro.
+      actions: this.back ? [{ label: "Back", value: "back" }] : [],
     });
     this.cancelCurrent = () => m.close(opts[0][0]);
-    return m.result.then((position) => ({ type: RESP.SELECT_POSITION, position }));
+    if (this.back) this.decline = () => m.close("back");
+    return m.result.then((position) => (position === "back" ? { back: true } : { type: RESP.SELECT_POSITION, position }));
   }
 
   // ---------------------------------------------------------------- dichiarazioni

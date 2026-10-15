@@ -77,6 +77,18 @@ function step() {
   return out;
 }
 
+async function newDuel(cfg) {
+  engine?.destroy();
+  const codes = [...cfg.decks[0].main, ...cfg.decks[0].extra, ...cfg.decks[1].main, ...cfg.decks[1].extra];
+  await prefetch([...BASE_SCRIPTS, ...codes.map((c) => `c${c}.lua`)]);
+  engine = new DuelEngine(lib, {
+    getCard: (code) => cards.get(code) ?? null,
+    readScript,
+    log: (type, text) => logs.push({ type, text }),
+  });
+  engine.start(cfg);
+}
+
 self.onmessage = async (e) => {
   const { id, cmd, args } = e.data;
   try {
@@ -87,15 +99,24 @@ self.onmessage = async (e) => {
         result = { version: lib.getVersion() };
         break;
       case "start": {
-        engine?.destroy();
-        const codes = [...args.decks[0].main, ...args.decks[0].extra, ...args.decks[1].main, ...args.decks[1].extra];
-        await prefetch([...BASE_SCRIPTS, ...codes.map((c) => `c${c}.lua`)]);
-        engine = new DuelEngine(lib, {
-          getCard: (code) => cards.get(code) ?? null,
-          readScript,
-          log: (type, text) => logs.push({ type, text }),
-        });
-        engine.start(args);
+        await newDuel(args);
+        result = step();
+        break;
+      }
+      case "replay": {
+        // Ricostruisce lo stato rigiocando da capo le risposte date (il duello è deterministico):
+        // serve ad annullare una summon mentre si sceglie la zona. Gli script sono già in memoria.
+        await newDuel(args.duel);
+        const list = args.responses;
+        if (list.length) {
+          engine.run();
+          for (let i = 0; i < list.length - 1; i++) {
+            engine.respond(list[i]);
+            engine.run();
+          }
+          engine.respond(list[list.length - 1]);
+        }
+        logs.length = 0;
         result = step();
         break;
       }

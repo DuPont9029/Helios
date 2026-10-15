@@ -380,6 +380,16 @@ export class DuelView {
 
   // ---------------------------------------------------------------- registro e chat
 
+  /** Ultima riga del registro (per tornare indietro dopo una summon annullata). */
+  logMark() {
+    return this.logEl.lastElementChild;
+  }
+
+  logRewind(mark) {
+    if (mark && !mark.isConnected) return;
+    while (this.logEl.lastElementChild && this.logEl.lastElementChild !== mark) this.logEl.lastElementChild.remove();
+  }
+
   log(entry) {
     if (!entry) return;
     // I nomi delle carte sono cliccabili: mostrano la carta nel pannello dei dettagli.
