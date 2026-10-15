@@ -1,5 +1,6 @@
 import "./styles/main.css";
 import "./styles/duel.css";
+import "./styles/field-crypt.css";
 import { h, clear, icon, measureRectScale } from "./ui/dom.js";
 import { loadDatabase, db, getCard } from "./data/db.js";
 import { settings } from "./data/settings.js";
