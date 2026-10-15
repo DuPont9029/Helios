@@ -31,6 +31,7 @@ const DEFAULTS = {
   testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)
   testOpponent: "deck", // Test Duel: "deck" (il giocatore 2 ha un mazzo) o "none" (nessun mazzo, passa sempre il turno)
   lastDrawOrder: "random", // contro la CPU: "random" o "ordered" (si pesca nell'ordine del mazzo)
+  bookmarks: [], // editor: codici delle carte salvate tra i preferiti (scheda "Bookmarks")
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };
 

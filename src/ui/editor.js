@@ -3,7 +3,7 @@ import { h, clear, download, pickFile, icon, rect } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
-import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
+import { db, getCard, isExtraDeckCard } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
@@ -181,12 +181,42 @@ export function showEditor(app) {
   let undoStack = [];
   let redoStack = [];
   let banlist = banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
+  // ------------------------------------------------------------ preferiti (bookmark)
+  const isBookmarked = (code) => settings.bookmarks?.includes(code);
+  function toggleBookmark(code) {
+    const list = (settings.bookmarks ?? []).filter((c) => c !== code);
+    if (!isBookmarked(code)) list.unshift(code);
+    settings.bookmarks = list;
+    // Aggiorna tutte le stelle di questa carta (risultati, pannello dettagli) e la scheda.
+    document.querySelectorAll(`[data-bm="${code}"]`).forEach((b) => paintBookmark(b, code));
+    refreshTabs?.();
+    if (tab === "bookmarks") runSearch();
+  }
+  function paintBookmark(btn, code) {
+    const on = isBookmarked(code);
+    btn.classList.toggle("on", on);
+    btn.title = on ? "Remove from bookmarks" : "Bookmark this card";
+    clear(btn).append(icon(on ? "bookmark_added" : "bookmark_add"), btn.classList.contains("bm-detail") ? (on ? " Bookmarked" : " Bookmark") : "");
+  }
+  function bookmarkButton(code, cls = "bm") {
+    const btn = h(`button.${cls}`, {
+      dataset: { bm: code },
+      onclick: (e) => { e.stopPropagation(); toggleBookmark(code); },
+      oncontextmenu: (e) => e.stopPropagation(),
+    });
+    paintBookmark(btn, code);
+    return btn;
+  }
+  let tab = "all"; // scheda della ricerca: "all" (tutte le carte) o "bookmarks"
+  let refreshTabs = null;
+
   const detail = createDetailPanel({
     actions: (code) => {
       const extra = isExtraDeckCard(getCard(code));
       return [
         h("button.btn.small.add-main", { onclick: () => addCard(code) }, extra ? "+ Extra" : "+ Main"),
         h("button.btn.small.add-side", { onclick: () => addCard(code, "side") }, "+ Side"),
+        bookmarkButton(code, "btn.small.bm-detail"),
       ];
     },
   });
@@ -718,10 +748,11 @@ export function showEditor(app) {
     const def = fDef.value === "" ? null : +fDef.value;
     const lim = fLimit.value;
     const fmt = fFormat.value ? OT[fFormat.value] : 0;
-    found = db.list.filter((c) => {
-      if (c.type & TYPE.TOKEN || c.type & TYPE.SKILL) return false;
-      if (!fUnoff.checked && c.source === 1) return false;
-      if (c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
+    const marks = tab === "bookmarks" ? new Map((settings.bookmarks ?? []).map((c, i) => [c, i])) : null;
+    found = (marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list).filter((c) => {
+      if (!marks && (c.type & TYPE.TOKEN || c.type & TYPE.SKILL)) return false;
+      if (!marks && !fUnoff.checked && c.source === 1) return false;
+      if (!marks && c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
       if (fmt && !(c.ot & fmt)) return false;
       if (type === "monster" && !(c.type & TYPE.MONSTER)) return false;
       if (type === "spell" && !(c.type & TYPE.SPELL)) return false;
@@ -748,27 +779,27 @@ export function showEditor(app) {
     renderResults();
   }
 
+  // Risultati come carte in griglia, come nel mazzo: il nome compare nel pannello dei dettagli.
   function renderResults() {
-    resultInfo.textContent = `${found.length} cards`;
+    resultInfo.textContent = tab === "bookmarks" && !(settings.bookmarks ?? []).length ? "No bookmarks yet: use the bookmark icon on a card" : `${found.length} cards`;
     clear(results).append(
       ...found.slice(0, shown).map((c) => {
-        const plus = h("button.result-add", { title: "Add (right-click: Side)" }, icon("add"));
-        const row = h(
-          "div.result-row",
-          { draggable: true },
+        const tile = h(
+          "div.result-card",
+          { draggable: true, title: c.name },
           cardFace(c.code),
-          h("div.result-text", h("div.result-name", c.name, regionBadge(c.code)), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))),
           limitBadge(c.code),
-          plus
+          regionBadge(c.code),
+          bookmarkButton(c.code)
         );
-        row.addEventListener("mouseenter", () => detail.show(c.code));
-        row.addEventListener("click", () => addCard(c.code));
-        row.addEventListener("contextmenu", (e) => {
+        tile.addEventListener("mouseenter", () => detail.show(c.code));
+        tile.addEventListener("click", () => addCard(c.code));
+        tile.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           addCard(c.code, "side");
         });
-        row.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code: c.code })));
-        return row;
+        tile.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code: c.code })));
+        return tile;
       }),
       ...(found.length > shown ? [h("button.btn.ghost.more", { onclick: () => { shown += 200; renderResults(); } }, `Show more (${found.length - shown})`)] : [])
     );
@@ -805,16 +836,32 @@ export function showEditor(app) {
   for (const el of [fLevel, fAtk, fDef]) el.addEventListener("input", () => setFilters(settings.editorFilters));
   setFilters(settings.editorFilters !== false);
 
+  const tabAll = h("button.search-tab", { onclick: () => setTab("all") }, icon("view_module"), " Cards");
+  const tabMarks = h("button.search-tab", { onclick: () => setTab("bookmarks") });
+  refreshTabs = () => {
+    tabAll.classList.toggle("on", tab === "all");
+    tabMarks.classList.toggle("on", tab === "bookmarks");
+    const n = (settings.bookmarks ?? []).length;
+    clear(tabMarks).append(icon("bookmarks"), " Bookmarks", h("b.filter-count", n ? String(n) : ""));
+  };
+  function setTab(t) {
+    tab = t;
+    refreshTabs();
+    runSearch();
+    results.scrollTop = 0;
+  }
+  refreshTabs();
+
   const search = h(
     "aside.search-panel",
-    h("div.search-tabs", h("span.search-tab.on", icon("view_list"), " Card list"), filterToggle),
+    h("div.search-tabs", tabAll, tabMarks, filterToggle),
     q,
     filters,
     resultInfo,
     results,
     h(
       "p.muted.small.hint",
-      "Search: click adds, right-click adds to Side. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
+      "Search: click adds, right-click adds to Side, the bookmark icon saves the card in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
     )
   );
 
