@@ -38,9 +38,6 @@ export function openModal({ title, body = [], actions = [], dismissable = true, 
   }
   if (dismissable) {
     backdrop.addEventListener("mousedown", (e) => e.target === backdrop && close(undefined));
-    // Chiudibile anche con il tasto destro (vedi l'ascoltatore qui sotto).
-    backdrop.classList.add("dismissable");
-    backdrop.modalClose = close;
   }
   const onKey = (e) => {
     if (e.key === "Escape" && dismissable) close(undefined);
@@ -50,22 +47,6 @@ export function openModal({ title, body = [], actions = [], dismissable = true, 
   document.body.append(backdrop);
   return { el: box, body: bodyEl, footer, buttons, close, result };
 }
-
-// Tasto destro: chiude la finestra in primo piano se si può chiudere (Close/Annulla, clic fuori, Esc).
-// Fase di cattura: arriva prima del tasto destro del duello, che altrimenti rifiuterebbe la scelta sotto.
-// Nei campi di testo resta il menu del browser (incolla, ecc.).
-window.addEventListener(
-  "contextmenu",
-  (e) => {
-    const top = [...document.querySelectorAll(".modal-backdrop:not(.closing)")].at(-1);
-    if (!top?.modalClose || top.classList.contains("minimized")) return;
-    if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
-    e.preventDefault();
-    e.stopPropagation();
-    top.modalClose(undefined);
-  },
-  true
-);
 
 export function alertModal(title, message) {
   return openModal({ title, body: [h("p", message)], actions: [{ label: "OK", primary: true, value: true }] }).result;
