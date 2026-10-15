@@ -44,6 +44,32 @@ export class DuelView {
     // Sul documento: le finestre delle richieste stanno fuori dal campo (in <body>).
     this.contextHandler = (e) => this.onContextMenu(e);
     document.addEventListener("contextmenu", this.contextHandler);
+    this.heldChain = null;
+    this.buttonsHandler = (e) => this.onPointerButtons(e);
+    this.releaseHandler = () => this.onPointerButtons({ buttons: 0 });
+    for (const ev of ["pointerdown", "pointerup", "pointermove"]) document.addEventListener(ev, this.buttonsHandler, true);
+    window.addEventListener("blur", this.releaseHandler);
+  }
+
+  /** Modo della catena in questo momento: quello tenuto premuto con il mouse, altrimenti quello scelto. */
+  chainModeNow() {
+    return this.heldChain ?? settings.chainMode;
+  }
+
+  paintChainMode() {
+    const now = this.chainModeNow();
+    for (const b of this.chainBtns ?? []) {
+      b.classList.toggle("on", b.dataset.mode === settings.chainMode);
+      b.classList.toggle("held", !!this.heldChain && b.dataset.mode === now);
+    }
+  }
+
+  /** Pulsanti del mouse tenuti premuti (e.buttons): destro = never, sinistro = always ask. */
+  onPointerButtons(e) {
+    const held = e.buttons & 2 ? "never" : e.buttons & 1 ? "always" : null;
+    if (held === this.heldChain) return;
+    this.heldChain = held;
+    this.paintChainMode();
   }
 
   hover(code) {
@@ -101,14 +127,14 @@ export class DuelView {
     tabs.firstChild.classList.add("on");
     panes.chat.hidden = true;
 
-    this.chainMode = h(
-      "select.select.small",
-      { title: "When to ask about activating in Chain", onchange: (e) => (settings.chainMode = e.target.value) },
-      h("option", { value: "auto" }, "Chain: auto"),
-      h("option", { value: "always" }, "Chain: always ask"),
-      h("option", { value: "never" }, "Chain: never")
+    // Catena: tre pulsanti esclusivi (auto / always ask / never). Tenendo premuto il mouse si cambia
+    // modo al volo: sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
+    const CHAIN_MODES = [["auto", "Auto", "Ask only when a card or effect can be activated"], ["always", "Always", "Always ask (also hold the left mouse button)"], ["never", "Never", "Never ask (also hold the right mouse button)"]];
+    this.chainBtns = CHAIN_MODES.map(([mode, label, title]) =>
+      h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label)
     );
-    this.chainMode.value = settings.chainMode;
+    this.chainMode = h("div.chain-mode", h("span.chain-label", "Chain"), h("div.chain-btns", this.chainBtns));
+    this.paintChainMode();
 
     this.overlay = h("div.fx-layer");
     // Richieste compatte (catena, "usare l'effetto?"): non coprono il campo, che resta cliccabile.
@@ -619,6 +645,8 @@ export class DuelView {
 
   destroy() {
     document.removeEventListener("contextmenu", this.contextHandler);
+    for (const ev of ["pointerdown", "pointerup", "pointermove"]) document.removeEventListener(ev, this.buttonsHandler, true);
+    window.removeEventListener("blur", this.releaseHandler);
     this.prompter.abort();
     this.closeActionMenu();
     this.el.remove();

@@ -284,7 +284,7 @@ export class Prompter {
    */
   chain(msg) {
     const n = msg.selects.length;
-    const auto = settings.chainMode;
+    const auto = this.view.chainModeNow?.() ?? settings.chainMode;
     if (!msg.forced && (n === 0 || auto === "never")) return Promise.resolve({ type: RESP.SELECT_CHAIN, index: null });
     if (msg.forced && n === 1 && auto !== "always") return Promise.resolve({ type: RESP.SELECT_CHAIN, index: 0 });
     return new Promise((resolve) => {
