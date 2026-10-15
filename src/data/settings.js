@@ -33,6 +33,7 @@ const DEFAULTS = {
   testOpponent: "deck", // Test Duel: "deck" (il giocatore 2 ha un mazzo) o "none" (nessun mazzo, passa sempre il turno)
   lastDrawOrder: "random", // contro la CPU: "random" o "ordered" (si pesca nell'ordine del mazzo)
   bookmarks: [], // editor: codici delle carte salvate tra i preferiti (scheda "Bookmarks")
+  bookmarksSeeded: [], // preferiti predefiniti già proposti (vedi src/data/bookmarks.js)
   editorView: "grid", // editor: risultati della ricerca come carte ("grid") o come lista ("list")
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };
