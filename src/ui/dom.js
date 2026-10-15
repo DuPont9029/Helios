@@ -56,3 +56,28 @@ export function pickFile(accept) {
     input.click();
   });
 }
+
+// --- Zoom dell'interfaccia (vedi fitScreen in main.js).
+// Con lo zoom sulla pagina, getBoundingClientRect() può restituire pixel dello schermo mentre le lunghezze
+// assegnate in CSS vengono di nuovo moltiplicate per lo zoom. Il fattore si misura con un elemento di prova
+// (i browser non si comportano tutti allo stesso modo) e rect() riporta le misure in pixel CSS.
+let rectScale = 1;
+export function measureRectScale() {
+  const probe = h("div", { style: { position: "fixed", left: "0", top: "0", width: "100px", height: "1px", visibility: "hidden" } });
+  document.body.append(probe);
+  rectScale = probe.getBoundingClientRect().width / 100 || 1;
+  probe.remove();
+}
+
+/** getBoundingClientRect() in pixel CSS della pagina (da usare per posizionare elementi). */
+export function rect(el) {
+  const r = el.getBoundingClientRect();
+  const k = rectScale;
+  return { left: r.left / k, top: r.top / k, right: r.right / k, bottom: r.bottom / k, width: r.width / k, height: r.height / k, x: r.x / k, y: r.y / k };
+}
+
+/** Dimensioni della finestra in pixel CSS della pagina. */
+export const viewportSize = () => ({ width: window.innerWidth / rectScale, height: window.innerHeight / rectScale });
+
+/** Coordinate di un evento del puntatore in pixel CSS della pagina. */
+export const pointer = (e) => ({ x: e.clientX / rectScale, y: e.clientY / rectScale });

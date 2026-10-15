@@ -6,7 +6,7 @@
   gap: 10px;
   padding: 10px;
   /* Campo piatto visto dall'alto: 5 righe di zone + le due mani devono stare nell'altezza dello schermo. */
-  --zh: min(calc((100vh - 110px) / 7.3), calc((100vw - 540px) / 7.6));
+  --zh: min(calc((calc(var(--vh) * 100) - 110px) / 7.3), calc((calc(var(--vw) * 100) - 540px) / 7.6));
   --cw: calc(var(--zh) / 1.46 * 0.9);
 }
 .duel-screen.shake { animation: shake 0.35s; }
@@ -123,7 +123,7 @@
 
 /* ------------------------------------------------------------------ mani */
 .hand { display: flex; justify-content: center; align-items: flex-end; min-width: 0; flex: 1; }
-.hand .card { width: calc(var(--cw) * 1.2); margin: 0 calc(min(0px, (60vw - var(--n, 5) * var(--cw) * 1.25) / var(--n, 5) / 2)); transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
+.hand .card { width: calc(var(--cw) * 1.2); margin: 0 calc(min(0px, (calc(var(--vw) * 60) - var(--n, 5) * var(--cw) * 1.25) / var(--n, 5) / 2)); transition: transform 0.15s, box-shadow 0.15s; cursor: default; }
 .hand-0 .card:hover { transform: translateY(-18%) scale(1.06); z-index: 5; }
 .hand-0 .card.revealed { box-shadow: 0 0 0 2px var(--gold); }
 .hand-1 .card { width: calc(var(--cw) * 0.75); }
@@ -263,7 +263,7 @@
 .position-card .card { width: 80px; }
 .position-card .card.defense { transform: rotate(90deg); }
 .toggle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; }
-.announce-list { display: flex; flex-direction: column; gap: 3px; max-height: 50vh; overflow: auto; }
+.announce-list { display: flex; flex-direction: column; gap: 3px; max-height: calc(var(--vh) * 50); overflow: auto; }
 .announce-row { display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: center; padding: 4px 8px; border: 0; background: none; border-radius: 6px; text-align: left; cursor: pointer; }
 .announce-row:hover { background: rgba(53, 198, 244, 0.15); }
 .pile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; }
@@ -280,18 +280,18 @@
   animation: banner 1.4s forwards;
 }
 .banner span {
-  font: 700 clamp(22px, 3.4vw, 46px) var(--display); letter-spacing: 0.18em; text-transform: uppercase; padding: 8px 60px;
+  font: 700 clamp(22px, calc(var(--vw) * 3.4), 46px) var(--display); letter-spacing: 0.18em; text-transform: uppercase; padding: 8px 60px;
   background: linear-gradient(90deg, transparent, rgba(5, 5, 8, 0.92) 20%, rgba(5, 5, 8, 0.92) 80%, transparent);
   border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); text-shadow: 0 0 18px rgba(182, 244, 0, 0.6);
 }
-.banner.phase span { font-size: clamp(16px, 2vw, 26px); border-color: rgba(182, 244, 0, 0.4); }
-.banner.hint span { font-size: clamp(14px, 1.6vw, 20px); letter-spacing: 0.04em; text-transform: none; border-color: var(--gold); }
+.banner.phase span { font-size: clamp(16px, calc(var(--vw) * 2), 26px); border-color: rgba(182, 244, 0, 0.4); }
+.banner.hint span { font-size: clamp(14px, calc(var(--vw) * 1.6), 20px); letter-spacing: 0.04em; text-transform: none; border-color: var(--gold); }
 .banner.warn span { color: #ff8a9a; border-color: var(--danger); }
 .banner.turn span { color: #fff; }
 @keyframes banner { from { opacity: 0; transform: translateY(-50%) scaleY(0.2); } 12% { opacity: 1; transform: translateY(-50%); } 80% { opacity: 1; } to { opacity: 0; } }
 .splash { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; background: radial-gradient(circle, rgba(0, 0, 0, 0.65), transparent 60%); animation: fade-in 0.15s; }
 .splash.out { animation: fade-out 0.25s forwards; }
-.splash-card { width: clamp(120px, 14vw, 200px); animation: splash-card 0.75s ease-out; filter: drop-shadow(0 0 30px rgba(53, 198, 244, 0.7)); }
+.splash-card { width: clamp(120px, calc(var(--vw) * 14), 200px); animation: splash-card 0.75s ease-out; filter: drop-shadow(0 0 30px rgba(53, 198, 244, 0.7)); }
 .splash.spsummon .splash-card { filter: drop-shadow(0 0 30px rgba(232, 194, 90, 0.9)); }
 .splash.chain .splash-card { filter: drop-shadow(0 0 30px rgba(180, 140, 255, 0.9)); }
 .splash-label { font: 700 22px var(--display); letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); text-shadow: 0 0 12px rgba(0, 0, 0, 0.9); }
@@ -312,16 +312,12 @@
   position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; pointer-events: none;
   background: radial-gradient(circle, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.5)); animation: fade-in 0.4s;
 }
-.result-title { font: 700 clamp(48px, 8vw, 110px) var(--display); letter-spacing: 0.2em; animation: pop-in 0.5s; }
+.result-title { font: 700 clamp(48px, calc(var(--vw) * 8), 110px) var(--display); letter-spacing: 0.2em; animation: pop-in 0.5s; }
 .result.win .result-title { color: var(--gold); text-shadow: 0 0 40px rgba(232, 194, 90, 0.8); }
 .result.lose .result-title { color: #ff5a6e; text-shadow: 0 0 40px rgba(255, 90, 110, 0.7); }
 .result.draw .result-title { color: var(--accent); }
 .result-sub { font-size: 18px; color: var(--muted); }
 
-@media (max-width: 1100px) {
-  .duel-screen { grid-template-columns: 1fr 180px; --zh: min(calc((100vh - 110px) / 7.3), calc((100vw - 260px) / 7.6)); }
-  .duel-side { display: none; }
-}
 .decline-hint { margin: 4px 0 0; text-align: right; font-family: var(--mono); letter-spacing: 0.04em; }
 
 /* ------------------------------------------------------------------ sleeve personalizzato
@@ -359,7 +355,7 @@
 /* ------------------------------------------------------------------ carte rivelate */
 .splash.reveal { gap: 8px; }
 .reveal-row { display: flex; gap: 14px; justify-content: center; max-width: 90%; }
-.reveal-row .splash-card { width: clamp(90px, calc(min(14vw, 200px) * 3.2 / (var(--n, 1) + 2.2)), 200px); filter: drop-shadow(0 0 26px rgba(255, 226, 122, 0.8)); }
+.reveal-row .splash-card { width: clamp(90px, calc(min(calc(var(--vw) * 14), 200px) * 3.2 / (var(--n, 1) + 2.2)), 200px); filter: drop-shadow(0 0 26px rgba(255, 226, 122, 0.8)); }
 
 /* ------------------------------------------------------------------ gemme delle zone Pendulum */
 .pz-gem {

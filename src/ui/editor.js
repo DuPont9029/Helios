@@ -1,5 +1,5 @@
 // Deck Editor: ricerca carte, costruzione del mazzo, banlist, import/export.
-import { h, clear, download, pickFile, icon } from "./dom.js";
+import { h, clear, download, pickFile, icon, rect } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
@@ -389,7 +389,7 @@ export function showEditor(app) {
   const menu = (label, items) => {
     const btn = h("button.btn", label);
     btn.addEventListener("click", () => {
-      const r = btn.getBoundingClientRect();
+      const r = rect(btn);
       const m = h("div.dropdown", items.map(([text, fn]) => h("button.dropdown-item", { onclick: () => { m.remove(); fn(); } }, text)));
       Object.assign(m.style, { left: r.left + "px", top: r.bottom + 4 + "px" });
       document.body.append(m);

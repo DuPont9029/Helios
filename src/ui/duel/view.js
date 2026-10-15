@@ -1,5 +1,5 @@
 // Schermata del duello: campo, HUD, registro/chat e animazioni dei messaggi.
-import { h, clear, sleep } from "../dom.js";
+import { h, clear, sleep, rect, viewportSize } from "../dom.js";
 import { cardFace } from "../card.js";
 import { openModal } from "../modal.js";
 import { createDetailPanel } from "../detail.js";
@@ -199,7 +199,7 @@ export class DuelView {
 
   openActionMenu(anchor, items) {
     this.closeActionMenu();
-    const r = anchor.getBoundingClientRect();
+    const r = rect(anchor);
     const menu = h(
       "div.action-menu",
       items.map((it) => h(`button.action-item${it.glow === "attack" ? ".attack" : ""}`, { title: it.title || null, onclick: (e) => { e.stopPropagation(); this.closeActionMenu(); it.onClick(); } }, it.label))
@@ -207,7 +207,7 @@ export class DuelView {
     document.body.append(menu);
     const mw = menu.offsetWidth;
     const mh = menu.offsetHeight;
-    menu.style.left = Math.max(8, Math.min(innerWidth - mw - 8, r.left + r.width / 2 - mw / 2)) + "px";
+    menu.style.left = Math.max(8, Math.min(viewportSize().width - mw - 8, r.left + r.width / 2 - mw / 2)) + "px";
     menu.style.top = (r.top - mh - 8 > 8 ? r.top - mh - 8 : r.bottom + 8) + "px";
     this.menu = menu;
     const off = (e) => {
@@ -251,12 +251,13 @@ export class DuelView {
     } else {
       box.classList.add("floating");
       document.body.append(box);
-      const r = anchor.getBoundingClientRect();
+      const r = rect(anchor);
       const bw = box.offsetWidth;
       const bh = box.offsetHeight;
-      const right = r.right + 12 + bw < innerWidth - 8;
+      const vp = viewportSize();
+      const right = r.right + 12 + bw < vp.width - 8;
       const left = right ? r.right + 12 : Math.max(8, r.left - 12 - bw);
-      const top = Math.max(8, Math.min(innerHeight - bh - 8, r.top + r.height / 2 - bh / 2));
+      const top = Math.max(8, Math.min(vp.height - bh - 8, r.top + r.height / 2 - bh / 2));
       Object.assign(box.style, { left: left + "px", top: top + "px" });
       box.classList.add(right ? "at-right" : "at-left");
     }
@@ -347,7 +348,7 @@ export class DuelView {
 
   rectOf(p, loc, seq) {
     const el = this.board.zoneEl(p, loc, seq);
-    return el?.getBoundingClientRect() ?? null;
+    return el ? rect(el) : null;
   }
 
   async fly(from, to, code, faceDown, owner) {
@@ -356,7 +357,7 @@ export class DuelView {
     if (owner != null) ghost.dataset.owner = owner;
     ghost.classList.add("fly-ghost");
     const w = 64;
-    const host = this.overlay.getBoundingClientRect();
+    const host = rect(this.overlay);
     Object.assign(ghost.style, { width: w + "px", left: from.left - host.left + from.width / 2 - w / 2 + "px", top: from.top - host.top + from.height / 2 - (w * 1.46) / 2 + "px" });
     this.overlay.append(ghost);
     const dx = to.left + to.width / 2 - (from.left + from.width / 2);
@@ -374,9 +375,9 @@ export class DuelView {
     const a = this.rectOf(attacker.controller, attacker.location, attacker.sequence);
     const t = target
       ? this.rectOf(target.controller, target.location, target.sequence)
-      : this.lpEls[this.board.side(1 - attacker.controller)].el.getBoundingClientRect();
+      : rect(this.lpEls[this.board.side(1 - attacker.controller)].el);
     if (!a || !t) return;
-    const host = this.overlay.getBoundingClientRect();
+    const host = rect(this.overlay);
     const x1 = a.left + a.width / 2 - host.left;
     const y1 = a.top + a.height / 2 - host.top;
     const x2 = t.left + t.width / 2 - host.left;
@@ -465,7 +466,7 @@ export class DuelView {
         return this.banner(PHASE_NAMES[m.phase] ?? "", "phase");
       case MSG.DRAW: {
         const from = this.rectOf(m.player, LOC.DECK, 0);
-        const to = this.board.handEl(m.player).getBoundingClientRect();
+        const to = rect(this.board.handEl(m.player));
         for (const d of m.drawn) {
           await this.fly(from, to, d.code, !(this.reveal || m.player === this.me), m.player);
         }
