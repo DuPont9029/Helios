@@ -404,9 +404,6 @@ input[type="range"] { accent-color: var(--accent); }
 .result-card:hover .bm, .bm.on { opacity: 1; }
 .bm.on { background: var(--gold); border-color: #fff; color: var(--on-gold); }
 .bm:hover { border-color: var(--accent); }
-.bm-detail.on { background: var(--gold); border-color: var(--gold); color: var(--on-gold); }
-.bm-detail .icon { font-size: 15px; }
-.detail-actions .bm-detail { grid-column: 1 / -1; }
 .search-tab.bm-drop, .results.bm-drop { outline: 2px dashed var(--gold); outline-offset: -2px; background: rgba(255, 210, 60, 0.12); }
 button.search-tab { border: 0; background: none; cursor: pointer; white-space: nowrap; padding-left: 6px; padding-right: 6px; }
 .more { margin: 6px auto; }
@@ -502,8 +499,6 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
 .chip.wind { --c: #1d8f50; } .chip.earth { --c: #6b5a44; } .chip.divine { --c: #b8902a; }
 .chips.attrs .chip { font-size: 9px; }
 .detail-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.detail-actions .add-main { border-color: rgba(255, 70, 90, 0.7); background: rgba(217, 35, 56, 0.22); }
-.detail-actions .add-side { border-color: rgba(31, 107, 255, 0.8); background: rgba(31, 107, 255, 0.2); }
 .detail-panel { background: rgba(8, 9, 14, 0.88); border: 1px solid var(--line-strong); }
 .validity { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; font-size: 12px; border-radius: 0; }
 .turn-custom { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }

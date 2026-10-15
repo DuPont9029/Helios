@@ -196,7 +196,7 @@ export function showEditor(app) {
     const on = isBookmarked(code);
     btn.classList.toggle("on", on);
     btn.title = on ? "Remove from bookmarks" : "Bookmark this card";
-    clear(btn).append(icon(on ? "bookmark_added" : "bookmark_add"), btn.classList.contains("bm-detail") ? (on ? " Bookmarked" : " Bookmark") : "");
+    clear(btn).append(icon(on ? "bookmark_added" : "bookmark_add"));
   }
   function bookmarkButton(code, cls = "bm") {
     const btn = h(`button.${cls}`, {
@@ -210,16 +210,7 @@ export function showEditor(app) {
   let tab = "all"; // scheda della ricerca: "all" (tutte le carte) o "bookmarks"
   let refreshTabs = null;
 
-  const detail = createDetailPanel({
-    actions: (code) => {
-      const extra = isExtraDeckCard(getCard(code));
-      return [
-        h("button.btn.small.add-main", { onclick: () => addCard(code) }, extra ? "+ Extra" : "+ Main"),
-        h("button.btn.small.add-side", { onclick: () => addCard(code, "side") }, "+ Side"),
-        bookmarkButton(code, "btn.small.bm-detail"),
-      ];
-    },
-  });
+  const detail = createDetailPanel();
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
   const snap = () => JSON.stringify({ name: deck.name, main: deck.main, extra: deck.extra, side: deck.side });
@@ -866,7 +857,10 @@ export function showEditor(app) {
     target.addEventListener("dragover", (e) => {
       if (!active()) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = "copy";
+      // L'effetto deve essere tra quelli permessi da chi trascina: le carte del mazzo permettono solo
+      // "move" (con "copy" il browser rifiuterebbe il rilascio), quelle dei risultati anche "copy".
+      const allowed = e.dataTransfer.effectAllowed;
+      e.dataTransfer.dropEffect = /copy|all|uninitialized/i.test(allowed) ? "copy" : "move";
       target.classList.add("bm-drop");
     });
     target.addEventListener("dragleave", (e) => !target.contains(e.relatedTarget) && target.classList.remove("bm-drop"));
