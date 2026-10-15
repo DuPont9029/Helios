@@ -1,6 +1,6 @@
 /* ------------------------------------------------------------------ token
    Stile ispirato a MDPro3, progettato con Google Stitch (progetto "YGO Web", ora Helios):
-   fondo nero con scie rosse/blu, pannelli con bordo bianco sottile e angoli smussati, accento lime. */
+   fondo nero con scie rosse/blu, pannelli con bordo bianco sottile e angoli smussati, accento azzurro (prima lime). */
 :root {
   --bg: #07070a;
   --bg-2: #0b0c12;
@@ -10,15 +10,15 @@
   --panel-3: #1d2030;
   --line: rgba(255, 255, 255, 0.12);
   --line-strong: rgba(255, 255, 255, 0.55);
-  --line-gold: rgba(182, 244, 0, 0.55);
+  --line-gold: rgba(56, 198, 255, 0.55);
   --text: #eef0f6;
   --muted: #8b90a0;
-  --accent: #b6f400;
-  --accent-soft: #d4ff4f;
+  --accent: #38c6ff;
+  --accent-soft: #9ae2ff;
   --accent-2: #b48cff;
   --cyan: #00e0ff;
-  --gold: #b6f400;
-  --on-gold: #0d1200;
+  --gold: #38c6ff;
+  --on-gold: #001522;
   --star: #ffc52e;
   --danger: #ff3b4e;
   --ok: #3ddc84;
@@ -75,9 +75,9 @@ button { font: inherit; color: inherit; }
 
 .tag {
   display: inline-block; font: 500 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 4px 7px; border: 1px solid var(--line-strong); color: var(--accent-soft); background: rgba(182, 244, 0, 0.06);
+  padding: 4px 7px; border: 1px solid var(--line-strong); color: var(--accent-soft); background: rgba(56, 198, 255, 0.06);
 }
-.tag.gold { border-color: var(--line-gold); color: var(--gold); background: rgba(182, 244, 0, 0.08); }
+.tag.gold { border-color: var(--line-gold); color: var(--gold); background: rgba(56, 198, 255, 0.08); }
 .tag.solid { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 700; }
 .label { font: 500 11px/1.3 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 
@@ -96,18 +96,18 @@ button { font: inherit; color: inherit; }
   transition: transform 0.08s, background 0.15s, border-color 0.15s, color 0.15s;
   white-space: nowrap;
 }
-.btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(182, 244, 0, 0.12); color: #fff; }
+.btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(56, 198, 255, 0.12); color: #fff; }
 /* Premuto: solo più scuro, senza spostarsi (lo spostamento faceva comparire barre di scorrimento nelle finestre). */
 .btn:active:not(:disabled) { filter: brightness(0.85); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--on-gold); font-weight: 700; }
-.btn.primary:hover:not(:disabled) { background: #d4ff4f; border-color: #d4ff4f; color: var(--on-gold); }
+.btn.primary:hover:not(:disabled) { background: #9ae2ff; border-color: #9ae2ff; color: var(--on-gold); }
 .btn.danger { background: rgba(255, 90, 110, 0.12); border-color: rgba(255, 90, 110, 0.6); color: #ff9aa8; }
 .btn.danger:hover:not(:disabled) { background: #c8263e; border-color: #ff5a6e; color: #fff; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--muted); }
-.btn.ghost:hover:not(:disabled) { color: var(--text); background: rgba(182, 244, 0, 0.08); border-color: transparent; }
+.btn.ghost:hover:not(:disabled) { color: var(--text); background: rgba(56, 198, 255, 0.08); border-color: transparent; }
 .btn.small { padding: 4px 10px; font-size: 11px; }
-.btn.toggle.on { background: rgba(182, 244, 0, 0.2); border-color: var(--accent); color: #fff; }
+.btn.toggle.on { background: rgba(56, 198, 255, 0.2); border-color: var(--accent); color: #fff; }
 
 .input, .select, textarea.input {
   width: 100%;
@@ -158,7 +158,7 @@ input[type="range"] { accent-color: var(--accent); }
 .logo { display: inline-flex; align-items: baseline; gap: 0; font: 700 26px var(--display); letter-spacing: 0.04em; color: #fff; text-transform: uppercase; }
 .logo b { color: var(--accent); font-weight: 700; }
 .logo.big { font-size: 64px; justify-content: center; }
-.logo-mark { margin-right: 12px; color: var(--accent); text-shadow: 0 0 18px rgba(182, 244, 0, 0.6); }
+.logo-mark { margin-right: 12px; color: var(--accent); text-shadow: 0 0 18px rgba(56, 198, 255, 0.6); }
 
 /* ------------------------------------------------------------------ home (stile MDPro3) */
 .home {
@@ -171,7 +171,7 @@ input[type="range"] { accent-color: var(--accent); }
 .home-user { margin-left: auto; text-align: right; font: 500 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .home-user b { display: block; color: var(--accent); font-size: 14px; }
 .btn.round { width: 44px; height: 44px; padding: 0; border-radius: 50%; clip-path: none; display: grid; place-items: center; font-size: 22px; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.5); color: var(--accent); }
-.btn.round:hover:not(:disabled) { border-color: var(--accent); background: rgba(182, 244, 0, 0.12); color: var(--accent); }
+.btn.round:hover:not(:disabled) { border-color: var(--accent); background: rgba(56, 198, 255, 0.12); color: var(--accent); }
 .menu { grid-row: 2 / 4; display: flex; flex-direction: column; justify-content: center; gap: clamp(4px, calc(var(--vh) * 1.2), 14px); padding: 20px 48px; position: relative; z-index: 2; }
 .menu-item {
   appearance: none; background: none; border: 0; cursor: pointer; text-align: left; color: var(--text);
@@ -180,13 +180,13 @@ input[type="range"] { accent-color: var(--accent); }
 }
 .menu-item::before {
   content: ""; position: absolute; left: 0; top: 14%; bottom: 14%; width: 4px; background: var(--accent);
-  box-shadow: 0 0 10px rgba(182, 244, 0, 0.6); transition: width 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 10px rgba(56, 198, 255, 0.6); transition: width 0.15s, box-shadow 0.15s;
 }
 .menu-title { font: 700 clamp(34px, calc(var(--vh) * 6.4), 64px)/1.02 var(--display); text-transform: uppercase; letter-spacing: 0.01em; text-shadow: 0 2px 0 rgba(0, 0, 0, 0.6); }
 .menu-sub { font: 500 12px var(--mono); letter-spacing: 0.08em; color: var(--muted); max-height: 0; opacity: 0; overflow: hidden; transition: max-height 0.2s, opacity 0.2s; }
 .menu-item:hover, .menu-item:focus-visible { transform: translateX(10px); color: #fff; outline: none; }
-.menu-item:hover::before, .menu-item:focus-visible::before { width: 8px; box-shadow: 0 0 18px rgba(182, 244, 0, 0.9); }
-.menu-item:hover .menu-title, .menu-item:focus-visible .menu-title { color: var(--accent-soft); text-shadow: 0 0 24px rgba(182, 244, 0, 0.35); }
+.menu-item:hover::before, .menu-item:focus-visible::before { width: 8px; box-shadow: 0 0 18px rgba(56, 198, 255, 0.9); }
+.menu-item:hover .menu-title, .menu-item:focus-visible .menu-title { color: var(--accent-soft); text-shadow: 0 0 24px rgba(56, 198, 255, 0.35); }
 .menu-item:hover .menu-sub, .menu-item:focus-visible .menu-sub { max-height: 20px; opacity: 1; }
 
 /* emblema astratto al posto dell'illustrazione */
@@ -227,7 +227,7 @@ input[type="range"] { accent-color: var(--accent); }
 .row-group { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .room-code {
   font: 700 44px var(--mono); letter-spacing: 0.25em; color: var(--gold); text-align: center; min-height: 64px; user-select: all;
-  padding: 6px 0; border: 1px dashed var(--line-gold); background: rgba(182, 244, 0, 0.05); text-shadow: 0 0 20px rgba(182, 244, 0, 0.35);
+  padding: 6px 0; border: 1px dashed var(--line-gold); background: rgba(56, 198, 255, 0.05); text-shadow: 0 0 20px rgba(56, 198, 255, 0.35);
 }
 .room-code:empty { border-color: rgba(255, 255, 255, 0.25); background: none; }
 .input.code { font: 700 26px var(--mono); letter-spacing: 0.3em; text-align: center; text-transform: uppercase; padding: 12px; }
@@ -248,7 +248,7 @@ input[type="range"] { accent-color: var(--accent); }
 .card.back .card-back, .card-back {
   position: absolute; inset: 0;
   background:
-    radial-gradient(circle at 50% 50%, rgba(182, 244, 0, 0.9) 0 9%, transparent 10%),
+    radial-gradient(circle at 50% 50%, rgba(56, 198, 255, 0.9) 0 9%, transparent 10%),
     conic-gradient(from 45deg at 50% 50%, #2b1a0c, #6b3f12, #2b1a0c, #6b3f12, #2b1a0c),
     #3a220c;
   border: 3px solid #1a0f06;
@@ -331,7 +331,7 @@ input[type="range"] { accent-color: var(--accent); }
   display: flex; align-items: center; gap: 8px; position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
   pointer-events: auto; cursor: pointer; padding: 10px 18px; max-width: calc(var(--vw) * 60);
   font: 700 15px var(--display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--on-gold);
-  background: var(--accent); border: 0; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), 0 0 18px rgba(182, 244, 0, 0.45);
+  background: var(--accent); border: 0; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6), 0 0 18px rgba(56, 198, 255, 0.45);
   animation: pop-in 0.15s;
 }
 .modal-restore span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -349,7 +349,7 @@ input[type="range"] { accent-color: var(--accent); }
 
 .dropdown { position: fixed; z-index: 150; background: var(--panel-solid); border: 1px solid var(--line-strong); border-radius: 10px; padding: 4px; box-shadow: var(--shadow); display: flex; flex-direction: column; min-width: 200px; }
 .dropdown-item { background: none; border: 0; text-align: left; padding: 8px 12px; border-radius: 6px; cursor: pointer; }
-.dropdown-item:hover { background: rgba(182, 244, 0, 0.15); }
+.dropdown-item:hover { background: rgba(56, 198, 255, 0.15); }
 
 /* ------------------------------------------------------------------ editor */
 .editor { padding: 12px 16px; gap: 10px; overflow: hidden; }
@@ -381,7 +381,7 @@ input[type="range"] { accent-color: var(--accent); }
   display: grid; grid-template-columns: 40px 1fr auto auto; gap: 10px; align-items: center; padding: 5px 8px 5px 5px; cursor: pointer;
   position: relative; background: rgba(0, 0, 0, 0.35); border-left: 3px solid transparent; user-select: none; -webkit-user-select: none;
 }
-.result-row:hover { background: rgba(182, 244, 0, 0.08); border-left-color: var(--accent); }
+.result-row:hover { background: rgba(56, 198, 255, 0.08); border-left-color: var(--accent); }
 .result-row .limit { position: static; }
 .result-name { font-weight: 600; font-size: 13px; }
 .result-row .bm { position: static; opacity: 0.5; }
@@ -431,12 +431,12 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .deck-tile:hover, .deck-tile:focus-visible { border-color: #fff; transform: translateY(-2px); }
-.deck-tile.active { border-color: var(--accent); box-shadow: inset 0 0 24px rgba(182, 244, 0, 0.25); }
+.deck-tile.active { border-color: var(--accent); box-shadow: inset 0 0 24px rgba(56, 198, 255, 0.25); }
 .deck-tile.chosen { border-color: var(--danger); box-shadow: inset 0 0 28px rgba(255, 59, 78, 0.35); }
 .deck-tile-name { font: 600 15px/1.2 var(--display); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .deck-tile-meta { font: 500 11px var(--mono); color: var(--muted); letter-spacing: 0.05em; margin-top: -4px; }
 .deck-tile.new { justify-content: center; min-height: 196px; }
-.deck-tile.new .plus { width: 78px; height: 78px; border-radius: 50%; border: 3px solid var(--accent); color: var(--accent); display: grid; place-items: center; font-size: 46px; box-shadow: 0 0 18px rgba(182, 244, 0, 0.35); }
+.deck-tile.new .plus { width: 78px; height: 78px; border-radius: 50%; border: 3px solid var(--accent); color: var(--accent); display: grid; place-items: center; font-size: 46px; box-shadow: 0 0 18px rgba(56, 198, 255, 0.35); }
 .deck-tile.new .deck-tile-name { color: var(--muted); }
 .deck-tile-del, .deck-tile-check {
   position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; display: grid; place-items: center;
@@ -525,10 +525,10 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
 .detail-card, .detail-actions { flex: none; }
 .detail-scroll { flex: 1 1 auto; min-height: 72px; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 2px; }
 
-/* ------------------------------------------------------------------ home: scritte azzurre, rosso più scuro
-   Vale solo per la home: le altre schermate tengono il lime e il rosso originali. */
-/* Anche la schermata di caricamento usa i colori della home. */
-.home, .boot { --accent: #38c6ff; --accent-soft: #9ae2ff; --home-glow: 56, 198, 255; }
+/* ------------------------------------------------------------------ home: rosso più scuro
+   L'azzurro ora è l'accento di tutta l'app (token in :root); qui resta il bagliore azzurro della home
+   e della schermata di caricamento. */
+.home, .boot { --home-glow: 56, 198, 255; }
 .home .logo-mark, .boot .logo-mark { text-shadow: 0 0 18px rgba(var(--home-glow), 0.6); }
 .home .btn.round:hover:not(:disabled) { background: rgba(var(--home-glow), 0.12); }
 .home .menu-item::before { box-shadow: 0 0 10px rgba(var(--home-glow), 0.6); }

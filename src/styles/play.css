@@ -7,7 +7,7 @@
   pointer-events: auto; text-align: center;
   background: var(--panel); border: 1px solid var(--line); animation: fade-in 0.4s;
 }
-.rematch-panel.asked { border-color: var(--line-gold); box-shadow: 0 0 24px rgba(182, 244, 0, 0.25); }
+.rematch-panel.asked { border-color: var(--line-gold); box-shadow: 0 0 24px rgba(56, 198, 255, 0.25); }
 .rematch-status { color: var(--muted); font-size: 15px; }
 .rematch-panel.asked .rematch-status { color: var(--accent-soft); }
 .rematch-actions { display: flex; gap: 10px; }
