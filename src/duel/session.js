@@ -5,7 +5,7 @@ import { DATA_URL, db, getCard } from "../data/db.js";
 import { SimpleAI, PassAI } from "../core/ai.js";
 import { DuelView } from "../ui/duel/view.js";
 import { confirmModal, toast } from "../ui/modal.js";
-import { MSG, DUEL } from "../core/constants.js";
+import { MSG, DUEL, IDLE } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { h } from "../ui/dom.js";
@@ -71,6 +71,14 @@ class Inbox {
   }
 }
 
+// Summon e Set annullabili finché non si sceglie la zona: l'azione resta "in sospeso" (non va
+// all'avversario) mentre il core chiede costi, zona e posizione; "Back" ricostruisce lo stato di prima.
+const UNDOABLE_ACTIONS = new Set([IDLE.SUMMON, IDLE.SPSUMMON, IDLE.MSET, IDLE.SSET]);
+const UNDOABLE_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD]);
+const BACK_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION]);
+// La summon/il set è avvenuto: non si torna più indietro.
+const DONE_MSGS = new Set([MSG.SUMMONING, MSG.SPSUMMONING, MSG.SET, MSG.FLIPSUMMONING]);
+
 export class DuelSession {
   /**
    * @param cfg {
@@ -90,6 +98,8 @@ export class DuelSession {
     this.engine = new EngineClient();
     this.inbox = new Inbox();
     this.seq = 0;
+    this.history = []; // tutte le risposte date al core, in ordine (per ricostruire lo stato)
+    this.pending = null; // summon/set in sospeso: { player, seq, histLen, logMark, outbox }
     this.over = false;
     this.ai = new SimpleAI({ getCard, allCards: db.list });
     this.passer = cfg.controllers.includes("pass") ? new PassAI({ getCard, allCards: db.list }) : null;
@@ -226,6 +236,9 @@ export class DuelSession {
       if (this.over) return;
       this.view.render(res.snapshot);
       if (this.clock && res.messages.some((m) => m.type === MSG.NEW_TURN)) this.clock.newTurn();
+      // Summon in sospeso: diventa definitiva appena avviene o il core chiede altro (anche all'avversario).
+      const next = res.prompt;
+      if (this.pending && (res.ended || !next || res.messages.some((m) => DONE_MSGS.has(m.type)) || next.player !== this.pending.player || !UNDOABLE_PROMPTS.has(next.type))) this.commitPending();
       if (res.ended) {
         const win = res.messages.find((m) => m.type === MSG.WIN);
         this.finish({ winner: win?.player ?? res.snapshot.winner, reason: win?.reason });
@@ -240,12 +253,23 @@ export class DuelSession {
         if (this.cfg.reveal) this.view.setStatus(`${this.cfg.names[prompt.player]}'s move`);
         const asked = performance.now();
         this.startClock(prompt.player);
+        this.view.prompter.back = this.pending && BACK_PROMPTS.has(prompt.type) ? true : null;
         response = await this.view.prompter.ask(prompt);
+        this.view.prompter.back = null;
         this.stopClock(prompt.player, performance.now() - asked >= AUTO_RESPONSE_MS);
         this.view.setStatus("");
         if (this.over) return;
+        if (response?.back) {
+          res = await this.undoPending();
+          continue;
+        }
+        if (prompt.type === MSG.SELECT_IDLECMD && UNDOABLE_ACTIONS.has(response.action) && !this.pending) {
+          this.pending = { player: prompt.player, seq: this.seq, histLen: this.history.length, logMark: this.view.logMark(), outbox: [] };
+        }
         const clock = this.timed(prompt.player) ? { left: this.clock.left[prompt.player], bonus: this.clock.bonus[prompt.player] } : undefined;
-        if (this.mux) this.send({ t: "resp", seq: this.seq, response, sum: res.checksum, clock });
+        const out = { t: "resp", seq: this.seq, response, sum: res.checksum, clock };
+        if (this.pending) this.pending.outbox.push(out);
+        else if (this.mux) this.send(out);
       } else if (who === "pass") {
         response = this.passer.respond(prompt, { turn: res.snapshot.turn });
       } else if (who === "ai") {
@@ -273,8 +297,30 @@ export class DuelSession {
         response = m.response;
       }
       this.seq++;
+      this.history.push(response);
       res = await this.engine.call("respond", { response });
     }
+  }
+
+  /** La summon in sospeso è avvenuta: ora l'avversario riceve le risposte, nell'ordine. */
+  commitPending() {
+    const p = this.pending;
+    this.pending = null;
+    if (this.mux) for (const out of p.outbox) this.send(out);
+  }
+
+  /** "Back" durante la scelta della zona: si ricostruisce lo stato di prima della summon. */
+  async undoPending() {
+    const p = this.pending;
+    this.pending = null;
+    this.view.setStatus("Going back...");
+    const res = await this.engine.call("replay", { duel: this.cfg.duel, responses: this.history.slice(0, p.histLen) });
+    this.history.length = p.histLen;
+    this.seq = p.seq;
+    this.view.logRewind(p.logMark);
+    this.view.setStatus("");
+    // Niente animazioni: lo stato si ridisegna dalla fotografia e si torna alla scelta dell'azione.
+    return { ...res, messages: [] };
   }
 
   /** rematch=false: duello chiuso da un abbandono o da una disconnessione (niente rivincita). */
