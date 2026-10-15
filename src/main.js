@@ -10,6 +10,7 @@ import { showSettings } from "./ui/settings-page.js";
 import { loadDecks } from "./deck/deck.js";
 import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
+import { seedBookmarks } from "./data/bookmarks.js";
 
 const app = {
   root: document.getElementById("app"),
@@ -150,6 +151,7 @@ async function boot() {
   app.root.append(h("div.boot", h("div.logo.big", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS")), status));
   try {
     await loadDatabase((t) => (status.textContent = t));
+    seedBookmarks();
     if (location.hash === "#ai-vs-ai") return aiVsAi();
     home();
   } catch (e) {
