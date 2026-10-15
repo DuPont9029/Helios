@@ -18,6 +18,18 @@ const app = {
   home,
 };
 
+// Nei menu (Settings, lista dei mazzi, Online) il tasto destro torna indietro come la freccia in alto.
+// Non vale nell'editor di un mazzo (lì il destro sposta le carte al Side) né nei duelli; con una finestra
+// aperta o nei campi di testo resta il comportamento normale.
+document.addEventListener("contextmenu", (e) => {
+  if (document.querySelector(".modal-backdrop:not(.closing)")) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  const back = app.root.querySelector(".page-back");
+  if (!back) return;
+  e.preventDefault();
+  back.click();
+});
+
 function leaveCurrent() {
   app.onLeave?.();
   app.onLeave = null;

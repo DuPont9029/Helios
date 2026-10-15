@@ -171,7 +171,7 @@ export function showSettings(app) {
   root.append(
     h(
       "div.page.settings",
-      h("div.page-head", h("button.btn.ghost.round", { title: "Menu", onclick: () => app.home() }, icon("chevron_left")), h("h1", "Settings")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home() }, icon("chevron_left")), h("h1", "Settings")),
       h(
         "div.settings-grid",
         h(
