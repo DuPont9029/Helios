@@ -86,8 +86,8 @@
 .zone::before { position: absolute; font: 600 calc(var(--zh) * 0.12) var(--display); color: rgba(255, 255, 255, 0.18); letter-spacing: 0.08em; pointer-events: none; }
 .zone.mon::before { content: "MONSTER"; }
 .zone.st::before { content: "S/T"; }
-.zone.emz { border-color: rgba(182, 244, 0, 0.4); background: radial-gradient(circle, rgba(182, 244, 0, 0.08), rgba(0, 0, 0, 0.3)); }
-.zone.emz::before { content: "EXTRA"; color: rgba(182, 244, 0, 0.3); }
+.zone.emz { border-color: rgba(56, 198, 255, 0.4); background: radial-gradient(circle, rgba(56, 198, 255, 0.08), rgba(0, 0, 0, 0.3)); }
+.zone.emz::before { content: "EXTRA"; color: rgba(56, 198, 255, 0.3); }
 .zone.fieldspell::before { content: "FIELD"; }
 .zone.grave::before { content: "GY"; }
 .zone.deck::before { content: "DECK"; }
@@ -143,15 +143,15 @@
 .lp-op { right: 14px; top: 10px; flex-direction: row-reverse; }
 .avatar {
   width: 46px; height: 46px; border-radius: 50%; display: grid; place-items: center;
-  font: 700 22px var(--display); color: var(--on-gold); background: linear-gradient(135deg, #d4ff4f, #6f9600); border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 0 18px rgba(182, 244, 0, 0.45);
+  font: 700 22px var(--display); color: var(--on-gold); background: linear-gradient(135deg, #9ae2ff, #1673b8); border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 18px rgba(56, 198, 255, 0.45);
 }
 .lp-op .avatar { color: #fff; background: linear-gradient(135deg, #ff4a5c, #8a1020); box-shadow: 0 0 18px rgba(255, 59, 78, 0.45); }
 .lp-body { display: flex; flex-direction: column; min-width: 170px; }
 .lp-op .lp-body { align-items: flex-end; }
 .lp-name { font: 600 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
 .lp-track { height: 6px; width: 170px; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin: 3px 0; transform: skewX(-30deg); }
-.lp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #8fc400, #d4ff4f); transition: width 0.5s; }
+.lp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #1f9be0, #9ae2ff); transition: width 0.5s; }
 .lp-op .lp-fill { background: linear-gradient(90deg, #ff3b4e, #ff8a5c); margin-left: auto; }
 .lp-fill.low { background: linear-gradient(90deg, #ff3348, #ff7a3a); }
 .lp-num { font: 700 32px/1 var(--display); letter-spacing: 0.04em; text-shadow: 0 0 14px rgba(0, 0, 0, 0.9); }
@@ -164,7 +164,7 @@
 }
 .lp-clock .icon { font-size: 16px; }
 .lp-clock i { font-style: normal; font-size: 11px; }
-.lp-clock.running { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(182, 244, 0, 0.35); }
+.lp-clock.running { color: var(--accent); border-color: var(--accent); box-shadow: 0 0 10px rgba(56, 198, 255, 0.35); }
 .lp-clock.running.low { color: #ffb02e; border-color: #ffb02e; box-shadow: 0 0 10px rgba(255, 176, 46, 0.4); }
 .lp-clock.running.fast { color: #fff; background: var(--red); border-color: #ff7a8a; box-shadow: 0 0 14px rgba(255, 59, 78, 0.7); animation: clock-alarm 0.8s infinite; }
 @keyframes clock-alarm { 50% { opacity: 0.65; } }
@@ -179,12 +179,12 @@
 .turn-counter.mine { color: var(--accent); }
 .phase-track { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
 .phase-pip { text-align: center; font: 700 11px var(--mono); padding: 5px 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--muted); }
-.phase-pip.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); box-shadow: 0 0 10px rgba(182, 244, 0, 0.5); }
+.phase-pip.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); box-shadow: 0 0 10px rgba(56, 198, 255, 0.5); }
 .duel-status { font-size: 12px; color: var(--muted); min-height: 18px; text-align: center; }
 .duel-status.waiting::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--gold); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.2; } }
 .action-bar { display: flex; flex-direction: column; gap: 6px; }
-.action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px; border: 1px dashed rgba(182, 244, 0, 0.5); }
+.action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px; border: 1px dashed rgba(56, 198, 255, 0.5); }
 .phase-btn { font: 700 16px var(--display); letter-spacing: 0.05em; text-transform: uppercase; padding: 11px; }
 .duel-controls input[type="range"] { width: 100%; }
 /* modo della catena: tre pulsanti esclusivi, colorato solo quello attivo adesso */
@@ -276,7 +276,7 @@
   display: grid; grid-template-columns: 54px 1fr; gap: 12px; align-items: center; text-align: left; cursor: pointer;
   background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); padding: 6px 10px; white-space: normal;
 }
-.action-row:hover { border-color: var(--accent); background: rgba(182, 244, 0, 0.1); }
+.action-row:hover { border-color: var(--accent); background: rgba(56, 198, 255, 0.1); }
 .pick-info { display: flex; justify-content: center; color: var(--gold); font-weight: 600; }
 .pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 10px; padding: 4px; }
 .pick-card { background: none; border: 2px solid transparent; border-radius: 8px; padding: 4px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; position: relative; }
@@ -316,9 +316,9 @@
 .banner span {
   font: 700 clamp(22px, calc(var(--vw) * 3.4), 46px) var(--display); letter-spacing: 0.18em; text-transform: uppercase; padding: 8px 60px;
   background: linear-gradient(90deg, transparent, rgba(5, 5, 8, 0.92) 20%, rgba(5, 5, 8, 0.92) 80%, transparent);
-  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); text-shadow: 0 0 18px rgba(182, 244, 0, 0.6);
+  border-top: 1px solid var(--accent); border-bottom: 1px solid var(--accent); text-shadow: 0 0 18px rgba(56, 198, 255, 0.6);
 }
-.banner.phase span { font-size: clamp(16px, calc(var(--vw) * 2), 26px); border-color: rgba(182, 244, 0, 0.4); }
+.banner.phase span { font-size: clamp(16px, calc(var(--vw) * 2), 26px); border-color: rgba(56, 198, 255, 0.4); }
 .banner.hint span { font-size: clamp(14px, calc(var(--vw) * 1.6), 20px); letter-spacing: 0.04em; text-transform: none; border-color: var(--gold); }
 .banner.warn span { color: #ff8a9a; border-color: var(--danger); }
 .banner.turn span { color: #fff; }
