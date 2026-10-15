@@ -477,8 +477,9 @@ input[type="range"] { accent-color: var(--accent); }
 
 /* ------------------------------------------------------------------ home: scritte azzurre, rosso più scuro
    Vale solo per la home: le altre schermate tengono il lime e il rosso originali. */
-.home { --accent: #38c6ff; --accent-soft: #9ae2ff; --home-glow: 56, 198, 255; }
-.home .logo-mark { text-shadow: 0 0 18px rgba(var(--home-glow), 0.6); }
+/* Anche la schermata di caricamento usa i colori della home. */
+.home, .boot { --accent: #38c6ff; --accent-soft: #9ae2ff; --home-glow: 56, 198, 255; }
+.home .logo-mark, .boot .logo-mark { text-shadow: 0 0 18px rgba(var(--home-glow), 0.6); }
 .home .btn.round:hover:not(:disabled) { background: rgba(var(--home-glow), 0.12); }
 .home .menu-item::before { box-shadow: 0 0 10px rgba(var(--home-glow), 0.6); }
 .home .menu-item:hover::before, .home .menu-item:focus-visible::before { box-shadow: 0 0 18px rgba(var(--home-glow), 0.9); }
@@ -487,13 +488,13 @@ input[type="range"] { accent-color: var(--accent); }
 .home .emblem i:nth-child(2) { border-color: rgba(255, 255, 255, 0.3); border-top-color: var(--accent); box-shadow: none; }
 .home .emblem i:nth-child(3) { background: radial-gradient(circle, #ffd9de 0 16%, #c2283c 32%, rgba(120, 10, 24, 0.75) 54%, transparent 70%); box-shadow: 0 0 80px 20px rgba(120, 10, 24, 0.6); }
 /* sfondo con la home aperta: scie e alone rossi più scuri */
-html:has(.home) body::after {
+html:has(.home) body::after, html:has(.boot) body::after {
   background:
     radial-gradient(ellipse 60% 70% at 0% 30%, rgba(110, 8, 20, 0.5), transparent 70%),
     radial-gradient(ellipse 55% 70% at 100% 80%, rgba(20, 80, 220, 0.36), transparent 70%),
     var(--bg);
 }
-html:has(.home) body::before {
+html:has(.home) body::before, html:has(.boot) body::before {
   background:
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3px),
     repeating-linear-gradient(125deg, transparent 0 46px, rgba(130, 12, 28, 0.2) 46px 52px, transparent 52px 120px, rgba(130, 12, 28, 0.12) 120px 123px, transparent 123px 210px),
