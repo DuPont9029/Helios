@@ -33,6 +33,7 @@ export class DuelView {
     this.board = new Board({
       me: this.me,
       reveal: this.reveal,
+      separatePz: !!opts.separatePz,
       onHover: (code) => this.hover(code),
       onPile: (p, loc) => this.openPile(p, loc),
     });

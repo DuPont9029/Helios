@@ -394,6 +394,11 @@
 .pz-gem i::before { content: ""; position: absolute; left: 22%; right: 22%; top: 8%; height: 28%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15)); clip-path: polygon(0 0, 100% 0, 85% 100%, 15% 100%); }
 .pz-gem i::after { content: ""; position: absolute; inset: 36% 0 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 45%, rgba(255, 255, 255, 0.18) 55%, rgba(0, 0, 0, 0.3)); clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .pz-gem.custom { object-fit: contain; }
+/* Gemma proiettata sulle zone Pendulum (Master Rule 4/2020): sempre visibile, anche a zona vuota,
+   sotto le carte e sotto l'etichetta della zona. */
+.zone.pz-slot::before { z-index: 1; }
+.pz-gem.pz-floor { left: 18%; top: 14%; width: 64%; z-index: 0; opacity: 0.55; }
+.zone.pz-slot.occupied > .pz-gem.pz-floor { opacity: 0.25; }
 /* zona occupata: la gemma diventa un piccolo segno sul bordo superiore, sopra la carta */
 .zone.pz.occupied > .pz-gem, .pz-gem.pz-mark { width: 26%; left: 37%; top: -11%; z-index: 3; opacity: 1; }
 /* anteprima delle gemme nelle impostazioni */

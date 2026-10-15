@@ -100,6 +100,16 @@ export class Board {
     zone(me, LOC.EXTRA, 0, "pile extra", 5, 1);
     for (let s = 0; s < 5; s++) zone(me, LOC.SZONE, s, "st", 5, 2 + s);
     zone(me, LOC.DECK, 0, "pile deck", 5, 7);
+    // Master Rule 4/2020: la gemma (o l'immagine scelta) è proiettata sempre sulla prima e
+    // sull'ultima zona Magie/Trappole, anche vuote: sono loro le zone Pendulum.
+    if (!this.opts.separatePz) {
+      for (const p of [me, op]) {
+        this.zoneEls.get(key(p, LOC.SZONE, 0)).classList.add("pz-slot");
+        this.zoneEls.get(key(p, LOC.SZONE, 0)).append(pendulumGem("left", "pz-floor"));
+        this.zoneEls.get(key(p, LOC.SZONE, 4)).classList.add("pz-slot");
+        this.zoneEls.get(key(p, LOC.SZONE, 4)).append(pendulumGem("right", "pz-floor"));
+      }
+    }
   }
 
   zoneEl(player, loc, seq = 0) {
