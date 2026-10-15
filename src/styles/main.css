@@ -97,7 +97,8 @@ button { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 .btn:hover:not(:disabled) { border-color: var(--accent); background: rgba(182, 244, 0, 0.12); color: #fff; }
-.btn:active:not(:disabled) { transform: translateY(1px); }
+/* Premuto: solo più scuro, senza spostarsi (lo spostamento faceva comparire barre di scorrimento nelle finestre). */
+.btn:active:not(:disabled) { filter: brightness(0.85); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn.primary { background: var(--gold); border-color: var(--gold); color: var(--on-gold); font-weight: 700; }
 .btn.primary:hover:not(:disabled) { background: #d4ff4f; border-color: #d4ff4f; color: var(--on-gold); }

@@ -297,7 +297,15 @@ export class DuelView {
         const face = cardFace(visible ? info.code : 0, { faceDown: !visible });
         face.dataset.owner = p;
         if (info.position & POS.FACEDOWN && loc === LOC.REMOVED) face.classList.add("facedown");
-        const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) => h("button.btn.small.primary", { title: a.title || null, onclick: () => { m.close(); a.onClick(); } }, a.label))));
+        const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) =>
+                h(
+                  "button.btn.small.primary",
+                  { onclick: () => { m.close(); a.onClick(); } },
+                  a.label,
+                  // Più effetti sulla stessa carta: il testo sta sotto la voce, non in un tooltip.
+                  /\(\d+\)$/.test(a.label) && a.title ? h("small", a.title) : null
+                )
+              )));
         if (actions.length) tile.classList.add("has-actions");
         if (actions.some((a) => a.glow === "activate")) tile.classList.add("can-activate");
         tile.addEventListener("mouseenter", () => visible && this.hover(info.code));

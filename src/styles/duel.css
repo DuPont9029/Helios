@@ -285,6 +285,7 @@
 .pile-item.has-actions .card { box-shadow: 0 0 0 2px #54d4ff, 0 0 12px rgba(53, 198, 244, 0.6); }
 .pile-actions { display: flex; flex-direction: column; gap: 3px; }
 .pile-actions .btn { white-space: normal; }
+.pile-actions .btn small { display: block; margin-top: 2px; font: 400 10px/1.25 var(--font); text-transform: none; letter-spacing: 0; opacity: 0.8; }
 
 /* ------------------------------------------------------------------ effetti */
 .fx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; overflow: hidden; }
