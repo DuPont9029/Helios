@@ -8,6 +8,7 @@ import { confirmModal, toast } from "../ui/modal.js";
 import { MSG, DUEL, IDLE } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
+import { recordGame, seriesLabel } from "./series.js";
 import { h } from "../ui/dom.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
@@ -118,6 +119,7 @@ export class DuelSession {
       onLeave: () => this.leave(),
     });
     this.view.startLP = cfg.duel.lp;
+    if (cfg.match?.bestOf > 1) this.view.setMatchInfo(cfg.match);
     this.clearSleeves = applySleeves(cfg.sleeves);
     const preset = TIMER_PRESETS[cfg.timer ?? "off"];
     this.clock = preset ? new DuelClock(preset) : null;
@@ -337,10 +339,50 @@ export class DuelSession {
     this.clock?.pause(performance.now());
     this.view.prompter.abort();
     this.view.setStatus("Duel over");
+    // Partita al meglio di N: il duello conta per il punteggio; uscite e disconnessioni chiudono la partita.
+    const series = this.cfg.match?.bestOf > 1 ? this.cfg.match : null;
+    let nextGame = false;
+    if (series && rematch) {
+      const outcome = winner === this.cfg.me ? "me" : winner === 0 || winner === 1 ? "opp" : null;
+      recordGame(series, outcome);
+      this.view.setMatchInfo(series);
+      const score = `${series.wins[0]}–${series.wins[1]}`;
+      if (series.over) {
+        const won = series.wins[0] > series.wins[1];
+        // Il motivo dell'ultimo duello (es. "You surrendered") resta accanto al punteggio.
+        const why = [text, sub].filter(Boolean).join(" · ");
+        text = won ? "MATCH WON" : "MATCH LOST";
+        sub = why ? `${score} · ${why}` : score;
+      } else {
+        nextGame = true;
+        sub = `${outcome === "me" ? "You win this Duel" : outcome === "opp" ? "Your opponent wins this Duel" : "Draw: it does not count"} · ${score}`;
+      }
+    }
     this.view.showResult({ winner, reason, text, sub });
     this.inbox.push({ t: "end" });
-    if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch();
+    if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch({ nextGame });
+    else if (!this.mux && nextGame && this.cfg.onNextGame) this.showNextGame();
     else if (!this.mux && this.cfg.onLocalRematch) this.showLocalRematch();
+  }
+
+  /** Partita locale non finita: il duello successivo parte da solo (o subito con il pulsante). */
+  showNextGame() {
+    let left = 4;
+    const status = h("div.rematch-status");
+    const go = () => {
+      clearInterval(timer);
+      if (!this.view.el.isConnected) return;
+      this.cfg.onNextGame(this);
+    };
+    const paint = () => (status.textContent = `Next Duel (Game ${this.cfg.match.game}) in ${left}...`);
+    const timer = setInterval(() => (--left <= 0 ? go() : paint()), 1000);
+    paint();
+    const el = h(
+      "div.rematch-panel.asked",
+      status,
+      h("div.rematch-actions", h("button.btn", { onclick: () => { clearInterval(timer); this.leave(); } }, "Leave"), h("button.btn.primary", { onclick: go }, "Next Duel"))
+    );
+    this.view.overlay.append(el);
   }
 
   /** Duello di prova: rivincita immediata con gli stessi mazzi (nessun avversario da aspettare). */
@@ -355,13 +397,17 @@ export class DuelSession {
 
   // ---------------------------------------------------------------- rivincita
 
-  showRematch() {
+  /** nextGame: partita al meglio di N non ancora finita, si passa da soli al duello successivo. */
+  showRematch({ nextGame = false } = {}) {
     const btn = h("button.btn.primary", { onclick: () => this.askRematch() }, "Rematch");
     const text = h("div.rematch-status");
     const el = h("div.rematch-panel", text, h("div.rematch-actions", h("button.btn", { onclick: () => this.leave() }, "Leave"), btn));
     this.rematch.ui = { el, btn, text };
+    this.rematch.nextGame = nextGame;
+    if (nextGame) btn.hidden = true;
     this.view.overlay.append(el);
     this.updateRematch();
+    if (nextGame) this.askRematch();
   }
 
   askRematch() {
@@ -388,7 +434,9 @@ export class DuelSession {
     }
     const ui = r.ui;
     if (!ui) return;
-    if (r.started && !r.failed) {
+    if (r.nextGame && !r.failed && !r.oppLeft) {
+      ui.text.textContent = r.started ? `Starting Game ${this.cfg.match.game}...` : `Next Duel: Game ${this.cfg.match.game}. Waiting for your opponent...`;
+    } else if (r.started && !r.failed) {
       ui.text.textContent = "Starting the rematch...";
       ui.btn.disabled = true;
     } else if (r.failed) {

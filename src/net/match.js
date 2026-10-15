@@ -9,8 +9,9 @@ import { validSleeve } from "../data/sleeve.js";
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
 // 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
 // 4: nella rivincita inizia chi ha perso, senza lancio della moneta.
+// 5: partite al meglio di 3/5 (opzione bestOf dell'host).
 // Versioni diverse produrrebbero ordini diversi del mazzo: il controllo le rifiuta.
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 
 /**
  * Smista i messaggi del DataChannel per tipo, tenendo in coda quelli non ancora attesi.

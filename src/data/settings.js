@@ -25,7 +25,8 @@ const DEFAULTS = {
   signalUrl: "", // vuoto = stesso host (server/signal.mjs)
   lastDeck: null,
   lastBanlist: null,
-  lastTimer: "omega", // chiave di TIMER_PRESETS (src/duel/clock.js)
+  lastTimer: "omega",
+  lastBestOf: 1, // partita: 1 (duello singolo), 3 o 5 (al meglio di) // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
   pendulumIcon: null, // figura per le gemme delle zone Pendulum (data URL PNG con trasparenza)
   testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)

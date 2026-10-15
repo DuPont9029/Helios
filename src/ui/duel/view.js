@@ -7,6 +7,7 @@ import { createDetailPanel } from "../detail.js";
 import { Board, key } from "./board.js";
 import { Prompter } from "./prompts.js";
 import { ChainContext } from "./chain-context.js";
+import { seriesLabel } from "../../duel/series.js";
 import { describe } from "./describe.js";
 import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
@@ -107,6 +108,7 @@ export class DuelView {
 
     this.phaseEl = h("div.phase-track", PHASES.map(([, label]) => h("div.phase-pip", label)));
     this.turnEl = h("div.turn-counter", "Turn 0");
+    this.matchEl = h("div.match-info", { hidden: true });
     this.actionBar = h("div.action-bar");
     this.statusEl = h("div.duel-status");
     this.logEl = h("div.log");
@@ -167,6 +169,7 @@ export class DuelView {
       h(
         "div.duel-controls",
         this.turnEl,
+        this.matchEl,
         this.phaseEl,
         this.statusEl,
         this.actionBar,
@@ -233,6 +236,12 @@ export class DuelView {
     );
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
+  }
+
+  /** Partita al meglio di N: formato, numero del duello e punteggio (io–avversario). */
+  setMatchInfo(series) {
+    this.matchEl.hidden = !series;
+    if (series) this.matchEl.textContent = seriesLabel(series);
   }
 
   setStatus(text) {
@@ -666,7 +675,7 @@ export class DuelView {
     const draw = winner === 2 || winner == null;
     const title = text ?? (draw ? "DRAW" : won ? "VICTORY" : "DEFEAT");
     const sub = extra || (reason != null ? victoryString(reason) : "");
-    this.overlay.append(h(`div.result.${draw ? "draw" : won ? "win" : "lose"}`, h("div.result-title", title), sub && h("div.result-sub", sub)));
+    this.overlay.append(h(`div.result.${draw ? "draw" : won ? "win" : "lose"}`, h(`div.result-title${title.length > 11 ? ".long" : ""}`, title), sub && h("div.result-sub", sub)));
   }
 
   destroy() {

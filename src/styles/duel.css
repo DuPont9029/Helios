@@ -187,6 +187,9 @@
 .action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px; border: 1px dashed rgba(56, 198, 255, 0.5); }
 .phase-btn { font: 700 16px var(--display); letter-spacing: 0.05em; text-transform: uppercase; padding: 11px; }
 .duel-controls input[type="range"] { width: 100%; }
+/* partita al meglio di N */
+.match-info { text-align: center; padding: 5px 4px; border: 1px solid var(--line-gold); color: var(--accent-soft); font: 700 11px var(--mono); letter-spacing: 0; white-space: nowrap; }
+.match-info[hidden] { display: none; }
 /* modo della catena: tre pulsanti esclusivi, colorato solo quello attivo adesso */
 .chain-mode { display: flex; flex-direction: column; gap: 4px; }
 .chain-label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -346,7 +349,9 @@
   position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; pointer-events: none;
   background: radial-gradient(circle, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.5)); animation: fade-in 0.4s;
 }
-.result-title { font: 700 clamp(48px, calc(var(--vw) * 8), 110px) var(--display); letter-spacing: 0.2em; animation: pop-in 0.5s; }
+.result-title { font: 700 clamp(48px, calc(var(--vw) * 8), 110px) var(--display); letter-spacing: 0.2em; animation: pop-in 0.5s; text-align: center; max-width: 92%; }
+/* titoli lunghi ("You surrendered", "Your opponent left the Duel"): più piccoli, restano nel campo */
+.result-title.long { font-size: clamp(30px, calc(var(--vw) * 4.2), 60px); letter-spacing: 0.06em; }
 .result.win .result-title { color: var(--gold); text-shadow: 0 0 40px rgba(232, 194, 90, 0.8); }
 .result.lose .result-title { color: #ff5a6e; text-shadow: 0 0 40px rgba(255, 90, 110, 0.7); }
 .result.draw .result-title { color: var(--accent); }
