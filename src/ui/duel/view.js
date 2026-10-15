@@ -113,14 +113,14 @@ export class DuelView {
     this.el = h(
       "div.duel-screen",
       h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.log, panes.chat)),
-      h(
+      (this.main = h(
         "div.duel-main",
         h("div.hud-top", this.lpEls[1].el, this.board.handEls[1]),
         h("div.field-wrap", this.board.el),
         h("div.hud-bottom", this.board.handEls[0], this.lpEls[0].el),
         this.overlay,
         this.promptDock
-      ),
+      )),
       h(
         "div.duel-controls",
         this.turnEl,
@@ -181,6 +181,14 @@ export class DuelView {
     this.turnEl.textContent = turn ? `Turn ${turn}` : "";
     this.turnEl.classList.toggle("mine", turnPlayer === this.me);
     [...this.phaseEl.children].forEach((pip, i) => pip.classList.toggle("on", !!(PHASES[i][0] & phase)));
+    // Medaglione al centro del campo (turno + fase) e bagliore dal lato di chi è di turno.
+    const short = { "Main Phase 1": "Main 1", "Main Phase 2": "Main 2", "Draw Phase": "Draw", "Standby Phase": "Standby", "Battle Phase": "Battle", "Damage Step": "Damage", "End Phase": "End" };
+    const name = PHASE_NAMES[phase] ?? "";
+    clear(this.board.centerEl).append(
+      turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
+    );
+    this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
+    this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
   }
 
   setStatus(text) {

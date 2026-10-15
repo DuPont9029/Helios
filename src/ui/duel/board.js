@@ -56,6 +56,8 @@ export class Board {
     this.zoneEls.clear();
     const zone = (player, loc, seq, cls, row, col) => {
       const z = h(`div.zone.${cls}`, { dataset: { player, loc, seq } });
+      // Lato del campo (0 = in basso, il mio): per il bagliore del turno. Le zone Extra Monster sono condivise.
+      if (!cls.includes("emz")) z.classList.add(`side-${this.side(player)}`);
       z.style.gridRow = row;
       z.style.gridColumn = col;
       z.addEventListener("click", (e) => this.onZoneClick(player, loc, seq, e));

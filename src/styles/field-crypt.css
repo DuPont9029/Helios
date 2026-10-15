@@ -1,0 +1,199 @@
+/* ------------------------------------------------------------------ campo "Cripta"
+   Tema originale del campo di gioco, ispirato ai campi a tema di Master Duel ma disegnato da zero:
+   lastre di pietra incise (le Magie/Trappole sono lapidi ad arco), pile su piedistalli con bordo di metallo,
+   linea centrale con medaglione del turno e bagliore dal lato di chi è di turno.
+   Le texture sono rumore SVG (feTurbulence): nessuna immagine esterna. Si carica dopo duel.css. */
+
+.duel-main {
+  --stone-hi: #b9c2e4;
+  --stone: #8590bb;
+  --stone-lo: #4d5782;
+  --engrave: rgba(24, 28, 58, 0.5);
+  --rim-1: #c9d1ee;
+  --rim-2: #5d6690;
+  --noise: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1  0 0 0 0 0.11  0 0 0 0 0.2  0 0 0 0.7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  --cracks: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='420' height='420'><filter id='c'><feTurbulence type='turbulence' baseFrequency='0.012 0.03' numOctaves='2' seed='7'/><feColorMatrix values='0 0 0 0 0.05  0 0 0 0 0.06  0 0 0 0 0.12  0 0 0 -2.2 1.25'/></filter><rect width='100%' height='100%' filter='url(%23c)'/></svg>");
+  background:
+    radial-gradient(ellipse 75% 65% at 50% 52%, rgba(70, 82, 140, 0.35), transparent 70%),
+    var(--noise),
+    radial-gradient(ellipse at 50% 50%, #1e2340 0%, #11142a 60%, #080a16 100%);
+  background-size: auto, 180px 180px, auto;
+}
+/* la griglia sottile del tema precedente non serve più */
+.duel-main::before { content: none; }
+
+/* --- pavimento del campo: una piattaforma di pietra scura con bordo rialzato */
+.duel-field {
+  position: relative;
+  isolation: isolate;
+  border-radius: calc(var(--zh) * 0.12);
+  background:
+    var(--cracks),
+    var(--noise),
+    linear-gradient(180deg, #2f3554 0%, #262b47 48%, #262b47 52%, #2f3554 100%);
+  background-size: 420px 420px, 180px 180px, auto;
+  /* muretto di pietra intorno al campo: bordo chiaro in alto a sinistra, ombra in basso a destra */
+  border: calc(var(--zh) * 0.07) solid #59628f;
+  border-color: #7c86b2 #3f4770 #343b60 #6c76a3;
+  box-shadow:
+    0 0 0 2px #10132a,
+    0 24px 60px rgba(0, 0, 0, 0.8),
+    inset 0 0 0 2px #10132a,
+    inset 0 0 calc(var(--zh) * 0.6) rgba(0, 0, 0, 0.55);
+}
+/* linea centrale di metallo tra i due campi */
+.duel-field::after {
+  content: ""; position: absolute; left: 3%; right: 3%; top: 50%; height: calc(var(--zh) * 0.05); transform: translateY(-50%);
+  z-index: 0; pointer-events: none; border-radius: 99px;
+  background: linear-gradient(180deg, #e3e8ff 0%, #8d96bf 45%, #3c4366 100%);
+  box-shadow: 0 0 0 1px #11142a, 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 18px rgba(140, 160, 255, 0.25);
+}
+/* bagliore dal lato del giocatore di turno: blu per te, rosso per l'avversario */
+.duel-field::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none; border-radius: inherit;
+  opacity: 0; transition: opacity 0.6s, background 0.6s;
+}
+.duel-main.turn-me .duel-field::before {
+  opacity: 1;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--zh) * 0.09), rgba(120, 190, 255, 0.07) calc(var(--zh) * 0.09) calc(var(--zh) * 0.1)),
+    linear-gradient(0deg, rgba(64, 150, 255, 0.5) 0%, rgba(64, 150, 255, 0.16) 22%, transparent 46%);
+  box-shadow: 0 calc(var(--zh) * 0.06) 30px -6px rgba(70, 160, 255, 0.85);
+}
+.duel-main.turn-op .duel-field::before {
+  opacity: 1;
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--zh) * 0.09), rgba(255, 120, 130, 0.06) calc(var(--zh) * 0.09) calc(var(--zh) * 0.1)),
+    linear-gradient(180deg, rgba(220, 40, 60, 0.42) 0%, rgba(220, 40, 60, 0.13) 22%, transparent 46%);
+  box-shadow: 0 calc(var(--zh) * -0.06) 30px -6px rgba(230, 50, 70, 0.75);
+}
+
+/* --- lastre di pietra */
+.zone {
+  z-index: 1;
+  border: 1px solid #141730;
+  border-radius: calc(var(--zh) * 0.05);
+  background:
+    var(--noise),
+    linear-gradient(150deg, var(--stone-hi) 0%, var(--stone) 42%, var(--stone-lo) 100%);
+  background-size: 180px 180px, auto;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.45),
+    inset -3px -3px 0 rgba(20, 24, 50, 0.45),
+    inset 0 0 calc(var(--zh) * 0.12) rgba(30, 36, 80, 0.35),
+    0 calc(var(--zh) * 0.035) calc(var(--zh) * 0.06) rgba(0, 0, 0, 0.6);
+}
+/* cornice incisa dentro la lastra */
+.zone::after {
+  content: ""; position: absolute; inset: 9%; pointer-events: none; border-radius: inherit;
+  border: 1px solid var(--engrave);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  background:
+    linear-gradient(var(--engrave), var(--engrave)) 50% 30% / 46% 1px no-repeat,
+    linear-gradient(var(--engrave), var(--engrave)) 50% 70% / 46% 1px no-repeat;
+  opacity: 0.9;
+}
+.zone.occupied::after { opacity: 0.35; }
+/* etichette incise nella pietra */
+.zone::before {
+  z-index: 0;
+  color: rgba(34, 40, 78, 0.55);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35), 0 -1px 0 rgba(10, 12, 30, 0.35);
+  font-weight: 700;
+}
+/* Magie/Trappole: lapidi con la cima ad arco */
+.zone.st { border-radius: 44% 44% calc(var(--zh) * 0.05) calc(var(--zh) * 0.05) / 26% 26% calc(var(--zh) * 0.05) calc(var(--zh) * 0.05); }
+.zone.st::after { inset: 11% 10% 9%; }
+/* zone Extra Monster: lastre più chiare con un riflesso blu */
+.zone.emz {
+  border-color: #141730;
+  background:
+    var(--noise),
+    radial-gradient(circle at 50% 45%, rgba(120, 170, 255, 0.28), transparent 65%),
+    linear-gradient(150deg, #c3cdf2 0%, #8b98c9 45%, #4f5a8c 100%);
+  background-size: 180px 180px, auto, auto;
+}
+.zone.emz::before { color: rgba(34, 40, 78, 0.55); }
+
+/* --- pile (Deck, Extra, GY, Banishment, Terreno): piedistalli con bordo di metallo */
+.zone.pile, .zone.fieldspell {
+  border-radius: calc(var(--zh) * 0.22);
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 50%, #0b0d1c 0 38%, #1b1f38 58%, #2b3152 74%, transparent 75%),
+    conic-gradient(from 210deg, var(--rim-1), var(--rim-2), var(--rim-1), var(--rim-2), var(--rim-1), var(--rim-2), var(--rim-1));
+  box-shadow:
+    0 0 0 2px #11142a,
+    inset 0 0 0 calc(var(--zh) * 0.05) rgba(0, 0, 0, 0.25),
+    0 calc(var(--zh) * 0.04) calc(var(--zh) * 0.08) rgba(0, 0, 0, 0.65);
+}
+.zone.pile::after, .zone.fieldspell::after { inset: 18%; border-radius: 50%; border-color: rgba(200, 210, 255, 0.12); background: none; box-shadow: none; }
+.zone.pile::before, .zone.fieldspell::before { color: rgba(205, 214, 255, 0.4); text-shadow: 0 1px 2px #000; }
+.zone.removed { border-style: none; opacity: 1; }
+.zone.grave { --rim-1: #d8c38a; --rim-2: #6e5a2c; }
+.zone.removed { --rim-1: #b7a3e6; --rim-2: #4b3b7a; }
+.zone.fieldspell { --rim-1: #9fe3c8; --rim-2: #2d6b59; }
+
+/* le carte stanno sopra la pietra e la proiettano un'ombra */
+.zone .card { box-shadow: 0 calc(var(--zh) * 0.03) calc(var(--zh) * 0.06) rgba(0, 0, 0, 0.7); }
+
+/* --- medaglione al centro: turno e fase */
+.field-center { position: relative; z-index: 2; }
+.medallion {
+  width: calc(var(--zh) * 0.98); aspect-ratio: 1; border-radius: 50%;
+  display: grid; place-content: center; text-align: center; gap: 0;
+  color: #eaf2ff; font-family: var(--display); line-height: 1;
+  background:
+    radial-gradient(circle at 50% 38%, #3b6ad6 0%, #1c3a8f 45%, #0d1c4f 100%);
+  box-shadow:
+    0 0 0 calc(var(--zh) * 0.035) #d9b553,
+    0 0 0 calc(var(--zh) * 0.055) #6f531b,
+    0 0 0 calc(var(--zh) * 0.07) #f4dd8f,
+    0 6px 18px rgba(0, 0, 0, 0.7),
+    0 0 28px rgba(90, 150, 255, 0.35),
+    inset 0 -6px 14px rgba(0, 0, 0, 0.45),
+    inset 0 4px 10px rgba(255, 255, 255, 0.25);
+  text-shadow: 0 2px 3px rgba(0, 0, 0, 0.8);
+  animation: medallion-in 0.35s ease-out;
+}
+.medallion b { font-size: calc(var(--zh) * 0.17); font-weight: 700; letter-spacing: 0.02em; }
+.medallion span { font-size: calc(var(--zh) * 0.22); font-weight: 700; margin-top: calc(var(--zh) * 0.02); }
+.medallion.theirs { background: radial-gradient(circle at 50% 38%, #c9384c 0%, #7d1426 45%, #3c0711 100%); box-shadow:
+    0 0 0 calc(var(--zh) * 0.035) #d9b553, 0 0 0 calc(var(--zh) * 0.055) #6f531b, 0 0 0 calc(var(--zh) * 0.07) #f4dd8f,
+    0 6px 18px rgba(0, 0, 0, 0.7), 0 0 28px rgba(255, 70, 90, 0.35), inset 0 -6px 14px rgba(0, 0, 0, 0.45), inset 0 4px 10px rgba(255, 255, 255, 0.25); }
+@keyframes medallion-in { from { transform: scale(0.6) rotate(-25deg); opacity: 0; } }
+
+/* gli stati di selezione restano ben visibili sulla pietra */
+.zone.pickable { background: radial-gradient(circle, rgba(120, 220, 255, 0.55), rgba(53, 198, 244, 0.15)), linear-gradient(150deg, var(--stone-hi), var(--stone-lo)); }
+
+/* --- luce del turno sulle lastre del lato di chi gioca (sopra la pietra, sotto le carte) */
+.zone.side-0, .zone.side-1 { transition: box-shadow 0.5s, filter 0.5s; }
+.duel-main.turn-me .zone.side-0:not(.pile):not(.fieldspell),
+.duel-main.turn-op .zone.side-1:not(.pile):not(.fieldspell) {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--zh) * 0.07), var(--ray) calc(var(--zh) * 0.07) calc(var(--zh) * 0.085)),
+    linear-gradient(var(--ray-dir), var(--glow) 0%, transparent 85%),
+    var(--noise),
+    linear-gradient(150deg, var(--stone-hi) 0%, var(--stone) 42%, var(--stone-lo) 100%);
+  background-size: auto, auto, 180px 180px, auto;
+  box-shadow:
+    inset 2px 2px 0 rgba(255, 255, 255, 0.45),
+    inset -3px -3px 0 rgba(20, 24, 50, 0.45),
+    0 0 calc(var(--zh) * 0.12) var(--glow-edge),
+    0 calc(var(--zh) * 0.035) calc(var(--zh) * 0.06) rgba(0, 0, 0, 0.6);
+}
+.duel-main.turn-me { --glow: rgba(70, 160, 255, 0.55); --glow-edge: rgba(70, 160, 255, 0.45); --ray: rgba(150, 210, 255, 0.16); --ray-dir: 0deg; }
+.duel-main.turn-op { --glow: rgba(230, 50, 70, 0.45); --glow-edge: rgba(230, 50, 70, 0.35); --ray: rgba(255, 150, 160, 0.12); --ray-dir: 180deg; }
+.duel-main.turn-me .zone.side-0.pile, .duel-main.turn-me .zone.side-0.fieldspell { box-shadow: 0 0 0 2px #11142a, 0 0 calc(var(--zh) * 0.16) rgba(70, 160, 255, 0.55), 0 calc(var(--zh) * 0.04) calc(var(--zh) * 0.08) rgba(0, 0, 0, 0.65); }
+.duel-main.turn-op .zone.side-1.pile, .duel-main.turn-op .zone.side-1.fieldspell { box-shadow: 0 0 0 2px #11142a, 0 0 calc(var(--zh) * 0.16) rgba(230, 50, 70, 0.45), 0 calc(var(--zh) * 0.04) calc(var(--zh) * 0.08) rgba(0, 0, 0, 0.65); }
+
+/* --- pavimento a lastre appena accennato intorno al campo */
+.duel-main {
+  background:
+    radial-gradient(ellipse 75% 65% at 50% 52%, rgba(70, 82, 140, 0.35), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 2px, transparent 2px 120px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.22) 0 2px, transparent 2px 160px),
+    var(--noise),
+    radial-gradient(ellipse at 50% 50%, #252b4d 0%, #151935 60%, #0a0c1b 100%);
+  background-size: auto, auto, auto, 180px 180px, auto;
+}
