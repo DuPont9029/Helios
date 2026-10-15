@@ -3,7 +3,7 @@
 import { h, clear } from "../dom.js";
 import { cardFace } from "../card.js";
 import { getCard, counterName } from "../../data/db.js";
-import { pendulumIcons } from "../../data/pendulum.js";
+import { pendulumIcons, mirrorFor } from "../../data/pendulum.js";
 import { LOC, POS, STATUS_DISABLED, TYPE } from "../../core/constants.js";
 
 export const key = (p, loc, seq) => `${p}:${loc}:${seq}`;
@@ -16,7 +16,8 @@ function pendulumGem(scale, extraCls = "") {
   const color = SCALE_COLOR[scale];
   const custom = pendulumIcons();
   const cls = `pz-gem.${color}${extraCls ? "." + extraCls : ""}`;
-  return custom ? h(`img.${cls}.custom`, { src: custom[color], alt: "", draggable: false }) : h(`div.${cls}`, h("i"));
+  // L'immagine personalizzata è disegnata per una sola zona: nell'altra si mostra specchiata.
+  return custom ? h(`img.${cls}.custom${mirrorFor(custom, scale) ? ".mirror" : ""}`, { src: custom[color], alt: "", draggable: false }) : h(`div.${cls}`, h("i"));
 }
 
 const isFaceDown = (pos) => (pos & POS.FACEDOWN) !== 0;
@@ -241,8 +242,21 @@ export class Board {
       if (fn) {
         e.stopPropagation();
         fn(e, el);
+      } else if (this.materialsAt(el.dataset.key).length) {
+        // Nessuna azione su questa carta, ma ha materiali Xyz: menu con solo "View materials".
+        e.stopPropagation();
+        this.opts.onCardMenu?.(el, []);
       }
     });
+  }
+
+  /** Codici dei materiali Xyz del mostro nella zona `k` (chiave della carta), [] se non ne ha. */
+  materialsAt(k) {
+    if (!k || !this.snapshot) return [];
+    const [p, loc, seq] = k.split(":").map(Number);
+    if (loc !== LOC.MZONE) return [];
+    const mats = this.snapshot.players[p]?.mzone?.[seq]?.overlayCards ?? [];
+    return mats.map((m) => (typeof m === "object" ? m?.code : m)).filter(Boolean);
   }
 
   onZoneClick(player, loc, seq, e) {
