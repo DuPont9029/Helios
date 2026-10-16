@@ -24,3 +24,44 @@
 .coin-result { color: var(--accent-soft); font-weight: 600; }
 
 .clip-hint:empty { display: none; }
+
+/* ------------------------------------------------------------------ Combo Trainer */
+.page.combos { display: flex; flex-direction: column; gap: 14px; padding: 24px 48px; overflow: auto; height: 100%; }
+.card-box.combo-top { display: grid; grid-template-columns: minmax(0, 420px) auto; justify-content: start; align-items: end; gap: 14px; padding: 14px; }
+.combo-top .field { margin: 0; }
+.combo-list { display: flex; flex-direction: column; gap: 8px; }
+.combo-row { display: grid; grid-template-columns: auto 1fr auto; gap: 16px; align-items: center; padding: 10px 14px; background: var(--panel); border: 1px solid var(--line); }
+.combo-hand { display: flex; gap: 4px; }
+.combo-hand .card { width: 38px; }
+.combo-info b { font: 700 17px var(--display); }
+.combo-actions { display: flex; gap: 6px; }
+.combo-sec { margin: 6px 0 0; font: 700 14px var(--display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-soft); }
+.combo-hand-pick, .combo-pool { display: flex; flex-wrap: wrap; gap: 4px; min-height: 30px; align-items: center; }
+.combo-pool { max-height: 168px; overflow: auto; padding: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); }
+.combo-card { width: 48px; padding: 0; border: 0; background: none; cursor: pointer; }
+.combo-card.chosen { outline: 2px solid var(--accent); }
+.combo-card.used { opacity: 0.3; cursor: default; }
+.combo-steps-edit { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.combo-step-row, .combo-int-row { display: flex; gap: 6px; align-items: center; }
+.combo-step-row .select { flex: 1; min-width: 0; }
+.combo-step-row .select:first-child { flex: 0 0 150px; }
+.combo-int-row .select { flex: 1; min-width: 0; }
+.combo-ints-edit { display: flex; flex-direction: column; gap: 4px; }
+.modal.combo-editor .modal-body { white-space: normal; }
+
+/* scheda "Combo" nel duello */
+.trainer-panel { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.trainer-panel[hidden] { display: none; }
+.trainer-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.trainer-head b { font: 700 15px var(--display); }
+.trainer-status { padding: 6px 8px; border-left: 3px solid var(--accent); background: rgba(56, 198, 255, 0.08); color: var(--accent-soft); }
+.trainer-status.complete { border-color: var(--ok); color: #8affb5; background: rgba(61, 220, 132, 0.1); }
+.trainer-status.interrupted { border-color: #ffd23a; color: #ffe9a6; background: rgba(255, 210, 58, 0.08); }
+.trainer-steps { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.trainer-step { display: grid; grid-template-columns: 16px 1fr; gap: 6px; color: var(--muted); }
+.trainer-step.ok { color: #8affb5; }
+.trainer-step.current { color: #fff; font-weight: 600; }
+.trainer-step.skipped { opacity: 0.45; text-decoration: line-through; }
+.trainer-interrupt { margin-left: 22px; color: #ffd23a; font-size: 12px; }
+.trainer-interrupt.fired { font-weight: 700; }
+.toast.ok { border-color: var(--accent); }

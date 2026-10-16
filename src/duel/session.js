@@ -104,7 +104,10 @@ export class DuelSession {
     this.pending = null; // summon/set in sospeso: { player, seq, histLen, logMark, outbox }
     this.over = false;
     this.ai = new SimpleAI({ getCard, allCards: db.list });
-    this.passer = cfg.controllers.includes("pass") ? new PassAI({ getCard, allCards: db.list }) : null;
+    this.passer = cfg.controllers.includes("pass") || cfg.controllers.includes("trainer") ? new PassAI({ getCard, allCards: db.list }) : null;
+    // Combo Trainer: segue la combo del giocatore e pilota l'avversario (interruzioni).
+    this.trainer = cfg.trainer ?? null;
+    if (this.trainer) this.trainer.me = cfg.me;
     // Rivincita (solo P2P): chi l'ha chiesta tra noi e l'avversario.
     this.rematch = { me: false, opp: false, oppLeft: false, started: false, ui: null };
     const p2p = cfg.controllers.includes("remote");
@@ -112,6 +115,7 @@ export class DuelSession {
       me: cfg.me,
       names: cfg.names,
       reveal: cfg.reveal,
+      trainerEl: cfg.trainer?.el ?? null,
       // Master Rule 3: zone Pendulum separate; altrimenti sono la prima e l'ultima zona Magie/Trappole.
       separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
@@ -236,6 +240,7 @@ export class DuelSession {
       if (this.over) return;
       for (const l of res.logs) console.warn("[script]", l.text);
       await this.view.playMessages(res.messages);
+      this.trainer?.onMessages(res.messages);
       if (this.over) return;
       this.view.render(res.snapshot);
       if (this.clock && res.messages.some((m) => m.type === MSG.NEW_TURN)) this.clock.newTurn();
@@ -248,6 +253,7 @@ export class DuelSession {
         return;
       }
       const prompt = res.prompt;
+      this.trainer?.onPrompt(prompt);
       let who = this.cfg.controllers[prompt.player];
       // Flag di test: il giocatore locale viene pilotato dall'IA (localStorage "ygoweb.autoplay").
       if (who === "local" && AUTOPLAY) who = "ai";
@@ -269,6 +275,7 @@ export class DuelSession {
           res = await this.undoPending();
           continue;
         }
+        this.trainer?.onResponse(prompt, response);
         if (prompt.type === MSG.SELECT_IDLECMD && UNDOABLE_ACTIONS.has(response.action) && !this.pending) {
           this.pending = { player: prompt.player, seq: this.seq, histLen: this.history.length, logMark: this.view.logMark(), outbox: [] };
         }
@@ -278,6 +285,9 @@ export class DuelSession {
         else if (this.mux) this.send(out);
       } else if (who === "pass") {
         response = this.passer.respond(prompt, { turn: res.snapshot.turn });
+      } else if (who === "trainer") {
+        if (prompt.type === MSG.SELECT_CHAIN) await this.view.wait(250);
+        response = this.trainer.respond(prompt, (pr) => this.passer.respond(pr, { turn: res.snapshot.turn }));
       } else if (who === "ai") {
         if (prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD) await this.view.wait(350);
         response = this.ai.respond(prompt, { turn: res.snapshot.turn });
