@@ -440,3 +440,15 @@
 .pz-side-pick { display: flex; gap: 18px; justify-content: center; }
 .pz-side-pick .btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px 18px; }
 .pz-side-pick .pz-preview { width: 96px; height: 96px; }
+
+/* ------------------------------------------------------------------ sottotitoli del Combo Trainer */
+.combo-caption {
+  position: absolute; left: 50%; bottom: 13.5%; transform: translateX(-50%); z-index: 6; width: max-content; max-width: 86%;
+  padding: 10px 22px; background: rgba(0, 0, 0, 0.82); border-left: 4px solid var(--accent); color: #fff;
+  font: 700 22px/1.25 var(--display); letter-spacing: 0.02em; text-align: center; text-shadow: 0 2px 4px #000;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.6); pointer-events: none; animation: fade-in 0.2s; transition: opacity 0.4s;
+}
+.combo-caption.out { opacity: 0; }
+.combo-caption.done { border-left-color: var(--ok); color: #b9ffd4; }
+.combo-caption.wrong { border-left-color: var(--danger); color: #ffb3bd; }
+.combo-caption.interrupt { border-left-color: #ffd23a; color: #ffe9a6; }

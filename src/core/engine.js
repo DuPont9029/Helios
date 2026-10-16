@@ -65,8 +65,11 @@ export class DuelEngine {
   start(cfg) {
     const { lib, opts } = this;
     // cfg.noDraw[p]: il giocatore p non pesca mai (duello di prova senza mazzo: un mazzo vuoto non fa perdere).
+    // Combo Trainer: cfg.handSize[p] = carte della mano iniziale, cfg.noTurnDraw[p] = nessuna pescata nei turni.
     const teams = [0, 1].map((p) =>
-      cfg.noDraw?.[p] ? { startingLP: cfg.lp, startingDrawCount: 0, drawCountPerTurn: 0 } : { startingLP: cfg.lp, startingDrawCount: cfg.hand, drawCountPerTurn: cfg.draw });
+      cfg.noDraw?.[p]
+        ? { startingLP: cfg.lp, startingDrawCount: 0, drawCountPerTurn: 0 }
+        : { startingLP: cfg.lp, startingDrawCount: cfg.handSize?.[p] ?? cfg.hand, drawCountPerTurn: cfg.noTurnDraw?.[p] ? 0 : cfg.draw });
     this.lp = [cfg.lp, cfg.lp];
     this.handle = lib.createDuel({
       flags: BigInt(cfg.flags),
@@ -99,7 +102,17 @@ export class DuelEngine {
         lib.duelNewCard(this.handle, {
           team: p, duelist: 0, code, controller: p, location, sequence: 0, position: 0x8,
         });
-      const main = cfg.shuffle?.[p] === false ? [...deck.main].reverse() : shuffle([...deck.main], rand);
+      let main = cfg.shuffle?.[p] === false ? [...deck.main].reverse() : shuffle([...deck.main], rand);
+      // cfg.top[p]: carte da pescare per prime (la mano della combo), il resto del mazzo resta mescolato.
+      const top = cfg.top?.[p];
+      if (top?.length) {
+        const rest = [...main];
+        for (const code of top) {
+          const i = rest.indexOf(code);
+          if (i >= 0) rest.splice(i, 1);
+        }
+        main = [...rest, ...[...top].reverse()];
+      }
       for (const code of main) add(code, LOC.DECK);
       for (const code of deck.extra) add(code, LOC.EXTRA);
     });

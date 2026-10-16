@@ -104,7 +104,10 @@ export class DuelSession {
     this.pending = null; // summon/set in sospeso: { player, seq, histLen, logMark, outbox }
     this.over = false;
     this.ai = new SimpleAI({ getCard, allCards: db.list });
-    this.passer = cfg.controllers.includes("pass") ? new PassAI({ getCard, allCards: db.list }) : null;
+    this.passer = cfg.controllers.includes("pass") || cfg.controllers.includes("trainer") ? new PassAI({ getCard, allCards: db.list }) : null;
+    // Combo Trainer: segue la combo del giocatore e pilota l'avversario (interruzioni).
+    this.trainer = cfg.trainer ?? null;
+    if (this.trainer) this.trainer.me = cfg.me;
     // Rivincita (solo P2P): chi l'ha chiesta tra noi e l'avversario.
     this.rematch = { me: false, opp: false, oppLeft: false, started: false, ui: null };
     const p2p = cfg.controllers.includes("remote");
@@ -112,6 +115,7 @@ export class DuelSession {
       me: cfg.me,
       names: cfg.names,
       reveal: cfg.reveal,
+      trainerEl: cfg.trainer?.el ?? null,
       // Master Rule 3: zone Pendulum separate; altrimenti sono la prima e l'ultima zona Magie/Trappole.
       separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
@@ -236,7 +240,15 @@ export class DuelSession {
       if (this.over) return;
       for (const l of res.logs) console.warn("[script]", l.text);
       await this.view.playMessages(res.messages);
+      this.trainer?.onMessages(res.messages);
       if (this.over) return;
+      // Combo Trainer: "Back" premuto mentre il duello non aspettava il giocatore (animazioni, avversario).
+      if (this.trainer?.rewindTo) {
+        const mark = this.trainer.rewindTo;
+        this.trainer.rewindTo = null;
+        res = await this.rewind(mark);
+        continue;
+      }
       this.view.render(res.snapshot);
       if (this.clock && res.messages.some((m) => m.type === MSG.NEW_TURN)) this.clock.newTurn();
       // Summon in sospeso: diventa definitiva appena avviene o il core chiede altro (anche all'avversario).
@@ -248,6 +260,7 @@ export class DuelSession {
         return;
       }
       const prompt = res.prompt;
+      this.trainer?.onPrompt(prompt);
       let who = this.cfg.controllers[prompt.player];
       // Flag di test: il giocatore locale viene pilotato dall'IA (localStorage "ygoweb.autoplay").
       if (who === "local" && AUTOPLAY) who = "ai";
@@ -259,7 +272,20 @@ export class DuelSession {
         this.view.prompter.back = this.pending && BACK_PROMPTS.has(prompt.type) ? true : null;
         // Dentro una summon i materiali si scelgono sul campo (vedi Prompter.fieldKeys).
         this.view.prompter.summoning = !!this.pending;
-        response = await this.view.prompter.ask(prompt);
+        // Combo Trainer: il pulsante "Back" interrompe l'attesa della scelta e fa tornare indietro.
+        const back = this.trainer ? new Promise((r) => (this.trainer.onBack = () => r({ trainerBack: true }))) : null;
+        response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+        if (this.trainer) this.trainer.onBack = null;
+        if (response?.trainerBack) {
+          this.view.prompter.abort();
+          this.view.prompter.back = null;
+          this.view.prompter.summoning = false;
+          this.stopClock(prompt.player, false);
+          const mark = this.trainer.rewindTo;
+          this.trainer.rewindTo = null;
+          res = await this.rewind(mark);
+          continue;
+        }
         this.view.prompter.back = null;
         this.view.prompter.summoning = false;
         this.stopClock(prompt.player, performance.now() - asked >= AUTO_RESPONSE_MS);
@@ -269,6 +295,7 @@ export class DuelSession {
           res = await this.undoPending();
           continue;
         }
+        this.trainer?.onResponse(prompt, response, { histLen: this.history.length, seq: this.seq, logMark: this.view.logMark() });
         if (prompt.type === MSG.SELECT_IDLECMD && UNDOABLE_ACTIONS.has(response.action) && !this.pending) {
           this.pending = { player: prompt.player, seq: this.seq, histLen: this.history.length, logMark: this.view.logMark(), outbox: [] };
         }
@@ -278,6 +305,9 @@ export class DuelSession {
         else if (this.mux) this.send(out);
       } else if (who === "pass") {
         response = this.passer.respond(prompt, { turn: res.snapshot.turn });
+      } else if (who === "trainer") {
+        if (prompt.type === MSG.SELECT_CHAIN) await this.view.wait(250);
+        response = this.trainer.respond(prompt, (pr) => this.passer.respond(pr, { turn: res.snapshot.turn }));
       } else if (who === "ai") {
         if (prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD) await this.view.wait(350);
         response = this.ai.respond(prompt, { turn: res.snapshot.turn });
@@ -319,11 +349,21 @@ export class DuelSession {
   async undoPending() {
     const p = this.pending;
     this.pending = null;
+    return this.rewind(p);
+  }
+
+  /**
+   * Torna allo stato di un punto precedente ({ histLen, seq, logMark }) ricostruendolo nel worker
+   * con le risposte date fin lì (il duello è deterministico). Usato da "Back" e dal Combo Trainer.
+   */
+  async rewind(mark) {
+    this.pending = null;
+    this.view.prompter.abort();
     this.view.setStatus("Going back...");
-    const res = await this.engine.call("replay", { duel: this.cfg.duel, responses: this.history.slice(0, p.histLen) });
-    this.history.length = p.histLen;
-    this.seq = p.seq;
-    this.view.logRewind(p.logMark);
+    const res = await this.engine.call("replay", { duel: this.cfg.duel, responses: this.history.slice(0, mark.histLen) });
+    this.history.length = mark.histLen;
+    this.seq = mark.seq;
+    this.view.logRewind(mark.logMark);
     this.view.setStatus("");
     // Niente animazioni: lo stato si ridisegna dalla fotografia e si torna alla scelta dell'azione.
     return { ...res, messages: [] };

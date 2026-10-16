@@ -11,6 +11,7 @@ import { loadDecks } from "./deck/deck.js";
 import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks } from "./data/bookmarks.js";
+import { showComboTrainer } from "./ui/combos.js";
 
 const app = {
   root: document.getElementById("app"),
@@ -62,6 +63,7 @@ function home() {
         item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
         item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
         item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
+        item("Combo Trainer", "Practice your combos and play around interruptions", () => showComboTrainer(app)),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
         item("Settings", "Name, network, graphics", () => showSettings(app))
       ),

@@ -127,7 +127,13 @@ export class DuelView {
     });
     const tabs = h("div.tabs");
     const panes = { log: this.logEl, chat: h("div.chat", this.chatLog, chatInput) };
-    for (const [id, label] of [["log", "Log"], ["chat", "Chat"]]) {
+    const tabList = [["log", "Log"], ["chat", "Chat"]];
+    // Combo Trainer: scheda "Combo" con i passi, aperta all'inizio.
+    if (this.opts.trainerEl) {
+      panes.combo = this.opts.trainerEl;
+      tabList.unshift(["combo", "Combo"]);
+    }
+    for (const [id, label] of tabList) {
       tabs.append(
         h("button.tab", {
           dataset: { tab: id },
@@ -141,7 +147,7 @@ export class DuelView {
     }
     this.chatTab = tabs.lastChild;
     tabs.firstChild.classList.add("on");
-    panes.chat.hidden = true;
+    Object.entries(panes).forEach(([k, p]) => (p.hidden = k !== tabList[0][0]));
 
     // Catena: tre pulsanti esclusivi (auto / always ask / never). Tenendo premuto il mouse si cambia
     // modo al volo: sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
@@ -157,7 +163,7 @@ export class DuelView {
     this.promptDock = h("div.prompt-dock");
     this.el = h(
       "div.duel-screen",
-      h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.log, panes.chat)),
+      h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.combo ?? null, panes.log, panes.chat)),
       (this.main = h(
         "div.duel-main",
         h("div.hud-top", this.lpEls[1].el, this.board.handEls[1]),
@@ -236,6 +242,22 @@ export class DuelView {
     );
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
+  }
+
+  /**
+   * Sottotitolo sul campo (Combo Trainer): resta qualche secondo, il successivo lo sostituisce.
+   * È parte della pagina, quindi compare anche nei video registrati.
+   */
+  caption(text, kind = "") {
+    this.captionEl?.remove();
+    clearTimeout(this.captionTimer);
+    const el = h(`div.combo-caption${kind ? "." + kind : ""}`, text);
+    this.captionEl = el;
+    this.overlay.append(el);
+    this.captionTimer = setTimeout(() => {
+      el.classList.add("out");
+      setTimeout(() => el.remove(), 400);
+    }, 3600);
   }
 
   /** Partita al meglio di N: formato, numero del duello e punteggio (io–avversario). */
