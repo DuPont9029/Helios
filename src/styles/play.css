@@ -43,6 +43,11 @@
 .combo-card.used { opacity: 0.3; cursor: default; }
 .combo-steps-edit { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .combo-step-row, .combo-int-row { display: flex; gap: 6px; align-items: center; }
+.combo-step-row { position: relative; }
+.step-menu { position: absolute; right: 0; top: calc(100% + 2px); z-index: 5; display: flex; flex-direction: column; min-width: 190px; padding: 4px; background: rgba(6, 7, 11, 0.98); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); box-shadow: var(--shadow); }
+.step-menu[hidden] { display: none; }
+.step-menu button { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; background: none; color: var(--text); cursor: pointer; text-align: left; font: 600 13px var(--font); }
+.step-menu button:hover { background: var(--accent); color: var(--on-gold); }
 .combo-step-row .select { flex: 1; min-width: 0; }
 .combo-step-row .select:first-child { flex: 0 0 150px; }
 .combo-int-row .select { flex: 1; min-width: 0; }
@@ -52,8 +57,10 @@
 /* scheda "Combo" nel duello */
 .trainer-panel { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
 .trainer-panel[hidden] { display: none; }
-.trainer-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.trainer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; }
 .trainer-head b { font: 700 15px var(--display); }
+.trainer-btns { display: flex; gap: 4px; }
+.trainer-back[hidden] { display: none; }
 .trainer-status { padding: 6px 8px; border-left: 3px solid var(--accent); background: rgba(56, 198, 255, 0.08); color: var(--accent-soft); }
 .trainer-status.complete { border-color: var(--ok); color: #8affb5; background: rgba(61, 220, 132, 0.1); }
 .trainer-status.interrupted { border-color: #ffd23a; color: #ffe9a6; background: rgba(255, 210, 58, 0.08); }
@@ -65,3 +72,7 @@
 .trainer-interrupt { margin-left: 22px; color: #ffd23a; font-size: 12px; }
 .trainer-interrupt.fired { font-weight: 700; }
 .toast.ok { border-color: var(--accent); }
+.combo-code { width: 100%; font: 12px var(--mono); word-break: break-all; resize: vertical; }
+.trainer-steps.recording .trainer-mark { color: #ff5a6e; }
+.video-btn.rec { color: #fff; background: var(--red); border-color: #ff7a8a; animation: clock-alarm 1.2s infinite; }
+.combo-video { width: 100%; max-height: calc(var(--vh) * 60); background: #000; }

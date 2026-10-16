@@ -244,6 +244,22 @@ export class DuelView {
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
   }
 
+  /**
+   * Sottotitolo sul campo (Combo Trainer): resta qualche secondo, il successivo lo sostituisce.
+   * È parte della pagina, quindi compare anche nei video registrati.
+   */
+  caption(text, kind = "") {
+    this.captionEl?.remove();
+    clearTimeout(this.captionTimer);
+    const el = h(`div.combo-caption${kind ? "." + kind : ""}`, text);
+    this.captionEl = el;
+    this.overlay.append(el);
+    this.captionTimer = setTimeout(() => {
+      el.classList.add("out");
+      setTimeout(() => el.remove(), 400);
+    }, 3600);
+  }
+
   /** Partita al meglio di N: formato, numero del duello e punteggio (io–avversario). */
   setMatchInfo(series) {
     this.matchEl.hidden = !series;
