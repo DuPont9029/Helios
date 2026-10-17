@@ -1,4 +1,4 @@
-# Features and Improvements
+# Features and Improvements (* indica una funzoine difficile/impossibile da implementare o grande feature)
 
 - [ ] Cambiare zone pendulum per farle funzionare come le foderine ossia ogniuno vede quelle impostate dall’altro sul campo avversario.
 
@@ -17,7 +17,7 @@
 
 - [ ] Implementare una modalità "strict" per il combo trainer dove qualsiasi mossa diversa da quella che devi fare non te la fa effettuare proprio e ti dice quale devi effettivamente fare.
 
-- [ ] mettere nella combo la possibilità di selezionare i target specifici di un effetto (carte specifiche da scartare, banishare, selezionare etc...) e le zone specifiche in cui evocare i mostri. In generale step delle combo molto più precisi.
+- [ ] mettere nella combo la possibilità di selezionare i target specifici di un effetto (carte specifiche da scartare, banishare, targettare, selezionare etc...), le zone specifiche in cui evocare i mostri e se attivare o no effetti aggiuntivi opzionali in risoluzione. In generale step delle combo molto più precisi.
 
 - [ ] Aggiungere funzionalità di rematch al combo tester.
 
@@ -33,9 +33,23 @@
 
 - [ ] Per alcune combo sono necessari alcuni prerequisiti tipo controllare un mostro oppure che l'avversario controlloi un mostro o che l'avverario abbia un certo tipo di carta in cima al deck o un certo tipo di mostro nell'extra deck in generale un particolare boardstate. Quindi sarebbe utile un modo di configurare lo stato della partita quando inizia la combo.
 
-- [ ] si possono mettere a fine delle combo dei "tag" sulle carte che spigano il ruolo di esse in una board (pop, omni-negate e cosi via.) questo testo appare nel video subito sopra la carta.
+- [ ] Si possono mettere a fine delle combo dei "tag" sulle carte che spiegano il ruolo di esse in una board (pop, omni-negate e cosi via.) questo testo appare nel video subito sopra la carta.
 
+- [ ] Cambiare la visualizzazione nei replay per somigliare maggiormente a gli altri client e applicare i cambiamenti anche alla funzionalità di esportazione a video (dovrebbe ricreare il replay tramite gli step più dettagliati e registrarlo) (Elio deve ancora specificare quali sono le feature degli altri client).
 
+- [ ] * Engine ibrido TCG/OCG di omega in web assembly.
 
+- [ ] * Funzionalità di spettatore (visualizzazione come replay).
 
+- [ ] * Custom card editor in game con script editor integrato (le carte devono ovviamente essere usabili online e visualizzabili dall'avversario).
+
+- [ ] Aggiungere il side deck al BO3/BO5.
+
+- [ ] * Integrare il database di www.ygoprodeck.com per permettere un filtro per popolarità che sarebbe utile in più aree del client.
+
+- [ ] * Funzionalità di draft/sealed/cube/roto (implementare con topografia a ring)
+
+- [ ] * Play queue (necessita signaling server)
+
+- [ ] * Friends list di giocatori online (necessita signaling server)
 
