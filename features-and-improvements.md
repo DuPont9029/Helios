@@ -43,7 +43,7 @@
 
 - [ ] * Custom card editor in game con script editor integrato (le carte devono ovviamente essere usabili online e visualizzabili dall'avversario).
 
-- [ ] Aggiungere il side deck al BO3/BO5.
+- [ ] Aggiungere il side deck al BO3/BO5. Questo significa che tra le partite i giocatori devono essere in grado di scambiare fino a un massimo di 15 carte dal loro maindeck o extradeck con il loro side deck, prendere ispirazione da omega per capire la struttura generale.
 
 - [ ] * Integrare il database di www.ygoprodeck.com per permettere un filtro per popolarità che sarebbe utile in più aree del client.
 
@@ -53,3 +53,30 @@
 
 - [ ] * Friends list di giocatori online (necessita signaling server)
 
+- [ ] Non mandare info su effetti che pagano un costo di attivazione come è gia implementato per summon.
+
+- [ ] Auto copia e auto incolla di codice room come per la connesione con gli invite code. (aggiornare anche la pagina per lasciare intendere che entrambe le connessioni sono P2P serverless)
+
+- [ ] Implementa funxionalità di PVA.
+
+- [ ] Superimporre anche la lingering effect window e le istruzioni del combo trainer insieme alle opzioni di priorità.
+
+- [ ] Ulteriore miglioramento del log, mostrare le zone nella quale vengono evocati i mostri e attivate le magie e trappole. Inoltre mostrare dove si attivano gli effetti tipo i dracotail che si attivano al cimitero dopo essere stati usati per fusioni, i melodious che si attivano in extradeck oppure dewn angel kambi che si attiva in mano per evocarsi.
+
+- [ ] Cambiare la scritta: "special summon" in pendulum summon quando si evoca pendulum.
+
+- [ ] Spostare il pulsante finish nel combo editor in modo tale da non dover scrollare tutti gli step precedenti per tornare al bottone.
+
+- [ ] La finestra per arrendersi in una partita dovrebbe sovrapporsi a qualsiasi altra finestra aperta.
+
+- [ ] Aggiungere opzione di combo auto play senza video.
+
+- [ ] Abilità di manipolare la cima del proprio deck in combo trainer.
+
+- [ ] Le pagine che presentano una lista di carte (ES: quando si sceglie una carta nel combo tester editor) ciò dovrebbe accadere seguendo l'ordine che si usa nel deck builder.
+
+- [ ] Rimuovere il warning nel combo trainer per avere meno di una carta in mano.
+
+- [ ] implementare una Hypergeometric Distribution Probability Calculator (da abbreviare come HDPC) necessaria a capire la probabilità di aprire certe carte nella tua mano iniziale prendendo ispirazione da https://stattrek.com/online-calculator/hypergeometric e https://www.deck-probability.com/ che funzionano bene.
+
+- [ ] Raggruppare le sezioni del menu principale (vs cpu, test duel, combo trainer e Hypergeometric Distribution Probability Calculator) in una sola sezione chiamata training.
