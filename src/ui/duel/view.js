@@ -38,6 +38,7 @@ export class DuelView {
       me: this.me,
       reveal: this.reveal,
       separatePz: !!opts.separatePz,
+      pendulums: opts.pendulums ?? null,
       onHover: (code) => this.hover(code),
       onPile: (p, loc) => this.openPile(p, loc),
       onCardMenu: (el, items) => this.openActionMenu(el, items),
@@ -52,6 +53,12 @@ export class DuelView {
         return list?.[seq]?.code ?? 0;
       }
     );
+    // Registro: anelli della catena (per dire cosa si risolve) e carte coinvolte nella risoluzione in corso.
+    this.chainLinks = [];
+    this.resolving = null;
+    // Effetti persistenti ("lingering", come in Master Duel): descrizioni aggiunte dal core ai giocatori
+    // (MSG_PLAYER_HINT) e alle carte (MSG_CARD_HINT), es. "Non puoi Evocare Specialmente mostri dall'Extra Deck".
+    this.lingering = [];
     this.build();
     // Sul documento: le finestre delle richieste stanno fuori dal campo (in <body>).
     this.contextHandler = (e) => this.onContextMenu(e);
@@ -138,8 +145,10 @@ export class DuelView {
       const num = h("div.lp-num", "8000");
       const name = h("div.lp-name", "");
       const clock = h("div.lp-clock", { hidden: true, title: "Thinking time" }, h("span.icon", { "aria-hidden": "true" }, "timer"), h("b", ""), h("i", ""));
-      const el = h(`div.lp.lp-${side}`, h("div.avatar", ""), h("div.lp-body", name, h("div.lp-track", fill), h("div.lp-row", num, clock)));
-      return { el, fill, num, name, clock, avatar: el.firstChild };
+      // Effetti persistenti su questo giocatore e sulle sue carte: compare solo se ce ne sono.
+      const effects = h("button.lp-effects", { hidden: true, title: "Lingering effects", onclick: () => this.showLingering() }, h("span.icon", { "aria-hidden": "true" }, "auto_awesome"), h("b", ""));
+      const el = h(`div.lp.lp-${side}`, h("div.avatar", ""), h("div.lp-body", name, h("div.lp-track", fill), h("div.lp-row", num, clock, effects)));
+      return { el, fill, num, name, clock, effects, avatar: el.firstChild };
     };
     this.lpEls = [lpBar("me"), lpBar("op")];
     this.lpEls[0].name.textContent = this.names[this.me];
@@ -193,10 +202,19 @@ export class DuelView {
     // Catena: tre pulsanti esclusivi (auto / always ask / never). Tenendo premuto il mouse si cambia
     // modo al volo: sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
     const CHAIN_MODES = [["auto", "Auto", "Ask only when a card or effect can be activated"], ["always", "On", "Always ask (also hold the left mouse button)"], ["never", "Off", "Never ask (also hold the right mouse button)"]];
-    this.chainBtns = CHAIN_MODES.map(([mode, label, title]) =>
-      h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label)
-    );
-    this.chainMode = h("div.chain-mode", h("span.chain-label", "Chain"), h("div.chain-btns", this.chainBtns));
+    const chainBtn = ([mode, label, title]) =>
+      h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label);
+    const mainBtns = CHAIN_MODES.map(chainBtn);
+    const floatBtns = CHAIN_MODES.map(chainBtn);
+    this.chainBtns = [...mainBtns, ...floatBtns];
+    this.chainMode = h("div.chain-mode", h("span.chain-label", "Chain"), h("div.chain-btns", mainBtns));
+    // Barra sopra le finestre che oscurano il campo: timer di entrambi e priorità della catena restano visibili.
+    const floatClock = (side) => h(`div.float-clock.side-${side}`, { hidden: true }, h("span.float-name", ""), h("span.icon", { "aria-hidden": "true" }, "timer"), h("b", ""), h("i", ""));
+    this.floatClocks = [floatClock("me"), floatClock("op")];
+    this.floatClocks[0].firstChild.textContent = this.names[this.me];
+    this.floatClocks[1].firstChild.textContent = this.names[1 - this.me];
+    this.floatBar = h("div.duel-float", this.floatClocks[1], h("div.chain-mode.float", h("span.chain-label", "Chain"), h("div.chain-btns", floatBtns)), this.floatClocks[0]);
+    document.body.append(this.floatBar);
     this.resetChainMode();
 
     this.overlay = h("div.fx-layer");
@@ -235,15 +253,17 @@ export class DuelView {
 
   /** Timer del giocatore p: null lo nasconde, altrimenti { left (ms), speed, running }. */
   setClock(p, state) {
-    const ui = this.lpEls[this.board.side(p)].clock;
-    ui.hidden = !state;
-    if (!state) return;
-    const [, time, speed] = ui.children;
-    time.textContent = formatClock(state.left);
-    speed.textContent = state.speed > 1 ? `×${state.speed}` : "";
-    ui.classList.toggle("running", state.running);
-    ui.classList.toggle("fast", state.speed > 1);
-    ui.classList.toggle("low", state.left < 30000);
+    const side = this.board.side(p);
+    for (const ui of [this.lpEls[side].clock, this.floatClocks[side]]) {
+      ui.hidden = !state;
+      if (!state) continue;
+      const [time, speed] = [...ui.children].slice(-2);
+      time.textContent = formatClock(state.left);
+      speed.textContent = state.speed > 1 ? `×${state.speed}` : "";
+      ui.classList.toggle("running", state.running);
+      ui.classList.toggle("fast", state.speed > 1);
+      ui.classList.toggle("low", state.left < 30000);
+    }
   }
 
   setLP(p, lp, animate = true) {
@@ -487,7 +507,7 @@ export class DuelView {
           ? h("span.log-card", { title: "Show card", onclick: () => this.hover(p.code) }, cardName(p.code))
           : "a card"
     );
-    const line = h(`div.log-line.${entry.cls || "plain"}`, parts);
+    const line = h(`div.log-line.${entry.cls || "plain"}${entry.sub ? ".sub" : ""}`, parts);
     this.logEl.append(line);
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
     this.logEl.scrollTop = this.logEl.scrollHeight;
@@ -623,10 +643,129 @@ export class DuelView {
         if (this.winLogged) continue;
         this.winLogged = true;
       }
-      this.log(describe(m, this.names, (p, loc, pos) => this.canSeeMsg(p, loc, pos)));
+      this.logMessage(m);
+      this.trackLingering(m);
       this.chainCtx.track(m);
       await this.animate(m);
     }
+  }
+
+  /** Codice della carta in una zona del campo (dall'ultimo stato disegnato), 0 se non si conosce. */
+  codeAt(p, loc, seq) {
+    const ps = this.board.snapshot?.players[p];
+    const list = loc & LOC.MZONE ? ps?.mzone : loc & LOC.SZONE ? ps?.szone : null;
+    return list?.[seq]?.code ?? 0;
+  }
+
+  /**
+   * Registro: le righe durante la risoluzione di un anello della catena stanno sotto "Chain Link N resolves",
+   * i bersagli sotto l'attivazione e, a fine anello, il riepilogo delle carte coinvolte.
+   */
+  logMessage(m) {
+    const ctx = {
+      codeAt: (p, loc, seq) => this.codeAt(p, loc, seq),
+      chainCode: (n) => this.chainLinks[n]?.code ?? 0,
+    };
+    const entry = describe(m, this.names, (p, loc, pos) => this.canSeeMsg(p, loc, pos), ctx);
+    switch (m.type) {
+      case MSG.CHAINING:
+        this.chainLinks[m.chain_size] = { code: m.code, controller: m.controller };
+        break;
+      case MSG.CHAIN_SOLVING:
+        this.resolving = { link: m.chain_size, code: this.chainLinks[m.chain_size]?.code ?? 0, affected: [] };
+        break;
+    }
+    if (entry) {
+      if (this.resolving && m.type !== MSG.CHAIN_SOLVING && !["turn", "phase"].includes(entry.cls)) entry.sub = true;
+      else if (m.type === MSG.BECOME_TARGET || m.type === MSG.CARD_SELECTED) entry.sub = true;
+      this.log(entry);
+    }
+    // Carte coinvolte dalla risoluzione (spostate, cambiate di posizione, equipaggiate...).
+    if (this.resolving) {
+      const add = (code) => code && !this.resolving.affected.includes(code) && this.resolving.affected.push(code);
+      if (m.type === MSG.MOVE && m.from.location !== m.to.location && (this.canSeeMsg(m.to.controller, m.to.location, m.to.position) || this.canSeeMsg(m.from.controller, m.from.location, m.from.position))) add(m.card);
+      if (m.type === MSG.POS_CHANGE || m.type === MSG.SPSUMMONING || m.type === MSG.SUMMONING) add(m.code);
+      if (m.type === MSG.BECOME_TARGET) m.cards.forEach((c) => add(this.codeAt(c.controller, c.location, c.sequence)));
+    }
+    if (m.type === MSG.CHAIN_SOLVED && this.resolving) {
+      const r = this.resolving;
+      this.resolving = null;
+      if (r.affected.length) {
+        const list = r.affected.flatMap((code, i) => (i ? [", ", { code }] : [{ code }]));
+        this.log({ cls: "affected", sub: true, parts: [...(r.code ? ["Resolved ", { code: r.code }, ": "] : ["Resolved: "]), ...list] });
+      }
+    }
+    if (m.type === MSG.CHAIN_END) this.chainLinks = [];
+  }
+
+  // ---------------------------------------------------------------- effetti persistenti
+
+  trackLingering(m) {
+    const ADD = 6;
+    const REMOVE = 7;
+    if (m.type === MSG.PLAYER_HINT) {
+      const desc = String(m.description);
+      if (m.player_hint === ADD) this.lingering.push({ player: m.player, desc });
+      else if (m.player_hint === REMOVE) {
+        const i = this.lingering.findIndex((x) => x.player === m.player && x.desc === desc && x.code == null);
+        if (i >= 0) this.lingering.splice(i, 1);
+      } else return;
+    } else if (m.type === MSG.CARD_HINT) {
+      // Solo le carte sul campo: sulle carte in mano il core mette suggerimenti temporanei
+      // (es. "aggiunta alla mano dall'effetto in risoluzione"), non effetti persistenti.
+      if (!(m.location & LOC.ONFIELD)) return;
+      const desc = String(m.description);
+      if (m.card_hint === ADD) {
+        this.lingering.push({ player: m.controller, desc, code: this.codeAt(m.controller, m.location, m.sequence), location: m.location, sequence: m.sequence });
+      } else if (m.card_hint === REMOVE) {
+        const i = this.lingering.findIndex((x) => x.code != null && x.desc === desc && x.player === m.controller && x.location === m.location && x.sequence === m.sequence);
+        if (i >= 0) this.lingering.splice(i, 1);
+      } else return;
+    } else if (m.type === MSG.MOVE && m.from.location & LOC.ONFIELD && m.from.location !== m.to.location) {
+      // La carta lascia il campo: i suoi effetti persistenti mostrati sulla carta finiscono.
+      const before = this.lingering.length;
+      this.lingering = this.lingering.filter((x) => !(x.code != null && x.player === m.from.controller && x.location === m.from.location && x.sequence === m.from.sequence));
+      if (this.lingering.length === before) return;
+    } else return;
+    this.paintLingering();
+  }
+
+  paintLingering() {
+    for (let p = 0; p < 2; p++) {
+      const ui = this.lpEls[this.board.side(p)].effects;
+      const n = this.lingering.filter((x) => x.player === p).length;
+      ui.hidden = !n;
+      ui.lastChild.textContent = n || "";
+    }
+    if (this.lingeringModal) this.fillLingering(this.lingeringModal.body);
+  }
+
+  fillLingering(body) {
+    const section = (p) => {
+      const items = this.lingering.filter((x) => x.player === p);
+      return h(
+        "section.lingering-sec",
+        h("h4", p === this.me ? "Your side" : `${this.names[p]}'s side`),
+        items.length
+          ? items.map((x) =>
+              h(
+                "div.lingering-row",
+                x.code ? h("div.lingering-card", { onmouseenter: () => this.hover(x.code), onclick: () => this.hover(x.code) }, cardFace(x.code)) : h("div.lingering-icon", h("span.icon", "auto_awesome")),
+                h("div", x.code ? h("b", cardName(x.code)) : null, h("div", descString(BigInt(x.desc)) || "Effect active"))
+              )
+            )
+          : h("p.muted.small", "No lingering effects.")
+      );
+    };
+    clear(body).append(h("p.muted.small", "Effects that keep applying for the rest of the turn or the Duel (like restrictions on Special Summons)."), section(this.me), section(1 - this.me));
+  }
+
+  showLingering() {
+    this.lingeringModal?.close();
+    const m = openModal({ title: "Lingering effects", className: "lingering", body: [], actions: [{ label: "Close", value: null, primary: true }] });
+    this.fillLingering(m.body);
+    this.lingeringModal = m;
+    m.result.then(() => this.lingeringModal === m && (this.lingeringModal = null));
   }
 
   async animate(m) {
@@ -754,6 +893,8 @@ export class DuelView {
     window.removeEventListener("blur", this.releaseHandler);
     this.prompter.abort();
     this.closeActionMenu();
+    this.lingeringModal?.close();
+    this.floatBar.remove();
     this.el.remove();
   }
 }

@@ -62,10 +62,10 @@ function home() {
       h(
         "nav.menu",
         item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
-        item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
-        item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
-        item("Combo Trainer", "Practice your combos and play around interruptions", () => showComboTrainer(app)),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
+        item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
+        item("Combo Trainer", "Practice your combos and play around hand traps", () => showComboTrainer(app)),
+        item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
         item("Settings", "Name, network, graphics", () => showSettings(app))
       ),
       h("div.emblem", h("i"), h("i"), h("i"), h("b")),

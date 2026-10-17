@@ -38,6 +38,13 @@
 .log-line.dim { color: var(--muted); }
 .log-line.hint { color: #9fd8ff; font-style: italic; }
 .log-line.attack { color: #ffb070; }
+/* risoluzione delle catene: righe annidate sotto "Chain Link N resolves", bersagli e carte coinvolte */
+.log-line.resolve { color: #c9a6ff; font-weight: 600; margin-top: 2px; }
+.log-line.sub { position: relative; padding-left: 16px; }
+.log-line.sub::before { content: "↳"; position: absolute; left: 3px; color: var(--muted); }
+.log-line.target { color: #ffd27a; }
+.log-line.affected { color: #b9c7ff; font-style: italic; }
+.log-card { cursor: pointer; }
 
 .duel-main {
   position: relative; min-width: 0; min-height: 0;
@@ -168,6 +175,35 @@
 .lp-clock.running.low { color: #ffb02e; border-color: #ffb02e; box-shadow: 0 0 10px rgba(255, 176, 46, 0.4); }
 .lp-clock.running.fast { color: #fff; background: var(--red); border-color: #ff7a8a; box-shadow: 0 0 14px rgba(255, 59, 78, 0.7); animation: clock-alarm 0.8s infinite; }
 @keyframes clock-alarm { 50% { opacity: 0.65; } }
+/* effetti persistenti ("lingering") sul giocatore e sulle sue carte */
+.lp-effects {
+  display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; cursor: pointer; font: 700 13px var(--mono);
+  color: #ffd27a; background: rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 210, 122, 0.6); box-shadow: 0 0 10px rgba(255, 210, 122, 0.25);
+}
+.lp-effects[hidden] { display: none; }
+.lp-effects .icon { font-size: 16px; }
+.lp-effects:hover { background: rgba(255, 210, 122, 0.15); }
+.modal.lingering { width: min(560px, 94vw); }
+.lingering-sec h4 { margin: 10px 0 6px; font: 700 13px var(--display); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-soft); }
+.lingering-row { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.lingering-card { width: 40px; cursor: pointer; }
+.lingering-icon { width: 40px; height: 40px; display: grid; place-items: center; color: #ffd27a; border: 1px solid var(--line); }
+/* barra sopra le finestre che oscurano il campo: timer e priorità della catena restano visibili e usabili */
+.duel-float {
+  display: none; position: fixed; top: 10px; right: 10px; z-index: 120;
+  align-items: center; gap: 12px; padding: 6px 10px; background: rgba(6, 7, 11, 0.92); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
+}
+body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: flex; }
+.duel-float .chain-mode.float { flex-direction: row; align-items: center; gap: 8px; }
+.duel-float .chain-btns { min-width: 170px; }
+.float-clock { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font: 700 14px var(--mono); color: var(--muted); border: 1px solid var(--line); }
+.float-clock[hidden] { display: none; }
+.float-clock .float-name { font: 600 11px var(--display); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.float-clock .icon { font-size: 15px; }
+.float-clock i { font-style: normal; font-size: 11px; }
+.float-clock.running { color: var(--accent); border-color: var(--accent); }
+.float-clock.running.low { color: #ffb02e; border-color: #ffb02e; }
+.float-clock.running.fast { color: #fff; background: var(--red); border-color: #ff7a8a; animation: clock-alarm 0.8s infinite; }
 .lp-pop { position: absolute; font: 700 26px var(--display); animation: lp-pop 1.2s forwards; pointer-events: none; }
 .lp-me .lp-pop { left: 60px; top: -30px; } .lp-op .lp-pop { right: 60px; bottom: -30px; }
 .lp-pop.dmg { color: #ff5a6e; } .lp-pop.heal { color: #6dff9e; }
@@ -420,6 +456,10 @@
 /* faccetta superiore e riflesso */
 .pz-gem i::before { content: ""; position: absolute; left: 22%; right: 22%; top: 8%; height: 28%; background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.15)); clip-path: polygon(0 0, 100% 0, 85% 100%, 15% 100%); }
 .pz-gem i::after { content: ""; position: absolute; inset: 36% 0 0; background: linear-gradient(90deg, rgba(0, 0, 0, 0.35), transparent 45%, rgba(255, 255, 255, 0.18) 55%, rgba(0, 0, 0, 0.3)); clip-path: polygon(0 0, 100% 0, 50% 100%); }
+/* Gemma predefinita come le icone ufficiali: schiacciata e girata con la punta lunga verso l'esterno del campo
+   (zona sinistra verso sinistra, zona destra verso destra; sul lato avversario il campo è già girato). */
+.pz-gem.left:not(.custom) i { transform: rotate(90deg) scale(0.62, 1.12); }
+.pz-gem.right:not(.custom) i { transform: rotate(-90deg) scale(0.62, 1.12); }
 .pz-gem.custom { object-fit: contain; }
 .pz-gem.custom.mirror { transform: scaleX(-1); }
 /* Lato avversario: la proiezione è girata come il suo campo, vista dalla sua parte del tavolo. */
@@ -452,3 +492,12 @@
 .combo-caption.done { border-left-color: var(--ok); color: #b9ffd4; }
 .combo-caption.wrong { border-left-color: var(--danger); color: #ffb3bd; }
 .combo-caption.interrupt { border-left-color: #ffd23a; color: #ffe9a6; }
+.combo-caption.hint { border-left-color: var(--accent); color: #bfe9ff; }
+/* tag della board finale (Combo Trainer): etichetta sopra la carta */
+.card-tag {
+  position: absolute; left: 50%; bottom: calc(100% + 3px); transform: translateX(-50%); z-index: 6; pointer-events: none;
+  padding: 2px 7px; white-space: nowrap; font: 700 11px var(--display); letter-spacing: 0.03em; text-transform: uppercase;
+  color: #10131c; background: linear-gradient(180deg, #fff3b8, #ffd24a); border: 1px solid #fff; box-shadow: 0 0 12px rgba(255, 210, 74, 0.8);
+  animation: tag-in 0.35s ease-out;
+}
+@keyframes tag-in { from { opacity: 0; transform: translate(-50%, 6px); } }

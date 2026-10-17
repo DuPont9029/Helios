@@ -117,11 +117,11 @@ function pendulumPicker() {
     const icons = pendulumIcons();
     for (const [el, color, scale] of [[blue, "blue", "left"], [red, "red", "right"]]) {
       // Anteprima: la gemma personalizzata oppure quella predefinita disegnata in CSS (come sul campo).
-      clear(el).append(icons ? h(`img.pz-gem.${color}.custom${mirrorFor(icons, scale) ? ".mirror" : ""}`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}`, h("i")));
+      clear(el).append(icons ? h(`img.pz-gem.${color}.custom${mirrorFor(icons, scale) ? ".mirror" : ""}`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}.${scale}`, h("i")));
     }
     status.textContent = icons
-      ? "Custom gems, shown in the Pendulum Zones (left scale blue, right scale red). The other zone shows the image mirrored."
-      : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem.";
+      ? "Custom gems, shown in your Pendulum Zones (left scale blue, right scale red). The other zone shows the image mirrored. Like the sleeve, your opponent sees them on your side of the field."
+      : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem. Your opponent sees your gems on your side of the field.";
     remove.hidden = !icons;
     side.hidden = !icons;
     if (icons) side.value = icons.side;
@@ -281,6 +281,7 @@ export function showSettings(app) {
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
           check("autoPlace", "Auto-pick the zone when summoning/setting"),
+          check("fieldSelect", "Pick materials, targets and costs by clicking the cards on the field"),
           sleevePicker()
         ),
         h("section.card-box", h("h3", "Field"), field3dPicker(), pendulumPicker()),

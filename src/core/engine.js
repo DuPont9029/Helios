@@ -116,6 +116,13 @@ export class DuelEngine {
       for (const code of main) add(code, LOC.DECK);
       for (const code of deck.extra) add(code, LOC.EXTRA);
     });
+    // cfg.place: carte già in gioco all'inizio (stato di partenza del Combo Trainer):
+    // [{ player, code, location, sequence, position }] su campo, Cimitero o tra le carte bandite.
+    for (const c of cfg.place ?? []) {
+      lib.duelNewCard(this.handle, {
+        team: c.player, duelist: 0, code: c.code, controller: c.player, location: c.location, sequence: c.sequence ?? 0, position: c.position ?? 0x1,
+      });
+    }
     lib.startDuel(this.handle);
   }
 

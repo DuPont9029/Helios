@@ -18,8 +18,12 @@ const TINTS = {
  * side: la zona per cui l'immagine è disegnata ("left" o "right"); sull'altra zona si mostra specchiata.
  */
 export function pendulumIcons() {
-  const v = settings.pendulumIcon;
-  return v && valid(v.red) && valid(v.blue) ? { red: v.red, blue: v.blue, side: v.side === "right" ? "right" : "left" } : null;
+  return validPendulumIcons(settings.pendulumIcon);
+}
+
+/** Gemme valide { red, blue, side } o null (anche per quelle ricevute dall'avversario nei duelli online). */
+export function validPendulumIcons(v) {
+  return v && typeof v === "object" && valid(v.red) && valid(v.blue) ? { red: v.red, blue: v.blue, side: v.side === "right" ? "right" : "left" } : null;
 }
 
 /** L'immagine personalizzata va specchiata nella zona `scale` ("left"/"right")? */

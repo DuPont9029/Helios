@@ -43,15 +43,59 @@
 /* la mano di partenza ha spazio per il contorno delle carte scelte (allineata alle carte del mazzo sotto) */
 .combo-hand-pick { gap: 8px; padding: 5px; }
 .combo-card.used { opacity: 0.3; cursor: default; }
-.combo-steps-edit { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
-.combo-step-row, .combo-int-row { display: flex; gap: 6px; align-items: center; }
-.combo-step-row { position: relative; }
-.step-menu { position: absolute; right: 0; top: calc(100% + 2px); z-index: 5; display: flex; flex-direction: column; min-width: 190px; padding: 4px; background: rgba(6, 7, 11, 0.98); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); box-shadow: var(--shadow); }
+.combo-steps-edit { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.combo-int-row { display: flex; gap: 6px; align-items: center; }
+.combo-step-row { position: relative; display: flex; flex-direction: column; gap: 3px; }
+.step-line { display: flex; gap: 6px; align-items: center; }
+.step-num { flex: none; min-width: 22px; text-align: right; font: 600 12px var(--mono); color: var(--muted); }
+.step-line .select { flex: 1; min-width: 0; }
+.step-line .select.step-kind { flex: 0 0 172px; }
+/* maniglia per riordinare i passi (trascinando) */
+.step-drag { flex: none; display: grid; place-items: center; width: 28px; height: 32px; color: var(--muted); cursor: grab; touch-action: none; }
+.step-drag:hover { color: var(--accent); }
+.combo-step-row.dragging { opacity: 0.45; }
+.combo-step-row.drop-before { box-shadow: 0 -3px 0 var(--accent); }
+.combo-step-row.drop-after { box-shadow: 0 3px 0 var(--accent); }
+/* scelte precise del passo */
+.step-details { margin: 0 0 2px 64px; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px; }
+.step-details li { display: inline-flex; align-items: center; gap: 2px; padding: 1px 2px 1px 8px; font-size: 12px; color: var(--accent-soft); background: rgba(56, 198, 255, 0.08); border: 1px solid rgba(56, 198, 255, 0.3); }
+.step-details .btn { padding: 2px; }
+.step-menu { position: absolute; left: 0; top: 36px; z-index: 5; display: flex; flex-direction: column; min-width: 190px; padding: 4px; background: rgba(6, 7, 11, 0.98); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); box-shadow: var(--shadow); }
 .step-menu[hidden] { display: none; }
 .step-menu button { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; background: none; color: var(--text); cursor: pointer; text-align: left; font: 600 13px var(--font); }
 .step-menu button:hover { background: var(--accent); color: var(--on-gold); }
-.combo-step-row .select { flex: 1; min-width: 0; }
-.combo-step-row .select:first-child { flex: 0 0 150px; }
+.step-menu button.danger { color: #ff8a9a; }
+.step-menu button.danger:hover { background: var(--danger); color: #fff; }
+.combo-editor-tools { display: flex; align-items: center; gap: 4px; justify-content: flex-end; margin-bottom: -6px; }
+.combo-fold { border: 1px solid var(--line); padding: 4px 10px 8px; }
+.combo-fold > summary { cursor: pointer; list-style: revert; }
+.combo-fold[open] > summary { margin-bottom: 6px; }
+.card-pick-btn { flex: 1; min-width: 0; justify-content: flex-start; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; font-weight: 600; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font: 600 12px var(--font); color: var(--text); background: rgba(255, 255, 255, 0.06); border: 1px solid var(--line); cursor: pointer; }
+.chip:hover { border-color: var(--danger); }
+/* stato di partenza */
+.combo-setup { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.setup-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.setup-col h4 { margin: 0; font: 700 13px var(--display); text-transform: uppercase; letter-spacing: 0.06em; }
+.setup-list { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin-bottom: 4px; }
+.setup-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 4px; }
+.setup-field-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 0.9fr) auto; gap: 4px; align-items: center; }
+.setup-field-row .select { min-width: 0; font-size: 13px; }
+.setup-col .btn.ghost, .setup-field > .btn { align-self: flex-start; }
+/* tag della board finale */
+.combo-tags-edit { display: flex; flex-direction: column; gap: 4px; margin-bottom: 6px; }
+.combo-tag-row { display: flex; gap: 6px; align-items: center; }
+.combo-tag-row .input { flex: 1; }
+/* ricerca di una carta nel database */
+.card-search .input { margin-bottom: 8px; }
+.card-search-list { max-height: calc(var(--vh) * 52); }
+.card-search-sub { padding: 4px 8px; }
+.modal.combo-detail .detail-part { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.modal.combo-detail .detail-part[hidden] { display: none; }
+.detail-cards { display: flex; flex-wrap: wrap; gap: 4px; }
+.trainer-details { margin: 2px 0 0; padding-left: 14px; font-size: 11px; color: var(--muted); }
+.trainer-details li.now { color: #fff; font-weight: 600; }
+.trainer-strict { font-size: 12px; }
 .combo-int-row .select { flex: 1; min-width: 0; }
 .combo-ints-edit { display: flex; flex-direction: column; gap: 4px; }
 .modal.combo-editor .modal-body { white-space: normal; }
@@ -80,3 +124,14 @@
 .trainer-steps.recording .trainer-mark { color: #ff5a6e; }
 .video-btn.rec { color: #fff; background: var(--red); border-color: #ff7a8a; animation: clock-alarm 1.2s infinite; }
 .combo-video { width: 100%; max-height: calc(var(--vh) * 60); background: #000; }
+
+/* side deck tra i duelli di una partita al meglio di 3/5 */
+.modal.side-deck .modal-body { white-space: normal; }
+.side-sec h4 { margin: 8px 0 4px; font: 700 13px var(--display); text-transform: uppercase; letter-spacing: 0.06em; }
+.side-sec h4 b { color: var(--accent); }
+.side-grid { display: flex; flex-wrap: wrap; gap: 3px; min-height: 40px; padding: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); }
+.side-card { width: 44px; padding: 0; border: 0; background: none; cursor: pointer; transition: transform 0.1s; }
+.side-card:hover { transform: translateY(-2px); }
+.side-card.changed { outline: 2px solid var(--accent); outline-offset: 1px; }
+.side-errors { margin-top: 8px; color: #ff8a9a; font-size: 12px; }
+.modal.combo-export { width: min(660px, 94vw); }

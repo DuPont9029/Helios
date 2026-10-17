@@ -40,16 +40,23 @@ export function locName(loc) {
  * @param canSee (player, location, position, code) -> bool
  * @returns { cls, parts (stringhe e { code } per i nomi cliccabili), text } oppure null
  */
-export function describe(m, names, canSee) {
-  const e = describeParts(m, names, canSee);
+export function describe(m, names, canSee, ctx = {}) {
+  const e = describeParts(m, names, canSee, ctx);
   if (!e) return null;
   const parts = typeof e.text === "string" ? [e.text] : e.text;
   return { cls: e.cls, parts, text: plain(parts) };
 }
 
-function describeParts(m, names, canSee) {
+function describeParts(m, names, canSee, ctx) {
   const who = (p) => names[p] ?? `Player ${p + 1}`;
   const nameIf = (code, p, loc, pos) => (code && canSee(p, loc, pos) ? C(code) : "a card");
+  // Carta in una zona (OcgLocPos): nome se visibile, altrimenti "a card"; per le carte fuori dal campo la zona.
+  const at = (c) => {
+    const code = c.location & LOC.ONFIELD ? ctx.codeAt?.(c.controller, c.location, c.sequence) : 0;
+    if (code && canSee(c.controller, c.location, c.position)) return C(code);
+    return c.location & LOC.ONFIELD ? `a face-down card` : `a card in the ${locName(c.location)}`;
+  };
+  const list = (cards) => cards.flatMap((c, i) => (i ? [", ", at(c)] : [at(c)]));
   switch (m.type) {
     case MSG.NEW_TURN: return { cls: "turn", text: `— ${who(m.player)}'s Turn —` };
     case MSG.NEW_PHASE: return { cls: "phase", text: PHASE_NAMES[m.phase] ?? "Phase" };
@@ -59,7 +66,13 @@ function describeParts(m, names, canSee) {
     case MSG.FLIPSUMMONING: return { text: t`${who(m.controller)} Flip Summons ${C(m.code)}` };
     case MSG.SET: return { text: `${who(m.controller)} Sets a card` };
     case MSG.CHAINING: return { cls: "chain", text: t`Chain ${m.chain_size}: ${who(m.controller)} activates ${C(m.code)}` };
-    case MSG.CHAIN_SOLVING: return { cls: "dim", text: `Resolving Chain Link ${m.chain_size}` };
+    case MSG.CHAIN_SOLVING: {
+      const code = ctx.chainCode?.(m.chain_size);
+      return { cls: "resolve", text: code ? t`Chain Link ${m.chain_size} resolves: ${C(code)}` : `Chain Link ${m.chain_size} resolves` };
+    }
+    case MSG.BECOME_TARGET: return m.cards.length ? { cls: "target", text: t`Targets: ${list(m.cards)}` } : null;
+    case MSG.CARD_SELECTED: return m.cards.length ? { cls: "dim", text: t`Selected: ${list(m.cards)}` } : null;
+    case MSG.EQUIP: return { text: t`${at(m.card)} is equipped to ${at(m.target)}` };
     case MSG.CHAIN_NEGATED: return { cls: "warn", text: `Activation of Chain Link ${m.chain_size} negated` };
     case MSG.CHAIN_DISABLED: return { cls: "warn", text: `Effect of Chain Link ${m.chain_size} negated` };
     case MSG.DAMAGE: return { cls: "dmg", text: `${who(m.player)} takes ${m.amount} damage` };
@@ -67,15 +80,17 @@ function describeParts(m, names, canSee) {
     case MSG.PAY_LPCOST: return { cls: "dmg", text: `${who(m.player)} pays ${m.amount} LP` };
     case MSG.ATTACK: {
       const a = m.card;
-      return { cls: "attack", text: m.target ? `${who(a.controller)} attacks a monster` : `${who(a.controller)} attacks directly` };
+      return { cls: "attack", text: m.target && m.target.location ? t`${at(a)} attacks ${at(m.target)}` : t`${at(a)} attacks directly` };
     }
     case MSG.MOVE: {
       const { from, to } = m;
       if (from.location === to.location || to.location === LOC.OVERLAY) return null;
-      if (to.location === LOC.GRAVE) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is sent to the GY` };
-      if (to.location === LOC.REMOVED) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is banished` };
+      // Da dove arriva la carta (dal campo si dice solo "is sent to the GY": può essere distrutta o mandata).
+      const from_ = from.location & LOC.ONFIELD || from.location === 0 ? "" : ` from the ${locName(from.location)}`;
+      if (to.location === LOC.GRAVE) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is sent to the GY${from_}` };
+      if (to.location === LOC.REMOVED) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is banished${from_}` };
       if (to.location === LOC.HAND && from.location !== LOC.DECK) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} returns to the Hand` };
-      if (to.location === LOC.HAND && from.location === LOC.DECK) return { text: `${who(to.controller)} adds a card from the Deck to the Hand` };
+      if (to.location === LOC.HAND && from.location === LOC.DECK) return { text: t`${who(to.controller)} adds ${nameIf(m.card, to.controller, to.location, to.position)} from the Deck to the Hand` };
       if (to.location === LOC.DECK || to.location === LOC.EXTRA) {
         return { text: t`${nameIf(m.card, from.controller, from.location, from.position)} returns to the ${locName(to.location)}` };
       }
@@ -84,21 +99,20 @@ function describeParts(m, names, canSee) {
     case MSG.POS_CHANGE: return { text: t`${C(m.code)} changes to ${m.position & POS.ATTACK ? "Attack" : "Defense"} Position` };
     case MSG.TOSS_COIN: return { text: `Coin toss: ${m.results.map((r) => (r ? "Heads" : "Tails")).join(", ")}` };
     case MSG.TOSS_DICE: return { text: `Die roll: ${m.results.join(", ")}` };
-    case MSG.EQUIP: return { text: "Card equipped" };
     case MSG.ADD_COUNTER: return { text: `+${m.count} ${counterName(m.counter_type)}` };
     case MSG.REMOVE_COUNTER: return { text: `-${m.count} ${counterName(m.counter_type)}` };
     case MSG.SHUFFLE_DECK: return { cls: "dim", text: `${who(m.player)} shuffles the Deck` };
     case MSG.CONFIRM_CARDS: {
       const shown = m.cards.flatMap((c, i) => (i ? [", ", C(c.code)] : [C(c.code)]));
-      return { text: t`${who(m.player)} reveals: ${shown}` };
+      return { text: t`${who(m.cards[0]?.controller ?? m.player)} reveals: ${shown}` };
     }
     case MSG.CONFIRM_DECKTOP: {
       const shown = m.cards.flatMap((c, i) => (i ? [", ", C(c.code)] : [C(c.code)]));
-      return { text: t`${who(m.player)} reveals the top of the Deck: ${shown}` };
+      return { text: t`${who(m.cards[0]?.controller ?? m.player)} reveals the top of the Deck: ${shown}` };
     }
     case MSG.CONFIRM_EXTRATOP: {
       const shown = m.cards.flatMap((c, i) => (i ? [", ", C(c.code)] : [C(c.code)]));
-      return { text: t`${who(m.player)} reveals from the Extra Deck: ${shown}` };
+      return { text: t`${who(m.cards[0]?.controller ?? m.player)} reveals from the Extra Deck: ${shown}` };
     }
     case MSG.HINT:
       switch (m.hint_type) {
