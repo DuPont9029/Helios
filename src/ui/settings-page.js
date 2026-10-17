@@ -117,11 +117,11 @@ function pendulumPicker() {
     const icons = pendulumIcons();
     for (const [el, color, scale] of [[blue, "blue", "left"], [red, "red", "right"]]) {
       // Anteprima: la gemma personalizzata oppure quella predefinita disegnata in CSS (come sul campo).
-      clear(el).append(icons ? h(`img.pz-gem.${color}.custom${mirrorFor(icons, scale) ? ".mirror" : ""}`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}`, h("i")));
+      clear(el).append(icons ? h(`img.pz-gem.${color}.custom${mirrorFor(icons, scale) ? ".mirror" : ""}`, { src: icons[color], alt: "" }) : h(`div.pz-gem.${color}.${scale}`, h("i")));
     }
     status.textContent = icons
-      ? "Custom gems, shown in the Pendulum Zones (left scale blue, right scale red). The other zone shows the image mirrored."
-      : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem.";
+      ? "Custom gems, shown in your Pendulum Zones (left scale blue, right scale red). The other zone shows the image mirrored. Like the sleeve, your opponent sees them on your side of the field."
+      : "Default gems. Upload a figure on a white or transparent background: it is turned into a red and a blue gem. Your opponent sees your gems on your side of the field.";
     remove.hidden = !icons;
     side.hidden = !icons;
     if (icons) side.value = icons.side;
@@ -281,6 +281,7 @@ export function showSettings(app) {
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
           check("autoPlace", "Auto-pick the zone when summoning/setting"),
+          check("fieldSelect", "Pick materials, targets and costs by clicking the cards on the field"),
           sleevePicker()
         ),
         h("section.card-box", h("h3", "Field"), field3dPicker(), pendulumPicker()),
@@ -291,6 +292,16 @@ export function showSettings(app) {
           turnPicker(field, text),
           check("forceRelay", "Force TURN relay (for testing)"),
           field("Signaling server", text("signalUrl", { placeholder: BUILD_SIGNAL_URL || location.origin }), BUILD_SIGNAL_URL ? "Used for Online Rooms. Leave empty to use this site's default server." : "Used for Online Rooms. Empty = same address as this page. The server can also provide temporary TURN credentials."),
+          field(
+            "Online Rooms",
+            h(
+              "select.select",
+              { onchange: (e) => (settings.roomMode = e.target.value) },
+              h("option", { value: "server", selected: settings.roomMode !== "nostr" }, "Signaling server"),
+              h("option", { value: "nostr", selected: settings.roomMode === "nostr" }, "Nostr relays (decentralized)")
+            ),
+            "Where new Rooms are created. Signaling server: the server below, 6-character codes. Nostr relays: public relays via Trystero, no server needed, 8-character codes. You can always join an 8-character code."
+          ),
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut
         ),

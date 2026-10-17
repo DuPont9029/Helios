@@ -114,22 +114,8 @@ export class PeerLink extends EventTarget {
   }
 
   /** Tipo di percorso scelto da ICE: "host" (LAN), "srflx" (diretto via STUN), "relay" (TURN). */
-  async routeInfo() {
-    const stats = await this.pc.getStats();
-    let pair = null;
-    stats.forEach((s) => {
-      if (s.type === "transport" && s.selectedCandidatePairId) pair = stats.get(s.selectedCandidatePairId);
-    });
-    if (!pair) stats.forEach((s) => s.type === "candidate-pair" && s.nominated && s.state === "succeeded" && (pair = s));
-    if (!pair) return null;
-    const local = stats.get(pair.localCandidateId);
-    const remote = stats.get(pair.remoteCandidateId);
-    return {
-      local: local?.candidateType,
-      remote: remote?.candidateType,
-      protocol: local?.protocol,
-      rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
-    };
+  routeInfo() {
+    return routeOf(this.pc);
   }
 
   close(reason) {
@@ -143,6 +129,25 @@ export class PeerLink extends EventTarget {
     }
     this.dispatchEvent(new CustomEvent("close", { detail: reason }));
   }
+}
+
+/** Percorso scelto da ICE su una RTCPeerConnection: { local, remote, protocol, rtt } oppure null. */
+export async function routeOf(pc) {
+  const stats = await pc.getStats();
+  let pair = null;
+  stats.forEach((s) => {
+    if (s.type === "transport" && s.selectedCandidatePairId) pair = stats.get(s.selectedCandidatePairId);
+  });
+  if (!pair) stats.forEach((s) => s.type === "candidate-pair" && s.nominated && s.state === "succeeded" && (pair = s));
+  if (!pair) return null;
+  const local = stats.get(pair.localCandidateId);
+  const remote = stats.get(pair.remoteCandidateId);
+  return {
+    local: local?.candidateType,
+    remote: remote?.candidateType,
+    protocol: local?.protocol,
+    rtt: pair.currentRoundTripTime != null ? Math.round(pair.currentRoundTripTime * 1000) : null,
+  };
 }
 
 // ------------------------------------------------------------- codici invito

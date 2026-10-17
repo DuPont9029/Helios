@@ -285,8 +285,9 @@ export class Prompter {
   chain(msg) {
     const n = msg.selects.length;
     const auto = this.view.chainModeNow?.() ?? settings.chainMode;
-    if (!msg.forced && (n === 0 || auto === "never")) return Promise.resolve({ type: RESP.SELECT_CHAIN, index: null });
-    if (msg.forced && n === 1 && auto !== "always") return Promise.resolve({ type: RESP.SELECT_CHAIN, index: 0 });
+    // forceManual: la risposta automatica è stata rifiutata (modalità strict del Combo Trainer), si chiede.
+    if (!this.forceManual && !msg.forced && (n === 0 || auto === "never")) return Promise.resolve({ type: RESP.SELECT_CHAIN, index: null });
+    if (!this.forceManual && msg.forced && n === 1 && auto !== "always") return Promise.resolve({ type: RESP.SELECT_CHAIN, index: 0 });
     return new Promise((resolve) => {
       let finished = false;
       let m = null;
@@ -358,13 +359,19 @@ export class Prompter {
   // ---------------------------------------------------------------- selezione carte
 
   // ---------------------------------------------------------------- scelta delle carte sul campo
-  // Durante una summon (Xyz, Link, Synchro, tributi...) i materiali si scelgono cliccandoli sul campo
-  // invece che in una finestra, se sono tutti sul campo. Le scelte chieste dagli effetti restano in finestra.
+  // Materiali delle summon (Xyz, Link, Synchro, tributi...) e carte chieste dagli effetti (bersagli, costi,
+  // tributi per un effetto...) si scelgono cliccandole direttamente sul campo invece che in una finestra,
+  // se sono tutte sul campo o in mano. Altrimenti (Deck, Cimitero, materiali Xyz...) resta la finestra.
 
-  /** Chiavi delle carte sul campo da scegliere, oppure null (si usa la finestra). */
+  /** Chiavi delle carte da scegliere sul campo/in mano, oppure null (si usa la finestra). */
   fieldKeys(cards) {
-    if (!this.summoning || !cards.length) return null;
-    const keys = cards.map((c) => (c.location & LOC.ONFIELD && !(c.location & LOC.OVERLAY) ? key(c.controller, c.location, c.sequence) : null));
+    if (!cards.length || settings.fieldSelect === false) return null;
+    const keys = cards.map((c) => {
+      if (c.location === LOC.HAND) return key(c.controller, LOC.HAND, c.sequence);
+      return c.location & LOC.ONFIELD && !(c.location & LOC.OVERLAY) ? key(c.controller, c.location, c.sequence) : null;
+    });
+    // Almeno una carta sul campo: le scelte solo dalla mano restano in finestra (le carte in mano sono piccole).
+    if (!cards.some((c) => c.location & LOC.ONFIELD)) return null;
     return keys.every((k) => k && this.board.cardEls.has(k)) && new Set(keys).size === keys.length ? keys : null;
   }
 
@@ -683,7 +690,7 @@ export class Prompter {
     const isPlace = msg.type === MSG.SELECT_PLACE;
     const respType = isPlace ? RESP.SELECT_PLACE : RESP.SELECT_DISFIELD;
     const count = Math.max(1, msg.count);
-    if (settings.autoPlace && isPlace && zones.length) {
+    if (settings.autoPlace && isPlace && zones.length && !this.forceManual) {
       const mine = zones.filter((z) => z.player === msg.player);
       return { type: respType, places: (mine.length ? mine : zones).slice(0, count) };
     }

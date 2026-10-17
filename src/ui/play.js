@@ -9,7 +9,10 @@ import { DuelSession } from "../duel/session.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
 import { BEST_OF, newSeries } from "../duel/series.js";
 import { validSleeve } from "../data/sleeve.js";
-import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable } from "../net/signaling.js";
+import { pendulumIcons } from "../data/pendulum.js";
+import { sideDeck } from "./side-deck.js";
+import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
+import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
@@ -149,9 +152,11 @@ export function showLocalSetup(app, { vsCpu }) {
         primary: true,
         onClick: async (close) => {
           const options = opts.read();
-          const a = decks.find((d) => d.id === mine.value);
+          let a = decks.find((d) => d.id === mine.value);
           const noDeck = !vsCpu && opponent.value === "none";
-          const b = noDeck ? { name: "No Deck", main: [], extra: [] } : decks.find((d) => d.id === other.value);
+          let b = noDeck ? { name: "No Deck", main: [], extra: [], side: [] } : decks.find((d) => d.id === other.value);
+          const savedA = a;
+          const savedB = b;
           if (!checkDeck(a, options)) return;
           if (!vsCpu && !noDeck && !checkDeck(b, options)) return;
           settings.lastDeck = a.id;
@@ -188,13 +193,18 @@ export function showLocalSetup(app, { vsCpu }) {
             if (noDeck) noDraw[1 - me] = true;
             const sleeves = [null, null];
             sleeves[me] = validSleeve(settings.sleeve);
+            const pendulums = [null, null];
+            pendulums[me] = pendulumIcons();
             startSession(app, {
-              controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves,
+              controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves, pendulums,
               match: series,
-              // Duello successivo della partita: inizia chi ha perso (pareggio: stesso ordine).
-              onNextGame: (old) => {
+              // Duello successivo della partita: si fa il side deck, poi inizia chi ha perso (pareggio: stesso ordine).
+              onNextGame: async (old) => {
                 const p1 = old.cfg.me;
                 const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : meFirst;
+                const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, game: series.game };
+                a = await sideDeck(a, { ...side, who: vsCpu ? "" : "Player 1" });
+                if (!vsCpu && !noDeck) b = await sideDeck(b, { ...side, who: "Player 2" });
                 old.destroy();
                 launch(next);
               },
@@ -203,6 +213,9 @@ export function showLocalSetup(app, { vsCpu }) {
                 const again = await askFirst(a, b);
                 if (again == null) return;
                 series = newSeries(options.bestOf);
+                // Partita nuova: si torna ai mazzi salvati (senza i cambi del side deck).
+                a = savedA;
+                b = savedB;
                 old.destroy();
                 launch(again);
               },
@@ -252,6 +265,13 @@ async function playMatch(app, match, old = null) {
   // Rivincita: chi ha perso inizia per primo, senza lancio della moneta (pareggio: si lancia la moneta).
   const prev = old && (old.winner === 0 || old.winner === 1) ? old.winner : null;
   const iFirst = prev == null ? null : prev !== old.cfg.me;
+  // Duello successivo di una partita al meglio di N: prima il side deck (l'avversario aspetta il nostro "hello").
+  const nextGame = !!(old && match.series && !match.series.over);
+  if (nextGame) {
+    const opts = match.host ? match.options : match.lastOptions;
+    match.deck = await sideDeck(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, game: match.series.game });
+  } else if (old) match.deck = match.savedDeck ?? match.deck;
+  match.savedDeck ??= match.deck;
   let result;
   try {
     result = await negotiate(match.mux, {
@@ -259,9 +279,12 @@ async function playMatch(app, match, old = null) {
       name: settings.name,
       deck: match.deck,
       sleeve: validSleeve(settings.sleeve),
+      pendulum: pendulumIcons(),
       options: match.options,
       chooseFirst: coinToss(toss),
       iFirst,
+      // Mentre l'avversario fa il side deck il suo "hello" può tardare.
+      helloTimeout: nextGame || old ? 15 * 60 * 1000 : undefined,
     });
   } catch (err) {
     toss.lost?.close();
@@ -278,6 +301,7 @@ async function playMatch(app, match, old = null) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
   }
   // Partita al meglio di N (opzione dell'host): punteggio condiviso dalle rivincite, nuova a partita finita.
+  match.lastOptions = result.options;
   if (!match.series || match.series.over) match.series = newSeries(result.options.bestOf);
   const controllers = result.me === 0 ? ["local", "remote"] : ["remote", "local"];
   // Rivincita: la sessione precedente si chiude solo ora (senza chiudere il collegamento).
@@ -286,7 +310,7 @@ async function playMatch(app, match, old = null) {
     if (app.current === old) app.current = null;
   }
   startSession(app, {
-    controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, mux: match.mux,
+    controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, mux: match.mux,
     match: match.series,
     onRematch: (old) => {
       // Sincrono rispetto al messaggio "rematch": da qui in poi i messaggi appartengono alla partita nuova.
@@ -335,13 +359,21 @@ export function showOnline(app) {
     }
   };
 
-  // --- Stanza sul server di segnalazione
+  // --- Stanza online: sul server di segnalazione (codice di 6 caratteri) oppure decentralizzata sui relay Nostr
+  // (8 caratteri), come scelto in Settings. Per entrare conta il codice: uno di 8 caratteri è sempre una stanza Nostr.
+  const useNostr = settings.roomMode === "nostr";
   const roomInput = h("input.input.code", { placeholder: "CODE", maxLength: 12, oninput: (e) => (e.target.value = e.target.value.toUpperCase()) });
   const roomCode = h("div.room-code");
-  const viaServer = (room) => {
+  const viaServer = async (room) => {
     cancel();
     if (room === null && !checkDeck(getDeck(), opts.read())) return;
-    const c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
+    const nostr = room ? isNostrCode(room) : useNostr;
+    let c;
+    if (nostr) {
+      setStatus("Preparing STUN/TURN...");
+      const iceServers = await resolveIceServers();
+      c = connectViaNostr({ room, iceServers, forceRelay: settings.forceRelay, onStatus: (t) => setStatus(t) });
+    } else c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
     cancel = c.cancel;
     c.room.then((code) => {
       if (!room) roomCode.textContent = code;
@@ -485,7 +517,7 @@ export function showOnline(app) {
       label: "Online Room",
       body: h(
         "div.online-pane",
-        h("p.muted", "Create a Room and send the 6-character code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers."),
+        h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers. 8-character codes are decentralized Rooms (public Nostr relays, no server needed): choose where new Rooms are created in Settings."),
         h("div.row-group",
           h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
           h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
@@ -529,13 +561,13 @@ export function showOnline(app) {
   };
   for (const t of tabs) tabBar.append(h("button.tab", { dataset: { tab: t.id }, onclick: () => show(t.id) }, t.label));
   show("server");
-  // Senza server di segnalazione (es. sito su GitHub Pages) si passa subito al codice invito.
-  signalingAvailable().then((ok) => {
-    if (ok) return;
-    const pane = tabs[0].body;
-    pane.prepend(h("div.status-box.error", "No signaling server found at this address, so Online Rooms are unavailable. Use the invite code, or set a signaling server in Settings."));
-    if (paneHost.firstChild === pane) show("invite");
-  });
+  // Server di segnalazione scelto ma irraggiungibile (es. sito su GitHub Pages): si propongono le alternative.
+  if (!useNostr) {
+    signalingAvailable().then((ok) => {
+      if (ok) return;
+      tabs[0].body.prepend(h("div.status-box.error", "No signaling server found, so you can only join decentralized Rooms (8-character codes). To create Rooms without a server, choose \"Nostr relays\" for Online Rooms in Settings, or use the invite code."));
+    });
+  }
 
   root.append(
     h(

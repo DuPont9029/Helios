@@ -79,7 +79,7 @@ function step() {
 
 async function newDuel(cfg) {
   engine?.destroy();
-  const codes = [...cfg.decks[0].main, ...cfg.decks[0].extra, ...cfg.decks[1].main, ...cfg.decks[1].extra];
+  const codes = [...cfg.decks[0].main, ...cfg.decks[0].extra, ...cfg.decks[1].main, ...cfg.decks[1].extra, ...(cfg.place ?? []).map((c) => c.code)];
   await prefetch([...BASE_SCRIPTS, ...codes.map((c) => `c${c}.lua`)]);
   engine = new DuelEngine(lib, {
     getCard: (code) => cards.get(code) ?? null,

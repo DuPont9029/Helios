@@ -18,6 +18,7 @@
     "ws": "^8.18.0"
   },
   "dependencies": {
-    "three": "0.170.0"
+    "three": "0.170.0",
+    "trystero": "0.25.4"
   }
 }

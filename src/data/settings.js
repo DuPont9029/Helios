@@ -23,6 +23,9 @@ const DEFAULTS = {
   turnPass: "",
   forceRelay: false,
   signalUrl: "", // vuoto = stesso host (server/signal.mjs)
+  // Online Rooms: "server" = server di segnalazione (codici di 6 caratteri), "nostr" = stanze decentralizzate
+  // sui relay Nostr pubblici (src/net/nostr-room.js, codici di 8 caratteri).
+  roomMode: "server",
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",
@@ -38,6 +41,8 @@ const DEFAULTS = {
   bookmarks: [], // editor: codici delle carte salvate tra i preferiti (scheda "Bookmarks")
   bookmarksSeeded: [], // preferiti predefiniti già proposti (vedi src/data/bookmarks.js)
   editorView: "grid", // editor: risultati della ricerca come carte ("grid") o come lista ("list")
+  fieldSelect: true, // duello: le carte chieste da summon ed effetti si scelgono cliccandole sul campo (se sono tutte lì)
+  comboStrict: false, // Combo Trainer: modalità strict (le azioni diverse dalla combo vengono bloccate)
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };
 
