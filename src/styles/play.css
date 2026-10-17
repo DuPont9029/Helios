@@ -39,7 +39,9 @@
 .combo-hand-pick, .combo-pool { display: flex; flex-wrap: wrap; gap: 4px; min-height: 30px; align-items: center; }
 .combo-pool { max-height: 168px; overflow: auto; padding: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); }
 .combo-card { width: 48px; padding: 0; border: 0; background: none; cursor: pointer; }
-.combo-card.chosen { outline: 2px solid var(--accent); }
+.combo-card.chosen { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* la mano di partenza ha spazio per il contorno delle carte scelte (allineata alle carte del mazzo sotto) */
+.combo-hand-pick { gap: 8px; padding: 5px; }
 .combo-card.used { opacity: 0.3; cursor: default; }
 .combo-steps-edit { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .combo-step-row, .combo-int-row { display: flex; gap: 6px; align-items: center; }
@@ -53,6 +55,8 @@
 .combo-int-row .select { flex: 1; min-width: 0; }
 .combo-ints-edit { display: flex; flex-direction: column; gap: 4px; }
 .modal.combo-editor .modal-body { white-space: normal; }
+/* con molti passi la finestra scorre: le sezioni non vanno schiacciate (mano e carte del mazzo si sovrapponevano) */
+.modal.combo-editor .modal-body > * { flex-shrink: 0; }
 
 /* scheda "Combo" nel duello */
 .trainer-panel { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
