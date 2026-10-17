@@ -8,3 +8,8 @@ public/data/
 .env.local
 .env.*.local
 .wrangler/
+
+# campi 3D (asset di Master Duel): MAI nel repository, si caricano da un indirizzo esterno (Settings → 3D fields)
+*.glb
+fields/
+public/fields/

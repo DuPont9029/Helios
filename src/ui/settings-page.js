@@ -5,6 +5,7 @@ import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
+import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
 
 /** Raccoglie i candidati ICE per verificare che STUN/TURN funzionino. */
 async function testIce(out) {
@@ -145,6 +146,105 @@ function pendulumPicker() {
   return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, side, h("div.row", choose, remove))));
 }
 
+/** Campo 3D: sorgente dei campi (cartella, link a uno .zip o .zip dal computer), scelta del campo e anteprima. */
+function field3dPicker() {
+  const status = h("small.muted");
+  const select = h("select.select", { onchange: () => { settings.field3d = select.value; preview(); } });
+  const box = h("div.field3d-preview", { hidden: true });
+  const url = h("input.input", {
+    value: settings.fieldsUrl ?? "",
+    placeholder: BUILD_FIELDS_URL || "https://…/fields  or  https://…/fields.zip",
+    spellcheck: false,
+    onchange: () => { settings.fieldsUrl = url.value.trim(); refresh(); },
+  });
+  const upload = h("button.btn.small", {
+    onclick: async () => {
+      const f = await pickFile(".zip,application/zip");
+      if (!f) return;
+      status.textContent = "Reading the .zip file…";
+      try {
+        await useZipFile(f);
+        url.value = settings.fieldsUrl;
+        toast("3D fields saved in this browser");
+      } catch (e) {
+        toast(e.message || "Unable to read the .zip file", { kind: "error" });
+      }
+      refresh();
+    },
+  }, icon("upload_file"), " Upload .zip");
+  const forget = h("button.btn.small.danger", {
+    onclick: async () => {
+      await forgetZips();
+      if (settings.fieldsUrl.startsWith("file:")) settings.fieldsUrl = url.value = "";
+      toast("Stored 3D fields deleted");
+      refresh();
+    },
+  }, icon("delete"), " Delete stored .zip");
+  let stage = null;
+  let token = 0;
+  const preview = async () => {
+    const t = ++token;
+    stage?.dispose();
+    stage = null;
+    const list = await fieldList().catch(() => []);
+    const f = list.find((x) => x.id === settings.field3d);
+    box.hidden = !f;
+    if (!f || t !== token) return;
+    const { FieldStage } = await import("../field3d/stage.js");
+    if (t !== token) return;
+    stage = new FieldStage(box, { fx: settings.field3dFx });
+    stage.showcase();
+    box.dataset.loading = "Loading…";
+    try {
+      await stage.load(await fieldFiles(), f.id, f.sides);
+      delete box.dataset.loading;
+    } catch (e) {
+      box.dataset.loading = `Unable to load this field (${e.message})`;
+    }
+  };
+  const mb = (n) => `${Math.round(n / 1048576)} MB`;
+  const refresh = async () => {
+    const t = ++token;
+    const src = fieldsBase();
+    clear(select).append(h("option", { value: "" }, "Standard field (2D)"));
+    select.disabled = !src;
+    forget.hidden = true;
+    if (!src) {
+      status.textContent = "No 3D fields: enter the address of the fields folder or of a .zip with it, or upload the .zip. An address must allow cross-site requests (e.g. GitHub Pages).";
+      return preview();
+    }
+    status.textContent = isZip(src) ? "Opening the .zip…" : "Loading the list…";
+    try {
+      const list = await fieldList(src, (k, got) => {
+        if (t === token) status.textContent = `Downloading the .zip… ${k == null ? mb(got) : Math.round(k * 100) + "%"} (only the first time)`;
+      });
+      select.append(h("option", { value: "random" }, "Random field each duel"), ...list.map((f) => h("option", { value: f.id }, f.name)));
+      const stored = await storedSize(src).catch(() => 0);
+      forget.hidden = !stored;
+      status.textContent = `${list.length} fields available${stored ? ` · ${mb(stored)} .zip stored in this browser` : ""}. Your opponent sees the field they chose.`;
+    } catch (e) {
+      status.textContent = `Unable to read the fields: ${e.message}`;
+    }
+    select.value = [...select.options].some((o) => o.value === settings.field3d) ? settings.field3d : "";
+    preview();
+  };
+  const fx = h("label.check", h("input", { type: "checkbox", checked: settings.field3dFx, onchange: (e) => { settings.field3dFx = e.target.checked; preview(); } }), "Particles and glow (turn off on slow computers)");
+  refresh();
+  return h(
+    "div.field3d-picker",
+    h(
+      "label.field",
+      h("span", "3D fields"),
+      url,
+      h("small.muted", "Address of the fields folder or of a .zip with it (downloaded once and kept in this browser). The fields are not part of Helios.")
+    ),
+    h("div.row", upload, forget),
+    h("label.field", h("span", "3D field"), select, status),
+    box,
+    fx
+  );
+}
+
 /** Chiede per quale zona Pendulum è disegnata l'immagine appena caricata ("left"/"right", null = annulla). */
 function askPendulumSide(icons) {
   const option = (scale, color, label) =>
@@ -183,7 +283,7 @@ export function showSettings(app) {
           check("autoPlace", "Auto-pick the zone when summoning/setting"),
           sleevePicker()
         ),
-        h("section.card-box", h("h3", "Field"), pendulumPicker()),
+        h("section.card-box", h("h3", "Field"), field3dPicker(), pendulumPicker()),
         h(
           "section.card-box",
           h("h3", "Network (WebRTC)"),
