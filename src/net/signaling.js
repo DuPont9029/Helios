@@ -95,7 +95,7 @@ export function connectViaServer({ room = null, onStatus = () => {} }) {
       reject(e);
       return;
     }
-    ws.onerror = () => reject(new Error("Signaling server unreachable. Start `npm run signal` or use an invite code."));
+    ws.onerror = () => reject(new Error("Signaling server unreachable. Choose \"Nostr relays\" for Online Rooms in Settings, or use an invite code."));
     ws.onclose = () => {
       if (!link?.channel || link.channel.readyState !== "open") reject(new Error("Connection to server closed"));
     };

@@ -9,7 +9,8 @@ import { DuelSession } from "../duel/session.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
 import { BEST_OF, newSeries } from "../duel/series.js";
 import { validSleeve } from "../data/sleeve.js";
-import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable } from "../net/signaling.js";
+import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
+import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
@@ -335,13 +336,21 @@ export function showOnline(app) {
     }
   };
 
-  // --- Stanza sul server di segnalazione
+  // --- Stanza online: sul server di segnalazione (codice di 6 caratteri) oppure decentralizzata sui relay Nostr
+  // (8 caratteri), come scelto in Settings. Per entrare conta il codice: uno di 8 caratteri è sempre una stanza Nostr.
+  const useNostr = settings.roomMode === "nostr";
   const roomInput = h("input.input.code", { placeholder: "CODE", maxLength: 12, oninput: (e) => (e.target.value = e.target.value.toUpperCase()) });
   const roomCode = h("div.room-code");
-  const viaServer = (room) => {
+  const viaServer = async (room) => {
     cancel();
     if (room === null && !checkDeck(getDeck(), opts.read())) return;
-    const c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
+    const nostr = room ? isNostrCode(room) : useNostr;
+    let c;
+    if (nostr) {
+      setStatus("Preparing STUN/TURN...");
+      const iceServers = await resolveIceServers();
+      c = connectViaNostr({ room, iceServers, forceRelay: settings.forceRelay, onStatus: (t) => setStatus(t) });
+    } else c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
     cancel = c.cancel;
     c.room.then((code) => {
       if (!room) roomCode.textContent = code;
@@ -485,7 +494,7 @@ export function showOnline(app) {
       label: "Online Room",
       body: h(
         "div.online-pane",
-        h("p.muted", "Create a Room and send the 6-character code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers."),
+        h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers. 8-character codes are decentralized Rooms (public Nostr relays, no server needed): choose where new Rooms are created in Settings."),
         h("div.row-group",
           h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
           h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
@@ -529,13 +538,13 @@ export function showOnline(app) {
   };
   for (const t of tabs) tabBar.append(h("button.tab", { dataset: { tab: t.id }, onclick: () => show(t.id) }, t.label));
   show("server");
-  // Senza server di segnalazione (es. sito su GitHub Pages) si passa subito al codice invito.
-  signalingAvailable().then((ok) => {
-    if (ok) return;
-    const pane = tabs[0].body;
-    pane.prepend(h("div.status-box.error", "No signaling server found at this address, so Online Rooms are unavailable. Use the invite code, or set a signaling server in Settings."));
-    if (paneHost.firstChild === pane) show("invite");
-  });
+  // Server di segnalazione scelto ma irraggiungibile (es. sito su GitHub Pages): si propongono le alternative.
+  if (!useNostr) {
+    signalingAvailable().then((ok) => {
+      if (ok) return;
+      tabs[0].body.prepend(h("div.status-box.error", "No signaling server found, so you can only join decentralized Rooms (8-character codes). To create Rooms without a server, choose \"Nostr relays\" for Online Rooms in Settings, or use the invite code."));
+    });
+  }
 
   root.append(
     h(
