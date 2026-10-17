@@ -5,6 +5,7 @@
 import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
+import { validPendulumIcons } from "../data/pendulum.js";
 
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
 // 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
@@ -118,7 +119,8 @@ function seedFrom(bytes) {
 
 /**
  * @param mux      LinkMux già connesso
- * @param opts     { host, name, deck, options: {mode, flags, lp, hand, draw, banlist} (solo host), chooseFirst() -> Promise<bool>,
+ * @param opts     { host, name, deck, sleeve, pendulum, options: {mode, flags, lp, hand, draw, banlist} (solo host), chooseFirst() -> Promise<bool>,
+ *                   helloTimeout (ms di attesa del "hello" dell'avversario, es. mentre fa il side deck),
  *                   iFirst (rivincita: true/false = chi ha perso inizia, già noto a entrambi; null = lancio della moneta) }
  * @returns { duel, me, names, options }
  */
@@ -132,9 +134,11 @@ export async function negotiate(mux, opts) {
     deck: { main: opts.deck.main, extra: opts.deck.extra },
     commit: hex(await sha256(myRand)),
     sleeve: opts.sleeve ?? null,
+    // Gemme delle zone Pendulum (campo facoltativo: i client che non lo conoscono lo ignorano).
+    pendulum: opts.pendulum ?? null,
     options: opts.host ? opts.options : undefined,
   });
-  const hello = await mux.next("hello");
+  const hello = await mux.next("hello", opts.helloTimeout);
   if (hello.v !== PROTOCOL) throw new Error("Protocol version mismatch: both players must update the client");
   const options = opts.host ? opts.options : hello.options;
   if (!options) throw new Error("The host did not send the Duel options");
@@ -179,10 +183,13 @@ export async function negotiate(mux, opts) {
   const names = iAmFirst ? [opts.name, hello.name] : [hello.name, opts.name];
   const theirSleeve = validSleeve(hello.sleeve);
   const sleeves = iAmFirst ? [opts.sleeve ?? null, theirSleeve] : [theirSleeve, opts.sleeve ?? null];
+  const theirGems = validPendulumIcons(hello.pendulum);
+  const pendulums = iAmFirst ? [opts.pendulum ?? null, theirGems] : [theirGems, opts.pendulum ?? null];
   return {
     me: iAmFirst ? 0 : 1,
     names,
     sleeves,
+    pendulums,
     sameData,
     iWinToss,
     options,

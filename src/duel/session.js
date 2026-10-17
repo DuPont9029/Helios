@@ -90,6 +90,7 @@ export class DuelSession {
    *   duel: { flags, seed, lp, hand, draw, decks },
    *   timer: chiave di TIMER_PRESETS ("omega" | "off"),
    *   sleeves: [immagine del giocatore 0, del giocatore 1] (data URL o null),
+   *   pendulums: [gemme Pendulum del giocatore 0, del giocatore 1] ({ red, blue, side } o null = gemme predefinite),
    *   mux: LinkMux (solo P2P),
    *   onRematch(session): solo P2P, chiamata (in modo sincrono) quando entrambi hanno chiesto la rivincita,
    *   onExit()
@@ -116,6 +117,8 @@ export class DuelSession {
       names: cfg.names,
       reveal: cfg.reveal,
       trainerEl: cfg.trainer?.el ?? null,
+      // Gemme delle zone Pendulum di ogni giocatore (come gli sleeve: l'avversario vede le sue).
+      pendulums: cfg.pendulums ?? null,
       // Master Rule 3: zone Pendulum separate; altrimenti sono la prima e l'ultima zona Magie/Trappole.
       separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
@@ -274,7 +277,24 @@ export class DuelSession {
         this.view.prompter.summoning = !!this.pending;
         // Combo Trainer: il pulsante "Back" interrompe l'attesa della scelta e fa tornare indietro.
         const back = this.trainer ? new Promise((r) => (this.trainer.onBack = () => r({ trainerBack: true }))) : null;
-        response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+        // Auto-play (esportazione video): il trainer sceglie da solo; undefined = tocca al giocatore.
+        const auto = this.trainer?.autoRespond?.(prompt);
+        if (auto !== undefined) {
+          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
+          response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
+        } else {
+          for (;;) {
+            response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+            if (!response || response.trainerBack || response.back) break;
+            // Modalità strict: azione o scelta diversa dalla combo, si richiede (senza scelte automatiche).
+            const err = this.trainer?.check?.(prompt, response);
+            if (!err) break;
+            toast(err, { kind: "error", ms: 3200 });
+            this.view.caption(err, "wrong");
+            this.view.prompter.forceManual = true;
+          }
+          this.view.prompter.forceManual = false;
+        }
         if (this.trainer) this.trainer.onBack = null;
         if (response?.trainerBack) {
           this.view.prompter.abort();
@@ -425,12 +445,20 @@ export class DuelSession {
     this.view.overlay.append(el);
   }
 
-  /** Duello di prova: rivincita immediata con gli stessi mazzi (nessun avversario da aspettare). */
-  showLocalRematch() {
+  /**
+   * Duello di prova / Combo Trainer: rivincita immediata con gli stessi mazzi (nessun avversario da aspettare).
+   * keepPlaying: il duello non è finito (combo completa), il pannello si può chiudere e continuare.
+   */
+  showLocalRematch({ text = "Play again with the same Decks?", label = "Rematch", keepPlaying = false } = {}) {
+    this.view.overlay.querySelector(".rematch-panel")?.remove();
     const el = h(
       "div.rematch-panel",
-      h("div.rematch-status", "Play again with the same Decks?"),
-      h("div.rematch-actions", h("button.btn", { onclick: () => this.leave() }, "Leave"), h("button.btn.primary", { onclick: () => this.cfg.onLocalRematch(this) }, "Rematch"))
+      h("div.rematch-status", text),
+      h(
+        "div.rematch-actions",
+        keepPlaying ? h("button.btn.ghost", { onclick: () => el.remove() }, "Keep playing") : h("button.btn", { onclick: () => this.leave() }, "Leave"),
+        h("button.btn.primary", { onclick: () => this.cfg.onLocalRematch(this) }, label)
+      )
     );
     this.view.overlay.append(el);
   }
