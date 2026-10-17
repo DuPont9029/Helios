@@ -23,7 +23,9 @@ export function fieldsBase() {
 }
 
 const isFile = (src) => src.startsWith("file:");
-export const isZip = (src) => isFile(src) || /\.zip$/i.test(src.split(/[?#]/)[0]);
+// Link di condivisione di ArDrive (app.ardrive.io, ardrive.ar.io, …): https://<host>/#/file/<id>/view
+const ardriveId = (src) => src.match(/^https?:\/\/[^/]*ardrive[^/]*\/.*#\/file\/([0-9a-f-]{36})/i)?.[1] ?? null;
+export const isZip = (src) => isFile(src) || !!ardriveId(src) || /\.zip$/i.test(src.split(/[?#]/)[0]);
 
 // ---------------------------------------------------------------- archivio nel browser (IndexedDB)
 
@@ -58,7 +60,7 @@ const storeZip = (key, blob) => idbDo("readwrite", (s) => s.put({ blob, date: Da
 
 /** Dimensione dello .zip salvato per questa sorgente (0 se non c'è). */
 export async function storedSize(src = fieldsBase()) {
-  if (!src || !isZip(src)) return 0;
+  if (!src) return 0;
   return (await storedZip(zipKey(src)).catch(() => null))?.blob?.size ?? 0;
 }
 
@@ -116,28 +118,96 @@ const sources = new Map(); // sorgente -> Promise<{ list, url(path) }>
 
 const TYPES = { glb: "model/gltf-binary", json: "application/json" };
 
-async function openSource(src, onProgress) {
-  if (!isZip(src)) {
-    const getJson = async (url) => {
-      const r = await fetch(url);
-      if (!r.ok) throw new Error(`${r.status} ${url}`);
-      return r.json();
-    };
-    const parent = src.replace(/\/[^/]*$/, "");
-    return {
-      index: await getJson(`${src}/index.json`),
-      names: await getJson(`${src}/names.json`).catch(() => getJson(`${parent}/names.json`)).catch(() => ({})),
-      url: async (path) => `${src}/${path}`,
-    };
+/** Link di condivisione → download diretto (Dropbox, Google Drive); gli altri indirizzi restano uguali. */
+function directLink(src) {
+  try {
+    const u = new URL(src);
+    if (/(^|\.)dropbox\.com$/.test(u.hostname)) {
+      u.searchParams.set("dl", "1");
+      return u.href;
+    }
+    if (/(^|\.)drive\.google\.com$/.test(u.hostname)) {
+      const id = u.pathname.match(/\/file\/d\/([^/]+)/)?.[1] || u.searchParams.get("id");
+      if (id) return `https://drive.usercontent.google.com/download?id=${encodeURIComponent(id)}&export=download&confirm=t`;
+    }
+  } catch {
+    /* non è un URL completo */
   }
-  // Zip: quello salvato nel browser, altrimenti (indirizzo) si scarica e si salva.
+  return src;
+}
+
+/** true se il Blob è un archivio .zip (firma "PK" all'inizio). */
+async function isZipBlob(blob) {
+  const b = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+  return b[0] === 0x50 && b[1] === 0x4b && (b[2] === 3 || b[2] === 5) && (b[3] === 4 || b[3] === 6);
+}
+
+async function openFolder(src) {
+  const getJson = async (url) => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${r.status} ${url}`);
+    return r.json();
+  };
+  const parent = src.replace(/\/[^/]*$/, "");
+  return {
+    index: await getJson(`${src}/index.json`),
+    names: await getJson(`${src}/names.json`).catch(() => getJson(`${parent}/names.json`)).catch(() => ({})),
+    url: async (path) => `${src}/${path}`,
+  };
+}
+
+// Gateway di ArDrive (AR.IO): indice GraphQL e dati di Arweave, con richieste CORS permesse.
+const AR_GATEWAY = "https://ardrive.net";
+
+/** File pubblico di ArDrive → indirizzo dei suoi dati sul gateway. */
+async function ardriveData(fileId) {
+  const gql = async (query) => {
+    const r = await fetch(`${AR_GATEWAY}/graphql`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ query }) });
+    if (!r.ok) throw new Error(`ArDrive: ${r.status}`);
+    return (await r.json()).data;
+  };
+  // Ultima versione dei metadati del file (ArFS): JSON con dataTxId.
+  const d = await gql(`query { transactions(first: 1, sort: HEIGHT_DESC, tags: [{ name: "File-Id", values: ["${fileId}"] }, { name: "Entity-Type", values: ["file"] }]) { edges { node { id tags { name value } } } } }`);
+  const node = d?.transactions?.edges?.[0]?.node;
+  if (!node) throw new Error("ArDrive file not found (if it was just uploaded, try again in a few minutes)");
+  if (node.tags.some((t) => t.name === "Cipher")) throw new Error("This ArDrive file is private (encrypted): share it from a public drive");
+  const meta = await (await fetch(`${AR_GATEWAY}/${node.id}`)).json();
+  if (!meta?.dataTxId) throw new Error("ArDrive file without data");
+  return `${AR_GATEWAY}/${meta.dataTxId}`;
+}
+
+/** Scarica uno .zip dall'indirizzo e lo salva nel browser; errore se il link non dà uno .zip. */
+async function downloadZip(src, key, onProgress) {
+  const id = ardriveId(src);
+  const blob = await download(id ? await ardriveData(id) : directLink(src), onProgress);
+  if (!(await isZipBlob(blob)))
+    throw new Error("The link does not download a .zip file (a sharing page? use a direct download link)");
+  navigator.storage?.persist?.().catch(() => {});
+  await storeZip(key, blob).catch(() => {}); // senza spazio si usa lo stesso, ma andrà riscaricato
+  return blob;
+}
+
+async function openSource(src, onProgress) {
+  // Uno .zip già salvato nel browser per questa sorgente (caricato dal computer o scaricato da un link).
   const key = zipKey(src);
   let blob = (await storedZip(key).catch(() => null))?.blob;
   if (!blob) {
     if (isFile(src)) throw new Error("The .zip file is no longer stored in this browser: upload it again");
-    blob = await download(src, onProgress);
-    navigator.storage?.persist?.().catch(() => {});
-    await storeZip(key, blob).catch(() => {}); // senza spazio si usa lo stesso, ma andrà riscaricato
+    if (isZip(src)) blob = await downloadZip(src, key, onProgress);
+    else {
+      // Cartella dei campi, altrimenti un link a uno .zip che non finisce in ".zip" (si riconosce dal contenuto).
+      try {
+        return await openFolder(src);
+      } catch (folderError) {
+        try {
+          blob = await downloadZip(src, key, onProgress);
+        } catch (e) {
+          if (/CORS/.test(e.message)) throw e;
+          console.warn("Fields folder:", folderError.message, "· .zip:", e.message);
+          throw new Error("This address is neither a fields folder nor a .zip file. For a shared file, use its direct download link.");
+        }
+      }
+    }
   }
   const zip = await new ZipReader(blob).open();
   const root = rootOf(zip);
