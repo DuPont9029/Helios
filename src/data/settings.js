@@ -23,6 +23,9 @@ const DEFAULTS = {
   turnPass: "",
   forceRelay: false,
   signalUrl: "", // vuoto = stesso host (server/signal.mjs)
+  // Online Rooms: "server" = server di segnalazione (codici di 6 caratteri), "nostr" = stanze decentralizzate
+  // sui relay Nostr pubblici (src/net/nostr-room.js, codici di 8 caratteri).
+  roomMode: "server",
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",

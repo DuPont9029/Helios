@@ -291,6 +291,16 @@ export function showSettings(app) {
           turnPicker(field, text),
           check("forceRelay", "Force TURN relay (for testing)"),
           field("Signaling server", text("signalUrl", { placeholder: BUILD_SIGNAL_URL || location.origin }), BUILD_SIGNAL_URL ? "Used for Online Rooms. Leave empty to use this site's default server." : "Used for Online Rooms. Empty = same address as this page. The server can also provide temporary TURN credentials."),
+          field(
+            "Online Rooms",
+            h(
+              "select.select",
+              { onchange: (e) => (settings.roomMode = e.target.value) },
+              h("option", { value: "server", selected: settings.roomMode !== "nostr" }, "Signaling server"),
+              h("option", { value: "nostr", selected: settings.roomMode === "nostr" }, "Nostr relays (decentralized)")
+            ),
+            "Where new Rooms are created. Signaling server: the server below, 6-character codes. Nostr relays: public relays via Trystero, no server needed, 8-character codes. You can always join an 8-character code."
+          ),
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut
         ),
