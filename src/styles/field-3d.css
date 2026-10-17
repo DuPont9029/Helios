@@ -1,0 +1,94 @@
+/* ------------------------------------------------------------------ campo 3D
+   Con un campo 3D (src/field3d) la tela three.js riempie .duel-main sotto la griglia delle zone:
+   le zone diventano trasparenti (il disegno è quello del campo) e restano visibili solo selezioni,
+   luci del turno e le pile, che nel campo 3D non hanno un posto disegnato. Si carica dopo field-crypt.css. */
+
+.field3d-canvas {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; display: block;
+  pointer-events: none; opacity: 0; transition: opacity 0.6s;
+}
+.duel-main.field3d:not(.loading3d) .field3d-canvas { opacity: 1; }
+.duel-main.field3d { background: #07080c; }
+.duel-main.field3d::before { content: none; }
+
+/* Nel campo 3D le zone mostri distano dalla linea centrale un po' più di una zona: la riga centrale è più alta. */
+.duel-main.field3d .duel-field {
+  grid-template-rows: var(--zh) var(--zh) calc(var(--zh) * 1.2) var(--zh) var(--zh);
+  background: none; border-color: transparent; box-shadow: none;
+}
+.duel-main.field3d .duel-field::after { content: none; }
+.duel-main.field3d .duel-field::before { opacity: 0.35; box-shadow: none; }
+.duel-main.field3d .zone { align-self: center; height: var(--zh); }
+
+/* zone del campo: solo il contorno appena accennato */
+.duel-main.field3d .zone,
+.duel-main.turn-me.field3d .zone.side-0:not(.pile):not(.fieldspell),
+.duel-main.turn-op.field3d .zone.side-1:not(.pile):not(.fieldspell) {
+  background: none; border-color: transparent; box-shadow: none;
+}
+.duel-main.field3d .zone::after,
+.duel-main.field3d .zone:not(.pile)::before { content: none; }
+/* luce del turno: un velo sul lato di chi gioca */
+.duel-main.turn-me.field3d .zone.side-0:not(.pile):not(.fieldspell),
+.duel-main.turn-op.field3d .zone.side-1:not(.pile):not(.fieldspell) {
+  background: linear-gradient(var(--ray-dir), var(--glow) 0%, transparent 70%);
+  opacity: 1;
+}
+.duel-main.field3d .zone.mon, .duel-main.field3d .zone.emz { border-radius: calc(var(--zh) * 0.08); }
+
+/* pile (Deck, Extra, GY, Banishment): basi scure semitrasparenti */
+.duel-main.field3d .zone.pile {
+  border-radius: calc(var(--zh) * 0.14);
+  background: radial-gradient(circle at 50% 50%, rgba(8, 10, 20, 0.55), rgba(8, 10, 20, 0.25) 70%);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(2px);
+}
+.duel-main.field3d .zone.pile::before { color: rgba(225, 232, 255, 0.55); text-shadow: 0 1px 3px #000; }
+
+/* Deck ed Extra Deck: sui supporti inclinati negli angoli del campo 3D (centro a x = ±27.2, z = ±24.4 unità,
+   ruotati di 20°: misurati su più campi), senza base. Il mio Deck in basso a destra, l'Extra Deck nel supporto opposto;
+   per l'avversario gli angoli in alto, specchiati. GY e Banishment restano nella griglia. */
+.duel-main.field3d .zone.deck.side-0,
+.duel-main.field3d .zone.extra.side-0,
+.duel-main.field3d .zone.deck.side-1,
+.duel-main.field3d .zone.extra.side-1 {
+  background: none; box-shadow: none; backdrop-filter: none; border-color: transparent;
+}
+.duel-main.field3d .zone.deck::before, .duel-main.field3d .zone.extra::before { content: none; }
+/* grandi come il supporto (circa 7 unità di larghezza), centrate: ombra morbida al posto dello spessore sfalsato */
+.duel-main.field3d .zone.deck .card, .duel-main.field3d .zone.extra .card { width: calc(var(--cw) * 1.42); }
+.duel-main.field3d .zone.deck .pile-top, .duel-main.field3d .zone.extra .pile-top {
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 calc(var(--zh) * 0.03) calc(var(--zh) * 0.12) rgba(0, 0, 0, 0.75) !important;
+}
+.duel-main.field3d .zone.deck.side-0 { translate: calc(var(--zh) * 0.193) calc(var(--zh) * 0.812); rotate: -20deg; }
+.duel-main.field3d .zone.extra.side-0 { translate: calc(var(--zh) * -0.193) calc(var(--zh) * 0.812); rotate: 20deg; }
+.duel-main.field3d .zone.deck.side-1 { translate: calc(var(--zh) * -0.193) calc(var(--zh) * -0.812); rotate: -20deg; }
+.duel-main.field3d .zone.extra.side-1 { translate: calc(var(--zh) * 0.193) calc(var(--zh) * -0.812); rotate: 20deg; }
+
+/* Zona Terreno: nel campo 3D è disegnata più vicina alle zone mostri e più piccola. Senza cornice né luce
+   del turno, e grande come il disegno, così non copre l'Extra Deck sotto (la carta resta a grandezza normale). */
+.duel-main.field3d .zone.fieldspell.side-0,
+.duel-main.field3d .zone.fieldspell.side-1 {
+  width: calc(var(--zh) * 0.7); height: calc(var(--zh) * 0.85); justify-self: center;
+  background: none; border-color: transparent; box-shadow: none;
+}
+.duel-main.field3d .zone.fieldspell.side-0 { translate: calc(var(--zh) * 0.065) calc(var(--zh) * 0.1); }
+.duel-main.field3d .zone.fieldspell.side-1 { translate: calc(var(--zh) * -0.065) calc(var(--zh) * -0.1); }
+.duel-main.field3d .zone.fieldspell::before { content: none; }
+
+/* selezioni ben visibili sopra il campo (anche sul lato di chi è di turno, che ha regole più specifiche) */
+.duel-main.field3d .zone.selectable:not(.glow-activate) { box-shadow: 0 0 0 2px #54d4ff, 0 0 12px rgba(53, 198, 244, 0.6) !important; }
+.duel-main.field3d .zone.pickable {
+  background: radial-gradient(circle, rgba(53, 198, 244, 0.45), rgba(53, 198, 244, 0.12)) !important;
+  box-shadow: 0 0 0 2px #54d4ff, 0 0 18px rgba(53, 198, 244, 0.7) !important;
+}
+.duel-main.field3d .zone.pickable:hover { background: radial-gradient(circle, rgba(120, 230, 255, 0.7), rgba(53, 198, 244, 0.2)) !important; }
+
+/* anteprima nelle impostazioni */
+.field3d-picker { display: flex; flex-direction: column; gap: 12px; }
+.field3d-preview { position: relative; aspect-ratio: 16 / 9; border: 1px solid var(--line); background: #07080c; overflow: hidden; }
+.field3d-preview .field3d-canvas { opacity: 1; }
+.field3d-preview[data-loading]::after {
+  content: attr(data-loading); position: absolute; inset: 0; display: grid; place-items: center; padding: 12px; text-align: center;
+  color: var(--muted); font-size: 13px;
+}
