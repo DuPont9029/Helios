@@ -28,6 +28,9 @@ const DEFAULTS = {
   lastTimer: "omega",
   lastBestOf: 1, // partita: 1 (duello singolo), 3 o 5 (al meglio di) // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
+  fieldsUrl: "", // cartella dei campi 3D su un sito esterno (vedi src/data/fields3d.js); vuoto = VITE_FIELDS_URL
+  field3d: "random", // campo 3D del duello: "" (campo 2D), "random" o l'id di un campo (es. "Mat_001")
+  field3dFx: true, // campo 3D: particelle e bagliore
   pendulumIcon: null, // figura per le gemme delle zone Pendulum (data URL PNG con trasparenza)
   testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)
   testOpponent: "deck", // Test Duel: "deck" (il giocatore 2 ha un mazzo) o "none" (nessun mazzo, passa sempre il turno)

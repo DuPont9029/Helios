@@ -13,6 +13,7 @@ import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { HINT, LOC, MSG, PHASE, PHASE_NAMES, POS } from "../../core/constants.js";
 import { formatClock } from "../../duel/clock.js";
+import { chooseField, fieldsBase } from "../../data/fields3d.js";
 
 const PHASES = [
   [PHASE.DRAW, "DP"], [PHASE.STANDBY, "SP"], [PHASE.MAIN1, "M1"],
@@ -60,6 +61,46 @@ export class DuelView {
     this.releaseHandler = () => this.onPointerButtons({ buttons: 0 });
     for (const ev of ["pointerdown", "pointerup", "pointermove"]) document.addEventListener(ev, this.buttonsHandler, true);
     window.addEventListener("blur", this.releaseHandler);
+    this.mountField3d();
+  }
+
+  /** Campo 3D (Settings → 3D field) sotto la griglia delle zone; senza, resta il campo disegnato in CSS. */
+  async mountField3d() {
+    // Con un campo 3D scelto, la griglia è già quella del campo 3D (fondo scuro) mentre si carica:
+    // il campo 2D non compare per un attimo prima di quello importato.
+    const wanted = !!(fieldsBase() && settings.field3d);
+    this.main.classList.toggle("field3d", wanted);
+    this.main.classList.toggle("loading3d", wanted);
+    let choice;
+    try {
+      choice = await chooseField();
+    } catch (e) {
+      console.warn("3D field list unavailable:", e);
+    }
+    if (!choice || this.destroyed) return this.main.classList.remove("field3d", "loading3d");
+    try {
+      // three.js si scarica solo quando serve.
+      const { FieldStage } = await import("../../field3d/stage.js");
+      if (this.destroyed) return;
+      this.stage = new FieldStage(this.main, { fx: settings.field3dFx });
+      const zones = this.board.zoneEls;
+      this.stage.setAnchors({ center: this.board.centerEl, left: zones.get(key(this.me, LOC.MZONE, 5)), right: zones.get(key(this.me, LOC.MZONE, 6)) });
+      await this.stage.load(choice.base, choice.id, choice.sides);
+      if (this.destroyed) return;
+      for (let p = 0; p < 2; p++) if (this.lp[p]) this.stage.syncLP(this.board.side(p), this.lp[p], this.startLP);
+      this.main.classList.remove("loading3d");
+      this.main.dataset.field = choice.name;
+      // Clic sul pavimento (non su zone, carte o pulsanti): animazione della creatura del campo.
+      this.main.addEventListener("click", (e) => {
+        if (!e.target.closest(".zone, .card, button, .hand, .lp, .prompt-dock, .fx-layer > *")) this.stage?.tap(e.clientX, e.clientY);
+      });
+    } catch (e) {
+      console.warn("3D field unavailable:", e);
+      this.stage?.dispose();
+      this.stage = null;
+      this.main.classList.remove("field3d", "loading3d");
+      this.log({ text: `3D field "${choice.name}" could not be loaded: using the standard field.`, cls: "warn" });
+    }
   }
 
   /** Modo della catena in questo momento: quello tenuto premuto con il mouse, altrimenti quello scelto. */
@@ -212,6 +253,11 @@ export class DuelView {
     const pct = Math.max(0, Math.min(100, (lp / (this.startLP || 8000)) * 100));
     ui.fill.style.width = pct + "%";
     ui.fill.classList.toggle("low", pct < 25);
+    // Campo 3D: il colpo sul lato di chi subisce danno, poi il campo si rompe a fasi con pochi LP.
+    if (this.stage && old !== lp) {
+      if (animate && lp < old) this.stage.damage(this.board.side(p), lp, this.startLP);
+      else this.stage.syncLP(this.board.side(p), lp, this.startLP);
+    }
     if (!animate || old === lp || !this.speed) {
       ui.num.textContent = lp;
       return;
@@ -701,6 +747,8 @@ export class DuelView {
   }
 
   destroy() {
+    this.destroyed = true;
+    this.stage?.dispose();
     document.removeEventListener("contextmenu", this.contextHandler);
     for (const ev of ["pointerdown", "pointerup", "pointermove"]) document.removeEventListener(ev, this.buttonsHandler, true);
     window.removeEventListener("blur", this.releaseHandler);
