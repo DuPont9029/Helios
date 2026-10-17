@@ -5,7 +5,7 @@ import { DATA_URL, db, getCard } from "../data/db.js";
 import { SimpleAI, PassAI } from "../core/ai.js";
 import { DuelView } from "../ui/duel/view.js";
 import { confirmModal, toast } from "../ui/modal.js";
-import { MSG, DUEL, IDLE } from "../core/constants.js";
+import { MSG, DUEL, IDLE, BATTLE, LOC } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
@@ -72,14 +72,27 @@ class Inbox {
   }
 }
 
-// Summon e Set annullabili finché non si sceglie la zona: l'azione resta "in sospeso" (non va
-// all'avversario) mentre il core chiede costi, zona e posizione; "Back" ricostruisce lo stato di prima.
-const UNDOABLE_ACTIONS = new Set([IDLE.SUMMON, IDLE.SPSUMMON, IDLE.MSET, IDLE.SSET]);
-const UNDOABLE_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD]);
-// Richieste in cui compare "Back" (le scelte delle carte solo quando si fanno sul campo).
-const BACK_PROMPTS = new Set([MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD]);
-// La summon/il set è avvenuto: non si torna più indietro.
+// Summon, Set e attivazioni annullabili finché non avvengono: l'azione resta "in sospeso" (non va
+// all'avversario, che quindi non vede i bersagli e i costi scelti) mentre il core chiede costi, bersagli,
+// zona e posizione; "Back" ricostruisce lo stato di prima.
+const UNDOABLE_ACTIONS = new Set([IDLE.SUMMON, IDLE.SPSUMMON, IDLE.MSET, IDLE.SSET, IDLE.ACTIVATE]);
+const UNDOABLE_PROMPTS = new Set([
+  MSG.SELECT_PLACE, MSG.SELECT_POSITION, MSG.SELECT_CARD, MSG.SELECT_TRIBUTE, MSG.SELECT_SUM, MSG.SELECT_UNSELECT_CARD,
+  MSG.SELECT_OPTION, MSG.SELECT_YESNO, MSG.SELECT_COUNTER, MSG.ANNOUNCE_CARD, MSG.ANNOUNCE_RACE, MSG.ANNOUNCE_ATTRIB, MSG.ANNOUNCE_NUMBER,
+]);
+// Richieste in cui compare "Back".
+const BACK_PROMPTS = UNDOABLE_PROMPTS;
+// La summon/il set è avvenuto: non si torna più indietro. (Le attivazioni no: il core manda MSG_CHAINING
+// prima di chiedere bersagli e costi, quindi restano annullabili finché durano quelle scelte.)
 const DONE_MSGS = new Set([MSG.SUMMONING, MSG.SPSUMMONING, MSG.SET, MSG.FLIPSUMMONING]);
+
+/** Azione annullabile iniziata dalla risposta: "summon" (summon/set), "activate" (attivazione) o null. */
+function pendingKind(prompt, response) {
+  if (prompt.type === MSG.SELECT_IDLECMD && UNDOABLE_ACTIONS.has(response.action)) return response.action === IDLE.ACTIVATE ? "activate" : "summon";
+  if (prompt.type === MSG.SELECT_BATTLECMD && response.action === BATTLE.ACTIVATE) return "activate";
+  if (prompt.type === MSG.SELECT_CHAIN && response.index != null) return "activate";
+  return null;
+}
 
 export class DuelSession {
   /**
@@ -256,13 +269,16 @@ export class DuelSession {
       if (this.clock && res.messages.some((m) => m.type === MSG.NEW_TURN)) this.clock.newTurn();
       // Summon in sospeso: diventa definitiva appena avviene o il core chiede altro (anche all'avversario).
       const next = res.prompt;
-      if (this.pending && (res.ended || !next || res.messages.some((m) => DONE_MSGS.has(m.type)) || next.player !== this.pending.player || !UNDOABLE_PROMPTS.has(next.type))) this.commitPending();
+      const done = this.pending?.kind === "summon" && res.messages.some((m) => DONE_MSGS.has(m.type));
+      if (this.pending && (res.ended || !next || done || next.player !== this.pending.player || !UNDOABLE_PROMPTS.has(next.type))) this.commitPending();
       if (res.ended) {
         const win = res.messages.find((m) => m.type === MSG.WIN);
         this.finish({ winner: win?.player ?? res.snapshot.winner, reason: win?.reason });
         return;
       }
       const prompt = res.prompt;
+      // Di nuovo alla scelta dell'azione: una Pendulum Summon annullata non vale per le summon successive.
+      if (prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD) this.view.pendulumSummon = false;
       this.trainer?.onPrompt(prompt);
       let who = this.cfg.controllers[prompt.player];
       // Flag di test: il giocatore locale viene pilotato dall'IA (localStorage "ygoweb.autoplay").
@@ -285,6 +301,8 @@ export class DuelSession {
         } else {
           for (;;) {
             response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+            // Duello chiuso mentre si sceglieva (es. "Leave"): niente nuove richieste.
+            if (this.over) return;
             if (!response || response.trainerBack || response.back) break;
             // Modalità strict: azione o scelta diversa dalla combo, si richiede (senza scelte automatiche).
             const err = this.trainer?.check?.(prompt, response);
@@ -315,10 +333,11 @@ export class DuelSession {
           res = await this.undoPending();
           continue;
         }
-        this.trainer?.onResponse(prompt, response, { histLen: this.history.length, seq: this.seq, logMark: this.view.logMark() });
-        if (prompt.type === MSG.SELECT_IDLECMD && UNDOABLE_ACTIONS.has(response.action) && !this.pending) {
-          this.pending = { player: prompt.player, seq: this.seq, histLen: this.history.length, logMark: this.view.logMark(), outbox: [] };
-        }
+        // Stato da ricostruire tornando indietro: anche quello del trainer (passo e scelta attesi).
+        const mark = () => ({ histLen: this.history.length, seq: this.seq, logMark: this.view.logMark(), trainer: this.trainer?.save?.() });
+        const kind = pendingKind(prompt, response);
+        if (kind && !this.pending) this.pending = { kind, player: prompt.player, ...mark(), outbox: [] };
+        this.trainer?.onResponse(prompt, response, mark());
         const clock = this.timed(prompt.player) ? { left: this.clock.left[prompt.player], bonus: this.clock.bonus[prompt.player] } : undefined;
         const out = { t: "resp", seq: this.seq, response, sum: res.checksum, clock };
         if (this.pending) this.pending.outbox.push(out);
@@ -352,6 +371,11 @@ export class DuelSession {
         }
         response = m.response;
       }
+      // Pendulum Summon (azione "Special Summon" della carta nella zona Pendulum): le summon che seguono
+      // si chiamano così nel campo e nel registro.
+      if (prompt.type === MSG.SELECT_IDLECMD && response?.action === IDLE.SPSUMMON && prompt.special_summons?.[response.index]?.location & LOC.SZONE) {
+        this.view.pendulumSummon = true;
+      }
       this.seq++;
       this.history.push(response);
       res = await this.engine.call("respond", { response });
@@ -384,6 +408,11 @@ export class DuelSession {
     this.history.length = mark.histLen;
     this.seq = mark.seq;
     this.view.logRewind(mark.logMark);
+    if (mark.trainer) this.trainer?.restore?.(mark.trainer);
+    this.view.pendulumSummon = false;
+    // Segnalini e contesto della catena come nello stato ricostruito (l'attivazione annullata sparisce).
+    this.view.render(res.snapshot);
+    this.view.syncChain(res.snapshot.chain ?? []);
     this.view.setStatus("");
     // Niente animazioni: lo stato si ridisegna dalla fotografia e si torna alla scelta dell'azione.
     return { ...res, messages: [] };
@@ -415,7 +444,7 @@ export class DuelSession {
         sub = why ? `${score} · ${why}` : score;
       } else {
         nextGame = true;
-        sub = `${outcome === "me" ? "You win this Duel" : outcome === "opp" ? "Your opponent wins this Duel" : "Draw: it does not count"} · ${score}`;
+        sub = `${outcome === "me" ? "You win this Duel" : outcome === "opp" ? "Your opponent wins this Duel" : `Draw: it does not count, Game ${series.game} is replayed`} · ${score}`;
       }
     }
     this.view.showResult({ winner, reason, text, sub });
@@ -434,13 +463,15 @@ export class DuelSession {
       if (!this.view.el.isConnected) return;
       this.cfg.onNextGame(this);
     };
-    const paint = () => (status.textContent = `Next Duel (Game ${this.cfg.match.game}) in ${left}...`);
+    // Con un Side Deck si apre prima il side decking (nel deck editor), poi parte il duello.
+    const side = !!this.cfg.sideDeck;
+    const paint = () => (status.textContent = side ? `Opening the Side Deck for Game ${this.cfg.match.game} in ${left}...` : `Next Duel (Game ${this.cfg.match.game}) in ${left}...`);
     const timer = setInterval(() => (--left <= 0 ? go() : paint()), 1000);
     paint();
     const el = h(
       "div.rematch-panel.asked",
       status,
-      h("div.rematch-actions", h("button.btn", { onclick: () => { clearInterval(timer); this.leave(); } }, "Leave"), h("button.btn.primary", { onclick: go }, "Next Duel"))
+      h("div.rematch-actions", h("button.btn", { onclick: () => { clearInterval(timer); this.leave(); } }, "Leave"), h("button.btn.primary", { onclick: go }, side ? "Open Side Deck" : "Next Duel"))
     );
     this.view.overlay.append(el);
   }
@@ -503,7 +534,10 @@ export class DuelSession {
     const ui = r.ui;
     if (!ui) return;
     if (r.nextGame && !r.failed && !r.oppLeft) {
-      ui.text.textContent = r.started ? `Starting Game ${this.cfg.match.game}...` : `Next Duel: Game ${this.cfg.match.game}. Waiting for your opponent...`;
+      const game = this.cfg.match.game;
+      ui.text.textContent = this.cfg.sideDeck
+        ? r.started ? `Opening the Side Deck for Game ${game}...` : `Side Deck for Game ${game}: waiting for your opponent...`
+        : r.started ? `Starting Game ${game}...` : `Next Duel: Game ${game}. Waiting for your opponent...`;
     } else if (r.started && !r.failed) {
       ui.text.textContent = "Starting the rematch...";
       ui.btn.disabled = true;
@@ -525,6 +559,32 @@ export class DuelSession {
     ui.el.classList.toggle("asked", !!(r.opp && !r.me && !r.oppLeft));
   }
 
+  /**
+   * La partita al meglio di N finisce senza giocare altri duelli (resa dal side deck): won = ha vinto
+   * il giocatore locale (me). Il risultato del duello lascia il posto a quello della partita.
+   */
+  concludeMatch({ won, why }) {
+    const s = this.cfg.match;
+    if (s) {
+      s.over = true;
+      this.view.setMatchInfo(s);
+    }
+    this.rematch.started = true; // niente più rivincite su questa partita
+    this.view.overlay.querySelectorAll(".result, .rematch-panel").forEach((e) => e.remove());
+    const score = s ? `${s.wins[0]}–${s.wins[1]}` : "";
+    this.view.showResult({ winner: won ? this.cfg.me : 1 - this.cfg.me, text: won ? "MATCH WON" : "MATCH LOST", sub: [score, why].filter(Boolean).join(" · ") });
+    const panel = h(
+      "div.rematch-panel",
+      h("div.rematch-status", why),
+      h(
+        "div.rematch-actions",
+        h("button.btn", { onclick: () => this.leave() }, "Leave"),
+        this.cfg.onLocalRematch ? h("button.btn.primary", { onclick: () => this.cfg.onLocalRematch(this) }, "Rematch") : null
+      )
+    );
+    this.view.overlay.append(panel);
+  }
+
   /** La negoziazione della rivincita è fallita: resta la schermata del risultato con il motivo. */
   rematchFailed(message) {
     this.rematch.failed = `Rematch failed: ${message}`;
@@ -533,13 +593,14 @@ export class DuelSession {
 
   async surrender() {
     if (this.over) return;
-    if (!(await confirmModal("Surrender?", "Your opponent will win the Duel.", "Surrender", "Cancel"))) return;
+    // Sopra a qualsiasi altra finestra aperta (scelte del duello comprese).
+    if (!(await confirmModal("Surrender?", "Your opponent will win the Duel.", "Surrender", "Cancel", { top: true }))) return;
     this.send({ t: "surrender" });
     this.finish({ winner: 1 - this.cfg.me, text: "You surrendered" });
   }
 
   async leave() {
-    if (!this.over && !(await confirmModal("Leave the Duel?", "You will lose the current Duel.", "Leave", "Stay"))) return;
+    if (!this.over && !(await confirmModal("Leave the Duel?", "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
     this.send({ t: "bye" });
     this.destroy();
     this.cfg.onExit?.();

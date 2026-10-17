@@ -13,6 +13,22 @@ import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks } from "./data/bookmarks.js";
 import { showComboTrainer } from "./ui/combos.js";
+import { showHdpc } from "./ui/hdpc.js";
+
+// PWA: Helios si può installare come app sul desktop (manifest + service worker in public/).
+let installPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  document.querySelectorAll(".install-app").forEach((b) => (b.hidden = false));
+});
+window.addEventListener("appinstalled", () => {
+  installPrompt = null;
+  document.querySelectorAll(".install-app").forEach((b) => (b.hidden = true));
+});
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("Service worker:", e)));
+}
 
 const app = {
   root: document.getElementById("app"),
@@ -42,13 +58,47 @@ function leaveCurrent() {
   }
 }
 
-function home() {
+/** Pulsante "Install app" (compare solo se il browser permette di installare la PWA). */
+function installButton() {
+  return h("button.btn.ghost.install-app", {
+    hidden: !installPrompt,
+    title: "Install Helios as an app on this computer",
+    onclick: async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice.catch(() => null);
+      installPrompt = null;
+      document.querySelectorAll(".install-app").forEach((b) => (b.hidden = true));
+    },
+  }, icon("install_desktop"), " Install app");
+}
+
+/** Home; section "training" = sottomenu con le modalità di allenamento. */
+function home(section = null) {
   leaveCurrent();
   const root = clear(app.root);
   const go = (fn) => () => { leaveCurrent(); fn(); };
   const item = (title, sub, onClick) =>
     h("button.menu-item", { onclick: go(onClick) }, h("span.menu-title", title), h("span.menu-sub", sub));
   const m = db.manifest ?? {};
+  const training = section === "training";
+  const nav = training
+    ? h(
+        "nav.menu",
+        h("button.btn.ghost.round.page-back.menu-back", { title: "Back (right-click)", onclick: () => home() }, icon("chevron_left")),
+        h("div.menu-section", "Training"),
+        item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
+        item("Combo Trainer", "Practice your combos and play around hand traps", () => showComboTrainer(app)),
+        item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
+        item("HDPC", "Hypergeometric Distribution Probability Calculator: odds of opening your cards", () => showHdpc(app))
+      )
+    : h(
+        "nav.menu",
+        item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
+        item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
+        h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Combo Trainer · Vs CPU · HDPC")),
+        item("Settings", "Name, network, graphics", () => showSettings(app))
+      );
   root.append(
     h(
       "div.home",
@@ -56,18 +106,11 @@ function home() {
         "header.home-head",
         h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", "v0.1")),
         h("div.home-user", "Welcome,", h("b", settings.name)),
+        installButton(),
         fullscreenButton(),
         h("button.btn.ghost.round", { title: "Settings", onclick: go(() => showSettings(app)) }, icon("settings"))
       ),
-      h(
-        "nav.menu",
-        item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
-        item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
-        item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
-        item("Combo Trainer", "Practice your combos and play around hand traps", () => showComboTrainer(app)),
-        item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
-        item("Settings", "Name, network, graphics", () => showSettings(app))
-      ),
+      nav,
       h("div.emblem", h("i"), h("i"), h("i"), h("b")),
       h("aside.home-side", deckPanel(go)),
       h(

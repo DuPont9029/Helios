@@ -10,7 +10,7 @@ import { validPendulumIcons } from "../data/pendulum.js";
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
 // 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
 // 4: nella rivincita inizia chi ha perso, senza lancio della moneta.
-// 5: partite al meglio di 3/5 (opzione bestOf dell'host).
+// 5: partite al meglio di N (opzione bestOf dell'host).
 // Versioni diverse produrrebbero ordini diversi del mazzo: il controllo le rifiuta.
 export const PROTOCOL = 5;
 

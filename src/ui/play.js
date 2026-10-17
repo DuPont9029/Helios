@@ -7,16 +7,19 @@ import { loadDecks, validateDeck, banlistByName } from "../deck/deck.js";
 import { DUEL_MODES } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
-import { BEST_OF, newSeries } from "../duel/series.js";
+import { MAX_BEST_OF, clampBestOf, newSeries } from "../duel/series.js";
 import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
-import { sideDeck } from "./side-deck.js";
+import { openSideEditor } from "./editor.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
 import "../styles/play.css";
+
+// Codice di una stanza online: 6 caratteri (server di segnalazione) o 8 (Nostr), senza 0/O e 1/I.
+const ROOM_CODE = /^(?:[A-HJ-NP-Z2-9]{6}|[A-HJ-NP-Z2-9]{8})$/;
 
 // ---------------------------------------------------------------- componenti comuni
 
@@ -36,8 +39,10 @@ function optionsForm({ host = true } = {}) {
   const unofficial = h("input", { type: "checkbox" });
   const timer = h("select.select", Object.entries(TIMER_PRESETS).map(([k, t]) => h("option", { value: k }, t ? t.label : "Off")));
   // Partita al meglio di 3 o 5 duelli (online la sceglie l'host).
-  const bestOf = h("select.select", Object.entries(BEST_OF).map(([n, label]) => h("option", { value: n }, label)));
-  bestOf.value = String(settings.lastBestOf ?? 1);
+  // Partita al meglio di N duelli (N a scelta; 1 = duello singolo). Con N > 1 tra i duelli si fa il side deck.
+  const bestOf = h("input.input", { type: "number", min: 1, max: MAX_BEST_OF, step: 2, value: clampBestOf(settings.lastBestOf ?? 1), title: "Best of N Duels, N odd (1 = single Duel). With more than 1, you side deck between the Duels." });
+  // Solo numeri dispari: un valore pari scritto a mano diventa il dispari successivo.
+  bestOf.addEventListener("change", () => (bestOf.value = clampBestOf(bestOf.value)));
   timer.value = settings.lastTimer in TIMER_PRESETS ? settings.lastTimer : "omega";
   const el = h(
     "div.form-grid",
@@ -47,7 +52,7 @@ function optionsForm({ host = true } = {}) {
     h("label.field", h("span", "Starting hand"), hand),
     h("label.field", h("span", "Draws per turn"), draw),
     h("label.field", h("span", "Timer"), timer),
-    h("label.field", h("span", "Match"), bestOf),
+    h("label.field", h("span", "Match: best of"), bestOf),
     h("label.check", unofficial, "Allow unofficial cards (anime/custom)")
   );
   if (!host) el.hidden = true;
@@ -56,9 +61,9 @@ function optionsForm({ host = true } = {}) {
     read() {
       settings.lastBanlist = banlist.value;
       settings.lastTimer = timer.value;
-      settings.lastBestOf = +bestOf.value;
+      settings.lastBestOf = clampBestOf(bestOf.value);
       return {
-        bestOf: +bestOf.value,
+        bestOf: clampBestOf(bestOf.value),
         mode: mode.value,
         flags: String(DUEL_MODES[mode.value].flags),
         banlist: banlist.value || null,
@@ -83,7 +88,7 @@ function checkDeck(deck, options) {
 
 function startSession(app, cfg) {
   const container = clear(app.root);
-  const session = new DuelSession({ ...cfg, onExit: () => app.home() });
+  const session = new DuelSession({ onExit: () => app.home(), ...cfg });
   app.current = session;
   session.start(container);
 }
@@ -196,6 +201,9 @@ export function showLocalSetup(app, { vsCpu }) {
             const pendulums = [null, null];
             pendulums[me] = pendulumIcons();
             startSession(app, {
+              onExit: () => app.home("training"),
+              // Tra i duelli della partita si apre il Side Deck (se c'è almeno un mazzo con carte nel Side).
+              sideDeck: series.bestOf > 1,
               controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves, pendulums,
               match: series,
               // Duello successivo della partita: si fa il side deck, poi inizia chi ha perso (pareggio: stesso ordine).
@@ -203,8 +211,16 @@ export function showLocalSetup(app, { vsCpu }) {
                 const p1 = old.cfg.me;
                 const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : meFirst;
                 const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, game: series.game };
-                a = await sideDeck(a, { ...side, who: vsCpu ? "" : "Player 1" });
-                if (!vsCpu && !noDeck) b = await sideDeck(b, { ...side, who: "Player 2" });
+                // Formato con side deck: la schermata si apre sempre, anche con il Side Deck vuoto.
+                // Dal side deck ci si può arrendere: la partita finisce (nel Test Duel perde chi si arrende).
+                const sa = await openSideEditor(a, { ...side, who: vsCpu ? "" : "Player 1" });
+                if (sa.surrendered) return old.concludeMatch({ won: false, why: vsCpu ? "You surrendered the match" : "Player 1 surrendered the match" });
+                a = sa;
+                if (!vsCpu && !noDeck) {
+                  const sb = await openSideEditor(b, { ...side, who: "Player 2" });
+                  if (sb.surrendered) return old.concludeMatch({ won: true, why: "Player 2 surrendered the match" });
+                  b = sb;
+                }
                 old.destroy();
                 launch(next);
               },
@@ -267,14 +283,31 @@ async function playMatch(app, match, old = null) {
   const iFirst = prev == null ? null : prev !== old.cfg.me;
   // Duello successivo di una partita al meglio di N: prima il side deck (l'avversario aspetta il nostro "hello").
   const nextGame = !!(old && match.series && !match.series.over);
+  // Resa dell'avversario dal suo side deck: la partita finisce, chiudendo il nostro side deck o l'attesa.
+  let side = null;
+  let conceded = null;
+  const opponentConceded = new Promise((resolve) => match.mux.on("concede", () => resolve((conceded = true))));
+  const endByConcede = () => {
+    side?.close({ surrendered: false, opponent: true });
+    old?.concludeMatch({ won: true, why: "Your opponent surrendered the match" });
+    return null;
+  };
   if (nextGame) {
     const opts = match.host ? match.options : match.lastOptions;
-    match.deck = await sideDeck(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, game: match.series.game });
+    side = openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, game: match.series.game });
+    const d = await Promise.race([side, opponentConceded.then(() => ({ opponent: true }))]);
+    if (d.opponent || conceded) return endByConcede();
+    if (d.surrendered) {
+      match.mux.send({ t: "concede" });
+      old.concludeMatch({ won: false, why: "You surrendered the match" });
+      return null;
+    }
+    match.deck = d;
   } else if (old) match.deck = match.savedDeck ?? match.deck;
   match.savedDeck ??= match.deck;
   let result;
   try {
-    result = await negotiate(match.mux, {
+    const talk = negotiate(match.mux, {
       host: match.host,
       name: settings.name,
       deck: match.deck,
@@ -286,6 +319,8 @@ async function playMatch(app, match, old = null) {
       // Mentre l'avversario fa il side deck il suo "hello" può tardare.
       helloTimeout: nextGame || old ? 15 * 60 * 1000 : undefined,
     });
+    result = await Promise.race([talk, opponentConceded.then(() => null)]);
+    if (!result) return endByConcede();
   } catch (err) {
     toss.lost?.close();
     throw err;
@@ -311,6 +346,7 @@ async function playMatch(app, match, old = null) {
   }
   startSession(app, {
     controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, mux: match.mux,
+    sideDeck: match.series.bestOf > 1,
     match: match.series,
     onRematch: (old) => {
       // Sincrono rispetto al messaggio "rematch": da qui in poi i messaggi appartengono alla partita nuova.
@@ -364,6 +400,8 @@ export function showOnline(app) {
   const useNostr = settings.roomMode === "nostr";
   const roomInput = h("input.input.code", { placeholder: "CODE", maxLength: 12, oninput: (e) => (e.target.value = e.target.value.toUpperCase()) });
   const roomCode = h("div.room-code");
+  const roomHint = h("p.muted.small.clip-hint");
+  let usedRoom = null;
   const viaServer = async (room) => {
     cancel();
     if (room === null && !checkDeck(getDeck(), opts.read())) return;
@@ -375,8 +413,15 @@ export function showOnline(app) {
       c = connectViaNostr({ room, iceServers, forceRelay: settings.forceRelay, onStatus: (t) => setStatus(t) });
     } else c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
     cancel = c.cancel;
-    c.room.then((code) => {
-      if (!room) roomCode.textContent = code;
+    c.room.then(async (code) => {
+      if (room) return;
+      roomCode.textContent = code;
+      // Come per i codici invito: il codice della stanza va subito negli appunti, pronto da mandare.
+      ownCodes.add(code);
+      if (await copyText(code)) {
+        watcher?.seen(code);
+        setStatus(`Room ${code} created and copied to the clipboard: send it to your opponent and wait here.`, "ok");
+      }
     });
     c.ready.then(({ link, host }) => onConnected(link, host)).catch((e) => setStatus(e.message, "error"));
   };
@@ -477,6 +522,19 @@ export function showOnline(app) {
   };
   const onClipboard = async (text, initial) => {
     if (ownCodes.has(text)) return;
+    // Codice di una stanza (6 caratteri: server di segnalazione, 8: Nostr) copiato dall'avversario.
+    if (ROOM_CODE.test(text) && paneHost.firstChild === tabs[0].body) {
+      if (text === usedRoom) return;
+      roomInput.value = text;
+      if (initial) {
+        setStatus(`A Room code (${text}) was found in the clipboard and pasted: press "Join" to enter.`, "ok");
+      } else {
+        usedRoom = text;
+        setStatus(`Room code ${text} found in the clipboard: joining...`, "ok");
+        viaServer(text);
+      }
+      return;
+    }
     const kind = await codeKind(text);
     if (kind === "answer" && hostLink && !hostLink.closed && hostLink.pc.signalingState !== "stable") {
       answerIn.value = text;
@@ -500,7 +558,7 @@ export function showOnline(app) {
       clipHint.textContent = "Paste the codes manually (this browser does not allow reading the clipboard automatically).";
       return;
     }
-    if (watcher || paneHost.firstChild !== tabs[1].body) return;
+    if (watcher) return;
     watcher = watchClipboard({
       onText: onClipboard,
       onDenied: () => {
@@ -509,6 +567,7 @@ export function showOnline(app) {
       },
     });
     clipHint.textContent = "Codes are copied automatically, and the other player's code is pasted as soon as you copy it.";
+    roomHint.textContent = "Your Room code is copied automatically; when you copy your opponent's code it is pasted here and you join by yourself.";
   };
 
   const tabs = [
@@ -517,7 +576,8 @@ export function showOnline(app) {
       label: "Online Room",
       body: h(
         "div.online-pane",
-        h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically. Once connected, the Duel runs directly between the browsers. 8-character codes are decentralized Rooms (public Nostr relays, no server needed): choose where new Rooms are created in Settings."),
+        h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically and the Duel runs directly between the two browsers (peer-to-peer). No game server is involved: the Room is only used to meet. 8-character codes are serverless Rooms on public Nostr relays; 6-character codes use a signaling server. Choose where new Rooms are created in Settings."),
+        roomHint,
         h("div.row-group",
           h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
           h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
@@ -529,7 +589,7 @@ export function showOnline(app) {
       label: "Invite code (no server)",
       body: h(
         "div.online-pane",
-        h("p.muted", "Fallback without a signaling server: you exchange two long codes (e.g. via chat). Paste them quickly: the connection may fail if the exchange takes more than about a minute."),
+        h("p.muted", "Also peer-to-peer and serverless: instead of a Room you exchange two long codes (e.g. via chat). Paste them quickly: the connection may fail if the exchange takes more than about a minute."),
         clipHint,
         h("div.row-group",
           h("div.card-box",
@@ -556,8 +616,8 @@ export function showOnline(app) {
   const show = (id) => {
     tabBar.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === id));
     clear(paneHost).append(tabs.find((t) => t.id === id).body);
-    if (id === "invite") startWatch();
-    else stopWatch();
+    // Gli appunti si osservano in entrambe le schede: codici stanza e codici invito si incollano da soli.
+    startWatch();
   };
   for (const t of tabs) tabBar.append(h("button.tab", { dataset: { tab: t.id }, onclick: () => show(t.id) }, t.label));
   show("server");

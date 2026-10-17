@@ -12,6 +12,10 @@ import { availableZones } from "../../core/zones.js";
 import { isValidSum, findSum } from "../../core/sum.js";
 import { isDeclarable } from "../../core/declarable.js";
 
+/** Valore di "Back" nelle finestre: l'azione in sospeso (summon/attivazione) viene annullata. */
+const BACK = "__back__";
+const backResult = (v, make) => (v === BACK ? { back: true } : make(v));
+
 /** Promemoria nelle finestre che si possono rifiutare con il tasto destro. */
 const DECLINE_HINT = (what) => h("p.muted.small.decline-hint", `Right-click: ${what}`);
 
@@ -251,7 +255,12 @@ export class Prompter {
   }
 
   yesNo(msg) {
-    return this.question(this.title("Confirm"), descString(msg.description)).then((yes) => ({ type: RESP.SELECT_YESNO, yes }));
+    return this.question(this.title("Confirm"), descString(msg.description)).then((yes) => backResult(yes, (v) => ({ type: RESP.SELECT_YESNO, yes: v })));
+  }
+
+  /** Pulsante "Back" delle finestre, se l'azione in corso si può ancora annullare. */
+  backAction() {
+    return this.back ? [{ label: "Back", value: BACK }] : [];
   }
 
   question(title, text, code) {
@@ -260,7 +269,7 @@ export class Prompter {
       dismissable: false,
       className: "prompt",
       body: [code ? h("div.prompt-card", cardFace(code)) : null, h("p", text), DECLINE_HINT("No")],
-      actions: [{ label: "No", value: false }, { label: "Yes", value: true, primary: true }],
+      actions: [...this.backAction(), { label: "No", value: false }, { label: "Yes", value: true, primary: true }],
     });
     this.cancelCurrent = () => m.close(false);
     this.decline = () => m.close(false);
@@ -273,9 +282,11 @@ export class Prompter {
       dismissable: false,
       className: "prompt",
       body: [h("div.option-list", msg.options.map((o, index) => h("button.btn.option", { onclick: () => m.close(index) }, descString(o))))],
+      actions: this.backAction(),
     });
     this.cancelCurrent = () => m.close(0);
-    return m.result.then((index) => ({ type: RESP.SELECT_OPTION, index }));
+    if (this.back) this.decline = () => m.close(BACK);
+    return m.result.then((index) => backResult(index, (v) => ({ type: RESP.SELECT_OPTION, index: v })));
   }
 
   /**
@@ -475,6 +486,7 @@ export class Prompter {
       className: "prompt picker",
       body: [h("div.pick-info", counter), h("div.pick-grid", tiles)],
       actions: [
+        ...this.backAction(),
         ...(msg.can_cancel ? [{ label: "Cancel", value: null }] : []),
         { label: "Confirm", primary: true, onClick: (close) => valid() && close([...chosen]) },
       ],
@@ -482,8 +494,8 @@ export class Prompter {
     confirmBtn = m.buttons[m.buttons.length - 1];
     update();
     this.cancelCurrent = () => m.close(msg.can_cancel ? null : Array.from({ length: Math.max(1, min) }, (_, i) => i));
-    this.decline = msg.can_cancel ? () => m.close(null) : null;
-    return m.result.then((indicies) => ({ type: respType, indicies }));
+    this.decline = this.back ? () => m.close(BACK) : msg.can_cancel ? () => m.close(null) : null;
+    return m.result.then((indicies) => backResult(indicies, (v) => ({ type: respType, indicies: v })));
   }
 
   /** SELECT_UNSELECT_CARD: una carta alla volta, il core richiede finché non si termina. */
@@ -528,13 +540,14 @@ export class Prompter {
         ),
       ],
       actions: [
+        ...this.backAction(),
         ...(msg.can_cancel && !msg.can_finish ? [{ label: "Cancel", value: null }] : []),
         ...(msg.can_finish ? [{ label: "Finish", value: null, primary: true }] : []),
       ],
     });
     this.cancelCurrent = () => m.close(msg.can_finish || msg.can_cancel ? null : 0);
-    this.decline = msg.can_finish || msg.can_cancel ? () => m.close(null) : null;
-    return m.result.then((index) => ({ type: RESP.SELECT_UNSELECT_CARD, index: index ?? null }));
+    this.decline = this.back ? () => m.close(BACK) : msg.can_finish || msg.can_cancel ? () => m.close(null) : null;
+    return m.result.then((index) => backResult(index, (v) => ({ type: RESP.SELECT_UNSELECT_CARD, index: v ?? null })));
   }
 
   sum(msg) {
@@ -605,12 +618,14 @@ export class Prompter {
           },
         },
         { label: "Confirm", primary: true, onClick: (close) => isValidSum(msg, [...chosen]) && close([...chosen]) },
+        ...this.backAction(),
       ],
     });
     confirmBtn = m.buttons[1];
     update();
     this.cancelCurrent = () => m.close(findSum(msg) ?? []);
-    return m.result.then((indicies) => ({ type: RESP.SELECT_SUM, indicies }));
+    if (this.back) this.decline = () => m.close(BACK);
+    return m.result.then((indicies) => backResult(indicies, (v) => ({ type: RESP.SELECT_SUM, indicies: v })));
   }
 
   sort(msg) {
@@ -676,11 +691,12 @@ export class Prompter {
       dismissable: false,
       className: "prompt",
       body: [h("div.pick-info", info), ...rows],
-      actions: [{ label: "Confirm", primary: true, onClick: (close) => total() === msg.count && close(values.slice()) }],
+      actions: [{ label: "Confirm", primary: true, onClick: (close) => total() === msg.count && close(values.slice()) }, ...this.backAction()],
     });
     confirmBtn = m.buttons[0];
     update();
-    return m.result.then((counters) => ({ type: RESP.SELECT_COUNTER, counters }));
+    if (this.back) this.decline = () => m.close(BACK);
+    return m.result.then((counters) => backResult(counters, (v) => ({ type: RESP.SELECT_COUNTER, counters: v })));
   }
 
   // ---------------------------------------------------------------- campo
@@ -784,11 +800,12 @@ export class Prompter {
       dismissable: false,
       className: "prompt",
       body: [h("div.toggle-grid", btns)],
-      actions: [{ label: "Confirm", primary: true, onClick: (close) => chosen.size === msg.count && close([...chosen]) }],
+      actions: [{ label: "Confirm", primary: true, onClick: (close) => chosen.size === msg.count && close([...chosen]) }, ...this.backAction()],
     });
     confirmBtn = m.buttons[0];
     confirmBtn.disabled = true;
-    return m.result.then((bits) => ({ type: respType, [field]: bits.map((b) => (big ? BigInt(b) : b)) }));
+    if (this.back) this.decline = () => m.close(BACK);
+    return m.result.then((bits) => backResult(bits, (v) => ({ type: respType, [field]: v.map((b) => (big ? BigInt(b) : b)) })));
   }
 
   announceCard(msg) {
@@ -808,10 +825,11 @@ export class Prompter {
       dismissable: false,
       className: "prompt wide",
       body: [input, list],
+      actions: this.backAction(),
     });
     render();
     setTimeout(() => input.focus(), 50);
-    return m.result.then((card) => ({ type: RESP.ANNOUNCE_CARD, card }));
+    return m.result.then((card) => backResult(card, (v) => ({ type: RESP.ANNOUNCE_CARD, card: v })));
   }
 
   announceNumber(msg) {
@@ -820,8 +838,9 @@ export class Prompter {
       dismissable: false,
       className: "prompt",
       body: [h("div.toggle-grid", msg.options.map((o, i) => h("button.btn", { onclick: () => m.close(i) }, String(o))))],
+      actions: this.backAction(),
     });
-    return m.result.then((value) => ({ type: RESP.ANNOUNCE_NUMBER, value }));
+    return m.result.then((value) => backResult(value, (v) => ({ type: RESP.ANNOUNCE_NUMBER, value: v })));
   }
 }
 

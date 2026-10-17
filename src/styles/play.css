@@ -125,13 +125,56 @@
 .video-btn.rec { color: #fff; background: var(--red); border-color: #ff7a8a; animation: clock-alarm 1.2s infinite; }
 .combo-video { width: 100%; max-height: calc(var(--vh) * 60); background: #000; }
 
-/* side deck tra i duelli di una partita al meglio di 3/5 */
-.modal.side-deck .modal-body { white-space: normal; }
-.side-sec h4 { margin: 8px 0 4px; font: 700 13px var(--display); text-transform: uppercase; letter-spacing: 0.06em; }
-.side-sec h4 b { color: var(--accent); }
-.side-grid { display: flex; flex-wrap: wrap; gap: 3px; min-height: 40px; padding: 4px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); }
-.side-card { width: 44px; padding: 0; border: 0; background: none; cursor: pointer; transition: transform 0.1s; }
-.side-card:hover { transform: translateY(-2px); }
-.side-card.changed { outline: 2px solid var(--accent); outline-offset: 1px; }
-.side-errors { margin-top: 8px; color: #ff8a9a; font-size: 12px; }
+/* Side Deck tra i duelli di una partita al meglio di 3/5: il deck editor in modalità limitata, sopra il duello */
+.side-editor-layer { position: fixed; inset: 0; z-index: 140; background: var(--bg, #07080c); display: flex; flex-direction: column; }
+.side-editor-layer > .page.editor { flex: 1; min-height: 0; }
+.side-toolbar .side-title { display: flex; flex-direction: column; line-height: 1.1; }
+.side-toolbar .side-title b { font: 700 18px var(--display); text-transform: uppercase; letter-spacing: 0.04em; }
+.side-swaps { padding: 4px 10px; font: 700 13px var(--mono); color: var(--accent); border: 1px solid var(--accent); }
+.side-help h3 { margin: 0 0 8px; }
 .modal.combo-export { width: min(660px, 94vw); }
+
+/* HDPC (Hypergeometric Distribution Probability Calculator) */
+.page.hdpc h1 .page-sub { display: block; margin-top: 2px; font: 600 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.page.hdpc { display: flex; flex-direction: column; gap: 14px; padding: 24px 48px; overflow: auto; height: 100%; }
+.hdpc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+.hdpc-main, .hdpc-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.hdpc-side { position: sticky; top: 0; }
+.hdpc-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+.hdpc-hand { white-space: nowrap; padding-bottom: 2px; }
+.hdpc-setup .field { margin: 0; }
+.hdpc-quick-hand { grid-column: 1 / -1; display: flex; gap: 6px; }
+.hdpc-groups { display: flex; flex-direction: column; gap: 10px; }
+.hdpc-group { padding: 8px 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.25); }
+.hdpc-group-head { display: flex; gap: 8px; align-items: center; }
+.hdpc-dot { width: 10px; height: 10px; flex: none; background: hsl(calc(var(--i) * 47 + 190), 80%, 60%); }
+.hdpc-name { flex: 1; }
+.hdpc-copies { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.hdpc-count { width: 64px; }
+.hdpc-cards { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.hdpc-card { position: relative; width: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
+.hdpc-card b { position: absolute; right: -4px; bottom: -4px; padding: 0 4px; font: 700 11px var(--mono); background: var(--accent); color: var(--on-gold); }
+.hdpc-scenarios { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+.hdpc-scenario { align-self: stretch; padding: 8px 10px; border: 1px solid var(--line); border-left: 3px solid var(--accent); display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.hdpc-scenario-head { display: flex; gap: 10px; align-items: center; align-self: stretch; }
+.hdpc-each { margin-left: auto; font: 700 13px var(--mono); color: var(--accent-soft); }
+.hdpc-req { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.hdpc-req .input { width: 64px; }
+.hdpc-req .select { min-width: 150px; }
+.hdpc-or { font: 700 12px var(--mono); color: var(--muted); letter-spacing: 0.1em; }
+.hdpc-big { font: 700 52px/1 var(--display); color: var(--accent); margin: 6px 0; }
+.hdpc-big.bad { color: var(--danger); }
+.hdpc-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hdpc-quick-grid .field { margin: 0; }
+.hdpc-table { width: 100%; margin-top: 10px; border-collapse: collapse; font: 600 13px var(--mono); }
+.hdpc-table td { padding: 4px 6px; border-top: 1px solid var(--line); }
+.hdpc-table td:last-child { text-align: right; color: var(--accent-soft); }
+.card-search-list .announce-row span { display: flex; flex-direction: column; }
+.card-search-list .announce-row small { font-size: 11px; }
+
+/* pannello Combo: intestazione (Finish/Back/Restart, interruttori, stato) sempre visibile mentre i passi scorrono */
+.trainer-top { position: sticky; top: -8px; z-index: 2; display: flex; flex-direction: column; gap: 8px; margin: -8px -10px 0; padding: 8px 10px; background: var(--panel-solid); border-bottom: 1px solid var(--line); }
+.trainer-toggles { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.step-line .step-card { flex: 1; min-width: 0; }
+/* editor della combo: pulsanti Save/Cancel sempre visibili in fondo alla finestra */
+.modal.combo-editor .modal-actions { position: sticky; bottom: 0; background: var(--panel-solid); }

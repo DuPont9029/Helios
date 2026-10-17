@@ -1,6 +1,6 @@
 // Testi per il registro del duello.
-import { MSG, LOC, HINT, PHASE_NAMES, POS } from "../../core/constants.js";
-import { cardName, descString, sysString, attributeName, raceName, counterName } from "../../data/db.js";
+import { MSG, LOC, HINT, PHASE_NAMES, POS, TYPE } from "../../core/constants.js";
+import { cardName, descString, sysString, attributeName, raceName, counterName, getCard } from "../../data/db.js";
 
 const LOC_NAMES = {
   [LOC.DECK]: "Deck", [LOC.HAND]: "Hand", [LOC.MZONE]: "Monster Zone", [LOC.SZONE]: "Spell & Trap Zone",
@@ -30,6 +30,47 @@ function t(strings, ...vals) {
 /** Testo semplice di una riga (le carte tra virgolette), per chi non usa i nodi. */
 const plain = (parts) => parts.map((p) => (typeof p === "string" ? p : p.code ? `"${cardName(p.code)}"` : "a card")).join("");
 
+/**
+ * Zona di una carta per il registro: "Monster Zone 3", "the left Extra Monster Zone", "Spell & Trap Zone 2",
+ * "the Field Zone", "the left Pendulum Zone". Le zone numerate e le Pendulum sono dal punto di vista del
+ * controllore; le Extra Monster Zone (condivise) sinistra/destra come si vedono sullo schermo (me = chi guarda).
+ */
+export function zoneName(loc, seq, { pendulum = false, controller, me } = {}) {
+  if (loc & LOC.MZONE) {
+    if (seq < 5) return `Monster Zone ${seq + 1}`;
+    // La 5 è la sinistra per chi la controlla: vista dall'avversario è a destra.
+    const left = controller == null || me == null || controller === me ? seq === 5 : seq === 6;
+    return `the ${left ? "left" : "right"} Extra Monster Zone`;
+  }
+  if (loc & LOC.SZONE) {
+    if (seq === 5) return "the Field Zone";
+    if (seq >= 6 || (pendulum && (seq === 0 || seq === 4))) return `the ${seq === 0 || seq === 6 ? "left" : "right"} Pendulum Zone`;
+    return `Spell & Trap Zone ${seq + 1}`;
+  }
+  return `the ${locName(loc)}`;
+}
+
+/** Dove si attiva una carta: "from the hand", "in Monster Zone 2", "from the GY"... */
+function whereActivated(m, me) {
+  const loc = m.location;
+  if (loc & LOC.ONFIELD) {
+    const pendulum = ((getCard(m.code)?.type ?? 0) & TYPE.PENDULUM) !== 0 && !(m.position & POS.FACEDOWN);
+    return ` in ${zoneName(loc, m.sequence, { pendulum, controller: m.controller, me })}`;
+  }
+  if (loc & LOC.OVERLAY) return " as Xyz Material";
+  return loc ? ` from the ${locName(loc)}` : "";
+}
+
+/** Carta in una posizione (OcgLocPos) per il registro: il nome se visibile, altrimenti dove si trova. */
+export function cardAt(c, canSee, ctx = {}) {
+  const code = ctx.codeAt?.(c.controller, c.location, c.sequence) ?? 0;
+  if (code && canSee(c.controller, c.location, c.position)) return C(code);
+  if (c.location & LOC.ONFIELD) return "a face-down card";
+  return `a card in the ${locName(c.location)}`;
+}
+
+export const cardList = (cards, canSee, ctx) => cards.flatMap((c, i) => (i ? [", ", cardAt(c, canSee, ctx)] : [cardAt(c, canSee, ctx)]));
+
 export function locName(loc) {
   if (loc & LOC.OVERLAY) return LOC_NAMES[LOC.OVERLAY];
   return LOC_NAMES[loc] ?? "?";
@@ -50,25 +91,24 @@ export function describe(m, names, canSee, ctx = {}) {
 function describeParts(m, names, canSee, ctx) {
   const who = (p) => names[p] ?? `Player ${p + 1}`;
   const nameIf = (code, p, loc, pos) => (code && canSee(p, loc, pos) ? C(code) : "a card");
-  // Carta in una zona (OcgLocPos): nome se visibile, altrimenti "a card"; per le carte fuori dal campo la zona.
-  const at = (c) => {
-    const code = c.location & LOC.ONFIELD ? ctx.codeAt?.(c.controller, c.location, c.sequence) : 0;
-    if (code && canSee(c.controller, c.location, c.position)) return C(code);
-    return c.location & LOC.ONFIELD ? `a face-down card` : `a card in the ${locName(c.location)}`;
-  };
-  const list = (cards) => cards.flatMap((c, i) => (i ? [", ", at(c)] : [at(c)]));
+  const at = (c) => cardAt(c, canSee, ctx);
+  const list = (cards) => cardList(cards, canSee, ctx);
+  const zone = (loc, seq, controller) => zoneName(loc, seq, { controller, me: ctx.me });
   switch (m.type) {
     case MSG.NEW_TURN: return { cls: "turn", text: `— ${who(m.player)}'s Turn —` };
     case MSG.NEW_PHASE: return { cls: "phase", text: PHASE_NAMES[m.phase] ?? "Phase" };
     case MSG.DRAW: return { text: `${who(m.player)} draws ${m.drawn.length} card${m.drawn.length === 1 ? "" : "s"}` };
-    case MSG.SUMMONING: return { text: t`${who(m.controller)} Normal Summons ${C(m.code)}` };
-    case MSG.SPSUMMONING: return { text: t`${who(m.controller)} Special Summons ${C(m.code)}` };
-    case MSG.FLIPSUMMONING: return { text: t`${who(m.controller)} Flip Summons ${C(m.code)}` };
-    case MSG.SET: return { text: `${who(m.controller)} Sets a card` };
-    case MSG.CHAINING: return { cls: "chain", text: t`Chain ${m.chain_size}: ${who(m.controller)} activates ${C(m.code)}` };
+    case MSG.SUMMONING: return { text: t`${who(m.controller)} Normal Summons ${C(m.code)} to ${zone(m.location, m.sequence, m.controller)}` };
+    case MSG.SPSUMMONING: return { text: t`${who(m.controller)} ${ctx.pendulum ? "Pendulum Summons" : "Special Summons"} ${C(m.code)} to ${zone(m.location, m.sequence, m.controller)}` };
+    case MSG.FLIPSUMMONING: return { text: t`${who(m.controller)} Flip Summons ${C(m.code)} in ${zone(m.location, m.sequence, m.controller)}` };
+    case MSG.SET: return { text: `${who(m.controller)} Sets a card in ${zone(m.location, m.sequence, m.controller)}` };
+    case MSG.CHAINING: return { cls: "chain", text: t`Chain ${m.chain_size}: ${who(m.controller)} activates ${C(m.code)}${whereActivated(m, ctx.me)}` };
     case MSG.CHAIN_SOLVING: {
       const code = ctx.chainCode?.(m.chain_size);
-      return { cls: "resolve", text: code ? t`Chain Link ${m.chain_size} resolves: ${C(code)}` : `Chain Link ${m.chain_size} resolves` };
+      // I bersagli dichiarati all'attivazione (vedi DuelView.logMessage) si ripetono alla risoluzione.
+      const targets = ctx.chainTargets?.(m.chain_size) ?? [];
+      const aim = targets.length ? [" (targeting ", ...targets.flatMap((p, i) => (i ? [", ", p] : [p])), ")"] : [];
+      return { cls: "resolve", text: code ? t`Chain Link ${m.chain_size} resolves: ${C(code)}${aim}` : `Chain Link ${m.chain_size} resolves` };
     }
     case MSG.BECOME_TARGET: return m.cards.length ? { cls: "target", text: t`Targets: ${list(m.cards)}` } : null;
     case MSG.CARD_SELECTED: return m.cards.length ? { cls: "dim", text: t`Selected: ${list(m.cards)}` } : null;

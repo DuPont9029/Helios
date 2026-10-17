@@ -194,6 +194,13 @@
   align-items: center; gap: 12px; padding: 6px 10px; background: rgba(6, 7, 11, 0.92); border: 1px solid var(--line-strong); box-shadow: var(--shadow);
 }
 body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: flex; }
+/* la barra si allarga quanto serve (nel Test Duel ci sono i timer di entrambi), entro lo schermo */
+.duel-float { flex-direction: column; align-items: stretch; gap: 6px; max-width: calc(var(--vw, 1vw) * 100 - 20px); }
+.float-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; justify-content: flex-end; }
+.float-trainer { align-self: flex-end; max-width: 520px; padding: 5px 8px; font-size: 12px; border-left: 3px solid var(--accent); background: rgba(56, 198, 255, 0.08); color: var(--accent-soft); }
+.float-trainer[hidden] { display: none; }
+.float-trainer.complete { border-color: var(--ok); color: #8affb5; }
+.float-trainer.interrupted { border-color: #ffd23a; color: #ffe9a6; }
 .duel-float .chain-mode.float { flex-direction: row; align-items: center; gap: 8px; }
 .duel-float .chain-btns { min-width: 170px; }
 .float-clock { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font: 700 14px var(--mono); color: var(--muted); border: 1px solid var(--line); }
