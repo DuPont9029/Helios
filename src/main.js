@@ -43,6 +43,8 @@ const app = {
 document.addEventListener("contextmenu", (e) => {
   if (document.querySelector(".modal-backdrop:not(.closing)")) return;
   if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
+  // Deck editor aperto sopra la pagina (Side Deck, decklist di una combo): il destro è suo.
+  if (document.querySelector(".side-editor-layer")) return;
   const back = app.root.querySelector(".page-back");
   if (!back) return;
   e.preventDefault();
@@ -88,7 +90,7 @@ function home(section = null) {
         h("button.btn.ghost.round.page-back.menu-back", { title: "Back (right-click)", onclick: () => home() }, icon("chevron_left")),
         h("div.menu-section", "Training"),
         item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
-        item("Combo Trainer", "Practice your combos and play around hand traps", () => showComboTrainer(app)),
+        item("Trainer", "Write, record and practice your combos, play around hand traps", () => showComboTrainer(app)),
         item("Vs CPU", "Test your decks", () => showLocalSetup(app, { vsCpu: true })),
         item("HDPC", "Hypergeometric Distribution Probability Calculator: odds of opening your cards", () => showHdpc(app))
       )
@@ -96,7 +98,7 @@ function home(section = null) {
         "nav.menu",
         item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
-        h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Combo Trainer · Vs CPU · HDPC")),
+        h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Trainer · Vs CPU · HDPC")),
         item("Settings", "Name, network, graphics", () => showSettings(app))
       );
   root.append(

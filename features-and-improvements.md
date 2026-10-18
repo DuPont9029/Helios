@@ -19,7 +19,7 @@
 - [x] Nelle intrruptions invece di usre i preferiti apre una finestra che permette di cercare la carta che vuoi usare nel database.
 - [x] Per alcune combo sono necessari alcuni prerequisiti tipo controllare un mostro oppure che l'avversario controlloi un mostro o che l'avverario abbia un certo tipo di carta in cima al deck o un certo tipo di mostro nell'extra deck in generale un particolare boardstate. Quindi sarebbe utile un modo di configurare lo stato della partita quando inizia la combo.
 - [x] Si possono mettere a fine delle combo dei "tag" sulle carte che spiegano il ruolo di esse in una board (pop, omni-negate e cosi via.) questo testo appare nel video subito sopra la carta.
-- [ ] Cambiare la visualizzazione nei replay per somigliare maggiormente a gli altri client e applicare i cambiamenti anche alla funzionalità di esportazione a video (dovrebbe ricreare il replay tramite gli step più dettagliati e registrarlo) (Elio deve ancora specificare quali sono le feature degli altri client).
+- [ ] \* Cambiare la visualizzazione nei replay per somigliare maggiormente a gli altri client e applicare i cambiamenti anche alla funzionalità di esportazione a video (dovrebbe ricreare il replay tramite gli step più dettagliati e registrarlo) (Elio deve ancora specificare quali sono le feature degli altri client).
 - [ ] \* Engine ibrido TCG/OCG di omega in web assembly.
 - [ ] \* Funzionalità di spettatore (visualizzazione come replay).
 - [ ] \* Custom card editor in game con script editor integrato (le carte devono ovviamente essere usabili online e visualizzabili dall'avversario).
@@ -28,19 +28,26 @@
 - [ ] \* Funzionalità di draft/sealed/cube/roto (implementare con topografia a ring)
 - [ ] \* Play queue (necessita signaling server)
 - [ ] \* Friends list di giocatori online (necessita signaling server)
-- [ ] Non mandare info su effetti che pagano un costo di attivazione come è gia implementato per summon.
-- [ ] Auto copia e auto incolla di codice room come per la connesione con gli invite code. (aggiornare anche la pagina per lasciare intendere che entrambe le connessioni sono P2P serverless)
-- [ ] Implementa funxionalità di PWA.
-- [ ] Superimporre anche la lingering effect window e le istruzioni del combo trainer insieme alle opzioni di priorità.
-- [ ] Ulteriore miglioramento del log, mostrare le zone nella quale vengono evocati i mostri e attivate le magie e trappole. Inoltre mostrare dove si attivano gli effetti tipo i dracotail che si attivano al cimitero dopo essere stati usati per fusioni, i melodious che si attivano in extradeck oppure dewn angel kambi che si attiva in mano per evocarsi.
-- [ ] Cambiare la scritta: "special summon" in pendulum summon quando si evoca pendulum.
-- [ ] Spostare il pulsante finish nel combo editor in modo tale da non dover scrollare tutti gli step precedenti per tornare al bottone.
-- [ ] La finestra per arrendersi in una partita dovrebbe sovrapporsi a qualsiasi altra finestra aperta.
-- [ ] Aggiungere opzione di combo auto play senza video.
-- [ ] Abilità di manipolare la cima del proprio deck in combo trainer.
-- [ ] Le pagine che presentano una lista di carte (ES: quando si sceglie una carta nel combo tester editor) ciò dovrebbe accadere seguendo l'ordine che si usa nel deck builder.
-- [ ] Rimuovere il warning nel combo trainer per avere meno di una carta in mano.
-- [ ] implementare una Hypergeometric Distribution Probability Calculator (da abbreviare come HDPC) necessaria a capire la probabilità di aprire certe carte nella tua mano iniziale prendendo ispirazione da https://stattrek.com/online-calculator/hypergeometric e https://www.deck-probability.com/ che funzionano bene.
-- [ ] Raggruppare le sezioni del menu principale (vs cpu, test duel, combo trainer e Hypergeometric Distribution Probability Calculator) in una sola sezione chiamata training.
+- [x] Non mandare info su effetti che pagano un costo di attivazione come è gia implementato per summon.
+- [x] Auto copia e auto incolla di codice room come per la connesione con gli invite code. (aggiornare anche la pagina per lasciare intendere che entrambe le connessioni sono P2P serverless)
+- [x] Implementa funxionalità di PWA.
+- [x] Superimporre anche la lingering effect window e le istruzioni del combo trainer insieme alle opzioni di priorità.
+- [x] Ulteriore miglioramento del log, mostrare le zone nella quale vengono evocati i mostri e attivate le magie e trappole. Inoltre mostrare dove si attivano gli effetti tipo i dracotail che si attivano al cimitero dopo essere stati usati per fusioni, i melodious che si attivano in extradeck oppure dewn angel kambi che si attiva in mano per evocarsi.
+- [x] Cambiare la scritta: "special summon" in pendulum summon quando si evoca pendulum.
+- [x] Spostare il pulsante finish nel combo editor in modo tale da non dover scrollare tutti gli step precedenti per tornare al bottone.
+- [x] La finestra per arrendersi in una partita dovrebbe sovrapporsi a qualsiasi altra finestra aperta.
+- [x] Aggiungere opzione di combo auto play senza video.
+- [x] Abilità di manipolare la cima del proprio deck in combo trainer.
+- [x] Le pagine che presentano una lista di carte (ES: quando si sceglie una carta nel combo tester editor) ciò dovrebbe accadere seguendo l'ordine che si usa nel deck builder.
+- [x] Rimuovere il warning nel combo trainer per avere meno di una carta in mano.
+- [x] implementare una Hypergeometric Distribution Probability Calculator (da abbreviare come HDPC) necessaria a capire la probabilità di aprire certe carte nella tua mano iniziale prendendo ispirazione da https://stattrek.com/online-calculator/hypergeometric e https://www.deck-probability.com/ che funzionano bene.
+- [x] Raggruppare le sezioni del menu principale (vs cpu, test duel, combo trainer e Hypergeometric Distribution Probability Calculator) in una sola sezione chiamata training.
+- [x] Staccare le combo da una decklist e chiedere cosa serva a nel deck e extradeck per compiere la combo dal combo trainer editor riconoscere le carte necessarie nel dalla registrazione.
+- [x] Branching combos nel combo trainer per vedere versioni diverse della stessa combo magari con carte diverse necessarie nel deck o extradeck.
+- [x] Schema per la visualizzazione della combo (includere l'opzione di mettere note per il giocatore quando si crea una combo nuova) (prendere ad esempio la sezione combo di https://www.masterduelmeta.com/combos-and-counters#combos) e fork delle combo, versioni diverse con leggere differenze.
+- [x] \* Aggiungere una sezione spreadsheets che permette di creare spreadsheets che includono più combo per uno stesso deck con diversi starter e permettere di aggiungere combo ad essa o rimuoverle permettendo sia di registranrne o programmarne di nuove che di prenderne di già esistenti (Prendere ispirazione da https://www.masterduelmeta.com/combos-and-counters#spreadsheets).
+- [x] \* Integrare nella sezione spredsheets modo di aggiungere una sample decklist.
+- [x] \* Far calcolare a una spreadsheet tutte le carte necessarie per quel deck usando le informazinìoni su le carte necessarie per le combo individuali.
+- [x] separare la funzionalità di spreadsheet in editor e viewer e implemenatre la possibilità di esportare le spreadsheet come vengono esportate le combo
 
 

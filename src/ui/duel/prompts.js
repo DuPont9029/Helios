@@ -191,7 +191,8 @@ export class Prompter {
         })
       );
     add(msg.summons, IDLE.SUMMON, () => IDLE_LABELS[IDLE.SUMMON]);
-    add(msg.special_summons, IDLE.SPSUMMON, () => IDLE_LABELS[IDLE.SPSUMMON]);
+    // La "Special Summon" offerta dalla carta nella zona Pendulum è la Pendulum Summon.
+    add(msg.special_summons, IDLE.SPSUMMON, (card) => (card.location & LOC.SZONE ? "Pendulum Summon" : IDLE_LABELS[IDLE.SPSUMMON]));
     add(msg.pos_changes, IDLE.REPOS, () => IDLE_LABELS[IDLE.REPOS]);
     add(msg.monster_sets, IDLE.MSET, () => IDLE_LABELS[IDLE.MSET]);
     add(msg.spell_sets, IDLE.SSET, () => IDLE_LABELS[IDLE.SSET]);

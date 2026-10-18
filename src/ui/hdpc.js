@@ -8,7 +8,7 @@ import { cardFace } from "./card.js";
 import { getCard, cardName } from "../data/db.js";
 import { settings } from "../data/settings.js";
 import { loadDecks } from "../deck/deck.js";
-import { pickCard } from "./combos.js";
+import { openDeckPicker } from "./editor.js";
 
 const KEY = "ygoweb.hdpc";
 const MAX_GROUPS = 8;
@@ -120,7 +120,6 @@ export function showHdpc(app) {
   const copiesInDeck = (code) => deck()?.main.filter((c) => c === code).length ?? 0;
   /** Copie del gruppo: le carte scelte dal mazzo, oppure il numero scritto a mano. */
   const size = (g) => (deck() && g.cards.length ? g.cards.reduce((a, c) => a + copiesInDeck(c), 0) : Math.max(0, g.count | 0));
-  const usedCards = () => new Set(st.groups.flatMap((g) => g.cards));
 
   function renderGroups() {
     clear(groupsEl).append(
@@ -135,14 +134,25 @@ export function showHdpc(app) {
           deck() &&
             h("button.btn.small.ghost", {
               onclick: async () => {
-                const used = usedCards();
-                const v = await pickCard({ title: `Add a card to "${g.name}"`, pool: deck().main, filter: (c) => !used.has(c.code) });
+                // Le carte del gruppo si scelgono nella schermata del deck builder: una copia per carta
+                // (il gruppo conta tutte le copie nel mazzo), senza quelle già in altri gruppi.
+                const others = new Set(st.groups.filter((x) => x !== g).flatMap((x) => x.cards));
+                const v = await openDeckPicker({
+                  main: [...new Set(deck().main)].filter((code) => !others.has(code)),
+                  extra: deck().extra,
+                  side: deck().side,
+                  picked: [...g.cards],
+                  title: deck().name,
+                  label: g.name || "Group",
+                  max: 60,
+                  hint: "Each card counts with all its copies in the Deck. Cards already in other groups are not shown.",
+                });
                 if (!v) return;
-                g.cards.push(v);
+                g.cards = [...new Set(v)];
                 renderGroups();
                 compute();
               },
-            }, icon("add"), " Add card")
+            }, icon("style"), " Choose in the Deck Builder")
         );
         return h(
           "div.hdpc-group",

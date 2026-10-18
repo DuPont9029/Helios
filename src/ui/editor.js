@@ -166,7 +166,8 @@ export function showDeckList(app) {
 }
 
 // Copia di lavoro di un mazzo (la bozza modificata nell'editor).
-const cloneDeck = (d) => ({ ...d, main: [...d.main], extra: [...d.extra], side: [...d.side] });
+// Copia di un mazzo: tutte le parti (Main, Extra, Side e quelle delle modalità del Trainer).
+const cloneDeck = (d) => ({ ...d, ...Object.fromEntries(Object.entries(d).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, [...v]])) });
 const isEmptyDeck = (d) => !d.main.length && !d.extra.length && !d.side.length;
 const LONG_PRESS = 450;
 
@@ -197,13 +198,121 @@ export function openSideEditor(deck, { banlist = null, allowUnofficial = false, 
   return promise;
 }
 
-export function showEditor(app, { side = null } = {}) {
+/**
+ * Decklist di una combo del Trainer: lo stesso deck editor, completo, su una copia della lista (Main, Extra
+ * e Side), aperto sopra la pagina. I mazzi salvati non cambiano. Restituisce { main, extra, side } o null (annullato).
+ */
+export function openDecklistEditor(list, { title = "Decklist" } = {}) {
+  return new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v ? { main: [...v.main], extra: [...v.extra], side: [...v.side] } : null);
+    };
+    showEditor(host, { embed: { deck: { id: "combo-decklist", name: title, main: list.main ?? [], extra: list.extra ?? [], side: list.side ?? [] }, title, onDone: finish } });
+  });
+}
+
+/**
+ * Scelta di carte da una decklist del Trainer (mano iniziale, cima del Deck): la stessa schermata del
+ * Side Deck tra i duelli. Sopra la scelta (label), sotto Main, Extra e Side Deck: un clic sposta la carta
+ * nella scelta (solo carte che possono stare in mano: niente Extra Deck) e la rimette al suo posto,
+ * trascinando si riordina. main/extra/side: le carte disponibili; picked: quelle già scelte.
+ * Restituisce le carte scelte (in ordine) o null (annullato).
+ */
+export function openDeckPicker({ main, extra = [], side = [], picked = [], title, label, max = 10, hint = "" }) {
+  return new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v ? [...v.hand] : null);
+    };
+    // Le carte scelte non sono più tra quelle disponibili: si tolgono dal Main Deck (o dal Side).
+    const rest = [...main];
+    const restSide = [...side];
+    for (const code of picked) {
+      const i = rest.indexOf(code);
+      if (i >= 0) rest.splice(i, 1);
+      else if (restSide.indexOf(code) >= 0) restSide.splice(restSide.indexOf(code), 1);
+    }
+    const deck = { id: "combo-pick", name: title, main: sortDeckPart(rest), extra: sortDeckPart(extra), side: sortDeckPart(restSide), hand: [...picked] };
+    showEditor(host, { embed: { deck, title, onDone: finish, pick: { label, max, hint, side: [...side] } } });
+  });
+}
+
+/**
+ * Una decklist da guardare (es. le carte che servono a uno spreadsheet): la schermata del deck builder in
+ * sola lettura. marks: Map codice -> { kind: "used" | "short", count } (count copie evidenziate, le prime);
+ * legend: testo del pannello a destra.
+ */
+export function openDeckViewer({ main = [], extra = [], side = [], title, subtitle = "", marks = null, legend = "" }) {
+  return new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    const finish = () => {
+      host.onLeave?.();
+      layer.remove();
+      resolve();
+    };
+    showEditor(host, { embed: { deck: { id: "view", name: title, main, extra, side }, title, onDone: finish, view: { subtitle, marks, legend } } });
+  });
+}
+
+/**
+ * Carte da cercare nell'intero database (es. lo stato di partenza di una combo, le hand trap): la schermata
+ * del deck builder con la sua ricerca, ma con le parti indicate al posto di Main/Extra/Side.
+ * parts: [{ key, label, cards, max?, filter?(card), hint? }]; active: la parte in cui vanno le carte cliccate
+ * nella ricerca (si cambia cliccando l'intestazione di una parte). Restituisce { key: cards } o null (annullato).
+ */
+export function openCardCollector({ title, subtitle = "", parts, active = null }) {
+  return new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v ? Object.fromEntries(parts.map((p) => [p.key, [...v[p.key]]])) : null);
+    };
+    const deck = { id: "collect", name: title, main: [], extra: [], side: [], ...Object.fromEntries(parts.map((p) => [p.key, [...(p.cards ?? [])]])) };
+    showEditor(host, { embed: { deck, title, onDone: finish, collect: { parts, active: active ?? parts[0].key, subtitle } } });
+  });
+}
+
+export function showEditor(app, { side = null, embed = null } = {}) {
   const root = clear(app.root);
   // decks contiene solo le versioni salvate; deck è la bozza su cui si lavora.
-  // Side Deck: un solo mazzo, la copia per la partita (non si salva nulla).
-  let decks = side ? [cloneDeck({ ...side.deck, side: side.deck.side ?? [] })] : loadDecks();
+  // Side Deck e decklist di una combo (embed): un solo mazzo, una copia (non si salva nulla).
+  const single = side ?? embed;
+  // Scelta di carte (mano iniziale, cima del Deck): come il Side Deck, la parte "side" è la scelta.
+  const pick = embed?.pick ?? null;
+  // Sola lettura: niente modifiche, ricerca o scorciatoie.
+  const view = embed?.view ?? null;
+  // Carte dal database in parti con un nome (stato di partenza, hand trap): la ricerca riempie la parte attiva.
+  const collect = embed?.collect ?? null;
+  const collectPart = (key) => collect?.parts.find((p) => p.key === key);
+  let activePart = collect?.active ?? null;
+  // Parti del mazzo (in ordine di visualizzazione).
+  const PARTS = collect ? collect.parts.map((p) => p.key) : pick ? ["hand", "main", "extra", "side"] : ["main", "extra", "side"];
+  let decks = single ? [cloneDeck({ ...single.deck, side: single.deck.side ?? [] })] : loadDecks();
   if (!decks.length) decks = [emptyDeck()];
-  if (!side) saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
+  if (!single) saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
   let deck;
   let baseline = "";
   let undoStack = [];
@@ -241,7 +350,7 @@ export function showEditor(app, { side = null } = {}) {
   const detail = createDetailPanel();
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
-  const snap = () => JSON.stringify({ name: deck.name, main: deck.main, extra: deck.extra, side: deck.side });
+  const snap = () => JSON.stringify({ name: deck.name, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
   const isDirty = () => snap() !== baseline;
 
   function openDeck(d) {
@@ -249,7 +358,7 @@ export function showEditor(app, { side = null } = {}) {
     baseline = snap();
     undoStack = [];
     redoStack = [];
-    if (!side) settings.lastDeck = deck.id;
+    if (!single) settings.lastDeck = deck.id;
     refreshDeckSel();
     renderDeck();
   }
@@ -268,7 +377,7 @@ export function showEditor(app, { side = null } = {}) {
 
   function restore(state) {
     const s = JSON.parse(state);
-    Object.assign(deck, { name: s.name, main: s.main, extra: s.extra, side: s.side });
+    Object.assign(deck, s);
     refreshDeckSel();
     renderDeck();
   }
@@ -316,17 +425,23 @@ export function showEditor(app, { side = null } = {}) {
   }
 
   const onBeforeUnload = (e) => {
-    if (side || !isDirty()) return;
+    if (single || !isDirty()) return;
     e.preventDefault();
     e.returnValue = "";
   };
   const onKey = (e) => {
     if (!page.isConnected) return unmount();
+    if (view) return;
+    if (collect && !["z", "y"].includes(e.key.toLowerCase())) return;
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
     if (document.querySelector(".modal-backdrop")) return; // c'è una finestra aperta
     const k = e.key.toLowerCase();
     // Side Deck: solo annulla/ripeti.
-    if (side && !["z", "y"].includes(k)) return;
+    if ((side || pick) && !["z", "y"].includes(k)) return;
+    if (k === "s" && embed) {
+      e.preventDefault();
+      return;
+    }
     if (k === "s") {
       e.preventDefault();
       save();
@@ -385,6 +500,16 @@ export function showEditor(app, { side = null } = {}) {
   // Mazzo importato: dentro il mazzo aperto se è vuoto, altrimenti in un mazzo nuovo.
   async function importHere(d) {
     if (!d) return;
+    // Decklist di una combo: la lista importata sostituisce quella attuale.
+    if (embed) {
+      if (!isEmptyDeck(deck) && !(await confirmModal("Replace the decklist?", `The current list is replaced by "${d.name}".`, "Replace", "Cancel"))) return;
+      change(() => {
+        deck.main = [...d.main];
+        deck.extra = [...d.extra];
+        deck.side = [];
+      });
+      return;
+    }
     if (isEmptyDeck(deck)) {
       change(() => {
         if (deck.name === "New Deck") deck.name = d.name;
@@ -585,6 +710,75 @@ export function showEditor(app, { side = null } = {}) {
     }, icon("check"), " Ready")
   );
 
+  // Decklist di una combo: titolo, annulla/ripeti, import, ordina, svuota, Cancel / Done.
+  const embedToolbar = embed && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", embed.title), h("span.muted", "Decklist of the combo")),
+    undoBtn,
+    redoBtn,
+    menu("Import ▾", [
+      ["From a saved Deck…", async () => {
+        const saved = loadDecks();
+        if (!saved.length) return alertModal("Decks", "You have no saved Decks.");
+        const sel = h("select.select", saved.map((d) => h("option", { value: d.id }, `${d.name} (${d.main.length}/${d.extra.length})`)));
+        const id = await openModal({ title: "Copy a saved Deck", body: [h("label.field", h("span", "Deck"), sel)], actions: [{ label: "Cancel", value: null }, { label: "Copy", primary: true, onClick: (close) => close(sel.value) }] }).result;
+        const d = id && saved.find((x) => x.id === id);
+        if (d) importHere(cloneDeck(d));
+      }],
+      ["From clipboard (Omega, YDK, ydke://)", async () => importHere(await importDeck("clipboard"))],
+      ["Paste text…", async () => importHere(await importDeck("paste"))],
+      ["File .ydk…", async () => importHere(await importDeck("file"))],
+    ]),
+    h("button.btn", { onclick: () => change(() => { deck.main = sortDeckPart(deck.main); deck.extra = sortDeckPart(deck.extra); }) }, icon("sort"), " Sort"),
+    h("button.btn.danger", { onclick: async () => { if (await confirmModal("Clear the decklist?", "", "Clear", "Cancel", { danger: true })) change(() => { deck.main = []; deck.extra = []; deck.side = []; }); } }, icon("delete"), " Clear"),
+    h("div.spacer"),
+    banSel,
+    h("button.btn", {
+      onclick: async () => {
+        if (isDirty() && !(await confirmModal("Discard the changes?", "The decklist of the combo stays as it was.", "Discard", "Keep editing", { danger: true }))) return;
+        unmount();
+        embed.onDone(null);
+      },
+    }, "Cancel"),
+    h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(cloneDeck(deck)); } }, icon("check"), " Done")
+  );
+
+  const viewToolbar = view && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", embed.title), view.subtitle ? h("span.muted", view.subtitle) : null),
+    h("div.spacer"),
+    h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(); } }, "Close")
+  );
+  const viewHelp = view && h("aside.search-panel.side-help", h("h3", embed.title), view.legend ? h("p", view.legend) : null, h("p.muted.small", "Hover a card to see its details."));
+  const collectToolbar = collect && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", embed.title), h("span.muted", `${collect.subtitle ? `${collect.subtitle} · ` : ""}click a part to choose it, then click the cards found on the right`)),
+    undoBtn,
+    redoBtn,
+    h("div.spacer"),
+    h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel"),
+    h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(cloneDeck(deck)); } }, icon("check"), " Done")
+  );
+  const pickCount = h("span.side-swaps");
+  const pickToolbar = pick && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", embed.title), h("span.muted", pick.label)),
+    pickCount,
+    undoBtn,
+    redoBtn,
+    h("button.btn", { title: "Back to the cards chosen before", onclick: () => change(() => Object.assign(deck, cloneDeck(embed.deck))) }, icon("restart_alt"), " Reset"),
+    h("div.spacer"),
+    h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel"),
+    h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(cloneDeck(deck)); } }, icon("check"), " Done")
+  );
+  const pickHelp = pick && h(
+    "aside.search-panel.side-help",
+    h("h3", pick.label),
+    h("p", `Click a card to put it in the ${pick.label.toLowerCase()} (at most ${pick.max}); click it there to put it back. Extra Deck cards cannot be in the hand.`),
+    pick.hint ? h("p.muted.small", pick.hint) : null,
+    h("p.muted.small", "Drag the cards to reorder them. Ctrl+Z undo, Reset goes back to the cards chosen before.")
+  );
+
   // ------------------------------------------------------------ area mazzo
   const PART_NAME = { main: "Main", extra: "Extra", side: "Side" };
   // Dati del trascinamento: { code } dai risultati, { code, from, index } da una carta del mazzo.
@@ -597,20 +791,30 @@ export function showEditor(app, { side = null } = {}) {
   };
   // Rilascio su una parte del mazzo (at = indice della carta davanti a cui inserire, null = in fondo).
   function dropInto(data, p, at = null) {
-    if (!data.code) return;
-    if (data.from) moveCard(data.from, data.index, p, at);
-    else if (!side) addCard(data.code, p, at);
+    if (!data.code || view) return;
+    if (collect) return data.from ? collectMove(data.from, data.index, p, at) : addCard(data.code, p, at);
+    if (data.from && pick) pickMove(data.from, data.index, p, at);
+    else if (data.from) moveCard(data.from, data.index, p, at);
+    else if (!side && !pick) addCard(data.code, p, at);
   }
   const parts = {};
-  for (const p of ["main", "extra", "side"]) {
-    const grid = h(`div.deck-grid.${p}`);
+  for (const p of PARTS) {
+    // Classe "pick" per la scelta: "hand" è già la mano del duello (duel.css). Parti con un nome: "collect-N".
+    const cls = collect ? `collect-part.collect-${PARTS.indexOf(p)}` : p === "hand" ? "pick" : p;
+    const grid = h(`div.deck-grid.${cls}`);
     const head = h("div.deck-head");
     grid.addEventListener("dragover", (e) => e.preventDefault());
     grid.addEventListener("drop", (e) => {
       e.preventDefault();
       dropInto(dragData(e), p);
     });
-    parts[p] = { grid, head, el: h(`section.deck-part.${p}`, head, grid) };
+    parts[p] = { grid, head, el: h(`section.deck-part.${cls}`, head, grid) };
+    // Parti con un nome: cliccando l'intestazione (o dentro la parte) diventa quella in cui va la ricerca.
+    if (collect) parts[p].el.addEventListener("click", (e) => {
+      if (e.target.closest(".deck-card")) return;
+      activePart = p;
+      renderDeck();
+    });
   }
 
   const limitBadge = (code) => {
@@ -628,11 +832,68 @@ export function showEditor(app, { side = null } = {}) {
   };
 
   // Main ed Extra si scelgono dal tipo della carta; il Side accetta tutto.
+  // Decklist di una combo: niente Side Deck, il destro aggiunge al Main/Extra.
   const routePart = (c, target) => (target === "side" ? "side" : isExtraDeckCard(c) ? "extra" : "main");
+
+  /** Parti con un nome: sposta una carta tra le parti (o riordina), rispettando filtri e limiti. */
+  function collectMove(from, index, target, at = null) {
+    const code = deck[from][index];
+    if (code == null) return;
+    if (target === from) {
+      const dest = at ?? deck[from].length - 1;
+      if (dest === index) return;
+      return change(() => {
+        deck[from].splice(index, 1);
+        deck[from].splice(dest, 0, code);
+      });
+    }
+    const part = collectPart(target);
+    if (part.filter && !part.filter(getCard(code))) return toast(`${getCard(code)?.name} cannot go in "${part.label}"`, { kind: "error" });
+    if (part.max && deck[target].length >= part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
+    change(() => {
+      deck[from].splice(index, 1);
+      deck[target].splice(at ?? deck[target].length, 0, code);
+    });
+  }
+
+  /** Scelta di carte: dove torna una carta tolta dalla scelta (nel Side se è da lì che veniva). */
+  const pickHome = (code) => {
+    const n = (list) => list.filter((x) => x === code).length;
+    return n(deck.side) < n(pick.side) ? "side" : isExtraDeckCard(getCard(code)) ? "extra" : "main";
+  };
+  /** Scelta di carte: sposta la carta (nella scelta, fuori, o riordina); at = posizione nella parte di arrivo. */
+  function pickMove(from, index, target, at = null) {
+    const code = deck[from][index];
+    if (code == null) return;
+    const to = from === "hand" ? (target === "hand" ? "hand" : pickHome(code)) : target === "hand" ? "hand" : from;
+    if (to === from) {
+      const dest = at ?? deck[to].length - 1;
+      if (dest === index) return;
+      return change(() => {
+        deck[to].splice(index, 1);
+        deck[to].splice(dest, 0, code);
+      });
+    }
+    if (to === "hand") {
+      if (isExtraDeckCard(getCard(code))) return toast("Extra Deck cards cannot be in the hand", { kind: "error" });
+      if (deck.hand.length >= pick.max) return toast(`At most ${pick.max} cards`, { kind: "error" });
+    }
+    change(() => {
+      deck[from].splice(index, 1);
+      deck[to].splice(to === "hand" && at != null ? at : deck[to].length, 0, code);
+    });
+  }
 
   function addCard(code, target, at = null) {
     const c = getCard(code);
     if (!c || c.type & TYPE.TOKEN) return;
+    if (collect) {
+      const key = PARTS.includes(target) ? target : activePart;
+      const part = collectPart(key);
+      if (part.filter && !part.filter(c)) return toast(`${c.name} cannot go in "${part.label}"`, { kind: "error" });
+      if (part.max && deck[key].length >= part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
+      return change(() => deck[key].splice(at ?? deck[key].length, 0, code));
+    }
     const part = routePart(c, target ?? "main");
     if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
     const limit = Math.min(3, cardLimit(banlist, code));
@@ -689,6 +950,15 @@ export function showEditor(app, { side = null } = {}) {
   let pointerKind = "mouse";
 
   function deckCard(code, p, index) {
+    if (view) {
+      // Si evidenziano solo tante copie quante indicate (es. una delle tre copie nel mazzo).
+      const mark = view.marks?.get(code);
+      const left = markLeft.get(code) ?? 0;
+      if (left > 0) markLeft.set(code, left - 1);
+      const el = h(`div.deck-card${mark && left > 0 ? `.mark-${mark.kind}` : ""}`, cardFace(code), regionBadge(code));
+      el.addEventListener("mouseenter", () => detail.show(code));
+      return el;
+    }
     const el = h("div.deck-card", { draggable: true, dataset: { part: p, index } }, cardFace(code), limitBadge(code), regionBadge(code));
     let timer = null;
     let start = null;
@@ -704,7 +974,7 @@ export function showEditor(app, { side = null } = {}) {
       if (e.button !== 0) return;
       start = [e.clientX, e.clientY];
       cancel();
-      if (side) return; // Side Deck: niente copie aggiunte con la pressione lunga
+      if (side || pick) return; // Side Deck e scelta di carte: niente copie aggiunte con la pressione lunga
       timer = setTimeout(() => {
         timer = null;
         longPressed = true;
@@ -718,12 +988,16 @@ export function showEditor(app, { side = null } = {}) {
     // Clic: rimuove (Side Deck: sposta tra Deck e Side). Tasto destro: Main/Extra → Side, Side → Main/Extra.
     el.addEventListener("click", () => {
       if (longPressed) return void (longPressed = false);
+      if (pick) return pickMove(p, index, p === "hand" ? null : "hand");
       if (side) return moveCard(p, index, p === "side" ? "main" : "side");
+      if (collect) return removeAt(p, index);
       removeAt(p, index);
     });
     el.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       if (pointerKind === "touch" || longPressed) return; // su touch il menu arriva dalla pressione lunga
+      if (pick) return pickMove(p, index, p === "hand" ? null : "hand");
+      if (collect) return;
       moveCard(p, index, p === "side" ? "main" : "side");
     });
     el.addEventListener("dragstart", (e) => {
@@ -745,8 +1019,11 @@ export function showEditor(app, { side = null } = {}) {
     return el;
   }
 
+  // Sola lettura: copie ancora da evidenziare per ogni carta (si riparte a ogni disegno).
+  let markLeft = new Map();
   function renderDeck() {
-    for (const p of ["main", "extra", "side"]) {
+    markLeft = new Map([...(view?.marks ?? [])].map(([code, m]) => [code, m.count]));
+    for (const p of PARTS) {
       const { grid, head } = parts[p];
       const codes = deck[p];
       const count = (t) => codes.filter((c) => getCard(c)?.type & t).length;
@@ -754,8 +1031,11 @@ export function showEditor(app, { side = null } = {}) {
       const counts = p === "extra"
         ? [pill("fusion", count(TYPE.FUSION), "Fusion"), pill("synchro", count(TYPE.SYNCHRO), "Synchro"), pill("xyz", count(TYPE.XYZ), "Xyz"), pill("link", count(TYPE.LINK), "Link")]
         : [pill("monster", count(TYPE.MONSTER), "Monsters"), pill("spell", count(TYPE.SPELL), "Spells"), pill("trap", count(TYPE.TRAP), "Traps")];
+      const cp = collectPart(p);
+      parts[p].el.classList.toggle("active", !!collect && activePart === p);
       clear(head).append(
-        h("b", `${PART_NAME[p]} Deck`),
+        h("b", cp ? cp.label : p === "hand" ? pick.label : `${PART_NAME[p]} Deck`),
+        ...(cp?.hint ? [h("span.muted.small.collect-part-hint", cp.hint)] : []),
         h("span.count", `${codes.length}`),
         h("span.spacer"),
         ...counts
@@ -764,6 +1044,7 @@ export function showEditor(app, { side = null } = {}) {
     }
     const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial });
     if (side) swapsEl.textContent = `Swapped ${swapped()} / ${SIDE_SWAPS}`;
+    if (pick) pickCount.textContent = `${deck.hand.length} / ${pick.max}`;
     validity.textContent = errs.length ? `⚠ ${errs.length} issues` : "✓ Valid";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
     refreshState();
@@ -987,8 +1268,16 @@ export function showEditor(app, { side = null } = {}) {
     h("p.muted.small", "Click a card of the Main or Extra Deck to move it to the Side Deck, click a Side Deck card to put it back in the Deck (or drag the cards). Ctrl+Z undo, Reset goes back to the Deck of the previous Duel."),
     h("p.muted.small", "Changes are only for this match: your saved Deck does not change.")
   );
-  const page = h(`div.page.editor${side ? ".side-mode" : ""}`, side ? sideToolbar : toolbar, h("div.editor-body", detail.el, h("div.deck-area", parts.main.el, parts.extra.el, parts.side.el), side ? sideHelp : search));
+  // Scelta di carte: la scelta sopra, poi Main, Extra e Side.
+  const area = PARTS.map((p) => parts[p].el);
+  // Sola lettura: le parti vuote non si mostrano.
+  if (view) for (const p of PARTS) parts[p].el.hidden = !single.deck[p]?.length;
+  const page = h(
+    `div.page.editor${side || pick || view ? ".side-mode" : ""}${collect ? ".collect-mode" : ""}`,
+    side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : embed ? embedToolbar : toolbar,
+    h("div.editor-body", detail.el, h("div.deck-area", area), side ? sideHelp : view ? viewHelp : pick ? pickHelp : search)
+  );
   root.append(page);
-  openDeck(side ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
-  if (!side) runSearch();
+  openDeck(single ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
+  if (!side && !pick && !view) runSearch();
 }
