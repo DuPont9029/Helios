@@ -51,5 +51,6 @@
 - [x] separare la funzionalità di spreadsheet in editor e viewer e implemenatre la possibilità di esportare le spreadsheet come vengono esportate le combo
 - [ ] non aprire una finestra per costi che scartano e far selezionare direttamente dalla mano
 - [ ] mettere una flag per segnalare che è una beta e modifica l’app in modo che la versione sia 1.0
+- [ ] * genesys support
 
 
