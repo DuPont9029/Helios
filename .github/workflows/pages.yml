@@ -7,9 +7,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-  # Una volta a settimana, per avere carte e banlist aggiornate.
   schedule:
+    # Una volta a settimana, per avere carte e script aggiornati.
     - cron: "0 4 * * 1"
+    # Ogni 3 ore si controlla se le banlist di Project Ignis (LFLists) sono cambiate: se sì, si ripubblica.
+    - cron: "23 */3 * * *"
 
 permissions:
   contents: read
@@ -21,7 +23,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Ultimo commit di ProjectIgnis/LFLists e se va pubblicato: sempre, tranne nel controllo ogni 3 ore
+  # quando le banlist sono quelle dell'ultima pubblicazione (ricordata nella cache di Actions).
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      deploy: ${{ steps.decide.outputs.deploy }}
+    steps:
+      - id: sha
+        run: echo "sha=$(git ls-remote https://github.com/ProjectIgnis/LFLists.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
+
+      - id: seen
+        uses: actions/cache/restore@v4
+        with:
+          path: .lflists-sha
+          key: lflists-${{ steps.sha.outputs.sha }}
+          lookup-only: true
+
+      - id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "${{ github.event.schedule }}" = "23 */3 * * *" ] && [ "${{ steps.seen.outputs.cache-hit }}" = "true" ]; then
+            echo "Banlist invariate (${{ steps.sha.outputs.sha }}): niente da pubblicare."
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check
+    if: needs.check.outputs.deploy == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -47,7 +78,7 @@ jobs:
           path: dist
 
   deploy:
-    needs: build
+    needs: [check, build]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -55,3 +86,12 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+      # Banlist di questa pubblicazione: il prossimo controllo non ripubblica se non cambiano.
+      - run: echo "${{ needs.check.outputs.sha }}" > .lflists-sha
+
+      - uses: actions/cache/save@v4
+        continue-on-error: true # la chiave esiste già (stesse banlist pubblicate di nuovo, es. dopo un push)
+        with:
+          path: .lflists-sha
+          key: lflists-${{ needs.check.outputs.sha }}
