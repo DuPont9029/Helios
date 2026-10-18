@@ -72,7 +72,8 @@ export class Prompter {
     // Le proprie carte sono sempre visibili; di quelle avversarie nascondiamo
     // mano e carte coperte (il core, in lockstep, conosce comunque tutto).
     if (this.view.reveal || c.controller === this.me) return true;
-    if (c.location === LOC.HAND) return false;
+    // Mano dell'avversario: coperta, tranne le carte che un effetto gli ha appena mostrato (es. "guarda la mano").
+    if (c.location === LOC.HAND) return this.view.isConfirmed(c.controller, c.sequence);
     if (c.location & LOC.ONFIELD) return !(c.position & POS.FACEDOWN);
     return true;
   }
@@ -382,8 +383,10 @@ export class Prompter {
       if (c.location === LOC.HAND) return key(c.controller, LOC.HAND, c.sequence);
       return c.location & LOC.ONFIELD && !(c.location & LOC.OVERLAY) ? key(c.controller, c.location, c.sequence) : null;
     });
-    // Almeno una carta sul campo: le scelte solo dalla mano restano in finestra (le carte in mano sono piccole).
-    if (!cards.some((c) => c.location & LOC.ONFIELD)) return null;
+    // Sul campo, o tutte nella propria mano (es. le carte da scartare per un costo): si cliccano lì.
+    // Le altre scelte (Cimitero, Deck, mano dell'avversario...) restano in finestra.
+    const ownHand = cards.every((c) => c.location === LOC.HAND && c.controller === this.me);
+    if (!ownHand && !cards.some((c) => c.location & LOC.ONFIELD)) return null;
     return keys.every((k) => k && this.board.cardEls.has(k)) && new Set(keys).size === keys.length ? keys : null;
   }
 

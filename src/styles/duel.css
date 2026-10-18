@@ -108,6 +108,9 @@
 .zone.pile { cursor: pointer; }
 .zone .card { width: var(--cw); transition: transform 0.2s; }
 .zone .card.defense { transform: rotate(90deg); }
+/* Carte dell'avversario (lato in alto): girate verso di lui, come sul tavolo. */
+.zone .card.theirs { transform: rotate(180deg); }
+.zone .card.theirs.defense { transform: rotate(270deg); }
 .zone .card.facedown { filter: brightness(0.82); }
 .zone .card.facedown:not(.back) { opacity: 0.85; }
 .zone .card.facedown:not(.back)::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.18) 0 4px, transparent 4px 8px); }
@@ -508,3 +511,5 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
   animation: tag-in 0.35s ease-out;
 }
 @keyframes tag-in { from { opacity: 0; transform: translate(-50%, 6px); } }
+/* Scelta dalla propria mano (es. costi da scartare): le carte scelte restano sollevate. */
+.hand-0 .card.field-chosen { transform: translateY(-14%); }

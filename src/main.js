@@ -14,6 +14,7 @@ import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks } from "./data/bookmarks.js";
 import { showComboTrainer } from "./ui/combos.js";
 import { showHdpc } from "./ui/hdpc.js";
+import { version } from "../package.json";
 
 // PWA: Helios si può installare come app sul desktop (manifest + service worker in public/).
 let installPrompt = null;
@@ -106,7 +107,7 @@ function home(section = null) {
       "div.home",
       h(
         "header.home-head",
-        h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", "v0.1")),
+        h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", `v${version.replace(/\.0$/, "")}`), h("span.beta-badge", { title: "Beta: some features may still change or have bugs" }, "BETA")),
         h("div.home-user", "Welcome,", h("b", settings.name)),
         installButton(),
         fullscreenButton(),

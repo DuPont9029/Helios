@@ -139,8 +139,8 @@ export function showHdpc(app) {
                 const others = new Set(st.groups.filter((x) => x !== g).flatMap((x) => x.cards));
                 const v = await openDeckPicker({
                   main: [...new Set(deck().main)].filter((code) => !others.has(code)),
-                  extra: deck().extra,
-                  side: deck().side,
+                  extra: [...new Set(deck().extra)],
+                  side: [...new Set(deck().side)],
                   picked: [...g.cards],
                   title: deck().name,
                   label: g.name || "Group",

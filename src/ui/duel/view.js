@@ -42,6 +42,7 @@ export class DuelView {
       onHover: (code) => this.hover(code),
       onPile: (p, loc) => this.openPile(p, loc),
       onCardMenu: (el, items) => this.openActionMenu(el, items),
+      isConfirmed: (p, seq) => this.isConfirmed(p, seq),
     });
     this.prompter = new Prompter(this);
     // A cosa risponde la prossima richiesta di catena (catena in corso, summon, attacco, fase...).
@@ -675,6 +676,28 @@ export class DuelView {
     setTimeout(() => s.remove(), 250);
   }
 
+  /**
+   * Carte in mano rivelate al giocatore (es. un effetto che guarda la mano dell'avversario e ne fa scegliere
+   * una): restano scoperte nelle scelte e nella mano finché la mano non viene rimescolata o cambia.
+   */
+  trackConfirmed(m) {
+    this.confirmed ??= new Set();
+    const forget = (p) => [...this.confirmed].filter((k) => k.startsWith(`${p}:`)).forEach((k) => this.confirmed.delete(k));
+    if (m.type === MSG.CONFIRM_CARDS && (m.player == null || m.player === this.me)) {
+      for (const c of m.cards) if (c.location === LOC.HAND) this.confirmed.add(`${c.controller}:${c.sequence}`);
+    }
+    if (m.type === MSG.SHUFFLE_HAND) forget(m.player);
+    if (m.type === MSG.MOVE && (m.from.location === LOC.HAND || m.to.location === LOC.HAND)) {
+      forget(m.from.controller);
+      forget(m.to.controller);
+    }
+    if (m.type === MSG.NEW_TURN) this.confirmed.clear();
+  }
+
+  isConfirmed(p, seq) {
+    return !!this.confirmed?.has(`${p}:${seq}`);
+  }
+
   canSeeMsg(p, loc, pos) {
     if (this.reveal || p === this.me) return true;
     if (loc === LOC.HAND || loc === LOC.DECK) return false;
@@ -689,6 +712,7 @@ export class DuelView {
         this.winLogged = true;
       }
       this.logMessage(m);
+      this.trackConfirmed(m);
       this.trackLingering(m);
       this.chainCtx.track(m);
       await this.animate(m);

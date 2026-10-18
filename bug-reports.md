@@ -9,7 +9,11 @@
 - [x] Esistono delle opzioni per gli steps nel combo trainer che appaiono se si registra una combo ma non dall'editor.
 - [x] Nelle varie impostazioni nel combo trainer editor dove è necessario selezionare delle carte ci sono troppi modi diversi di selezionare le suddette, per l'opzione add card di una "precise choice" fa apparire una finestra che permette di selezionare una carta dal database invece se si seleziona un mostro in "steps" lo si può fare da un drop down. Standardizzare tutto con la grafica del database all'interno del combo trainer editor permettendo di usare solo carte nella decklist a sola eccezione della sezione "hand trap" e quella "starting board state" che devono avere la stessa grafica delle altre ma permetter di selezionare comunque qualsiasi carta dal database.
 - [x] I mostri normali non vengono mostrati correttamente in mano durante le partite.
+- [ ] le carte che rivelano o guardano la mano dell’avversario appaiono face down e non vengono mostrate quando dovrebbero essere rivelate
+- [ ] le carte dell’avversario dovrebbero essere orientate verso di loro nel duel field altrimenti si confondono
+- [ ] nell’HDPC quando si aggiunge una carta a una categoria apre il deck builder e il deck builder mostra ogni carta del tuo deck come nonocopia (tutto giusto fino a qui) tuttavia le carte dell’extradeck sono mostrate in multipli anche se non dovrebbero
 
+  \
   \
 
 
