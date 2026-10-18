@@ -4,11 +4,11 @@
 import { h, clear, icon } from "./dom.js";
 import { cardFace } from "./card.js";
 import { openModal, toast, confirmModal, alertModal } from "./modal.js";
-import { db, getCard, cardName, isExtraDeckCard } from "../data/db.js";
+import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine } from "../data/db.js";
 import { settings } from "../data/settings.js";
 import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
-import { loadDecks, saveDecks, parseRecipe } from "../deck/deck.js";
+import { loadDecks, saveDecks, parseRecipe, sortDeckPart } from "../deck/deck.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import {
@@ -30,7 +30,7 @@ export function showComboTrainer(app, { review } = {}) {
   if (decks.length && !localStorage.getItem("ygoweb.decks")) saveDecks(decks);
   const root = clear(app.root);
   if (!decks.length) {
-    root.append(h("div.page", h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home() }, icon("chevron_left")), h("h1", "Combo Trainer")), h("p.muted", "Create a Deck in the Deck Editor first.")));
+    root.append(h("div.page", h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home("training") }, icon("chevron_left")), h("h1", "Combo Trainer")), h("p.muted", "Create a Deck in the Deck Editor first.")));
     return;
   }
   let all = loadCombos();
@@ -65,6 +65,7 @@ export function showComboTrainer(app, { review } = {}) {
               h(
                 "div.combo-actions",
                 h("button.btn.primary", { onclick: () => practice(app, deck(), c) }, icon("play_arrow"), " Practice"),
+                h("button.btn", { title: "The trainer plays the combo by itself (no video)", onclick: () => practice(app, deck(), c, { autoplay: true }) }, icon("smart_display"), " Auto-play"),
                 h("button.btn", { title: "Share the combo or record a video of it", onclick: () => exportCombo(app, deck(), c) }, icon("ios_share"), " Export"),
                 h("button.btn", { onclick: () => editCombo(deck(), c).then((v) => v && store(items.map((x) => (x.id === v.id ? v : x)))) }, icon("edit"), " Edit"),
                 h("button.btn.danger", {
@@ -104,7 +105,7 @@ export function showComboTrainer(app, { review } = {}) {
   root.append(
     h(
       "div.page.combos",
-      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home() }, icon("chevron_left")), h("h1", "Combo Trainer")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => app.home("training") }, icon("chevron_left")), h("h1", "Combo Trainer")),
       h(
         "div.card-box.combo-top",
         h("label.field", h("span", "Deck"), deckSel),
@@ -216,16 +217,24 @@ function handTrapSuggestions() {
 }
 
 /**
- * Finestra di ricerca di una carta nel database. Restituisce il codice scelto o null.
- * @param suggest codici mostrati quando la ricerca è vuota; @param filter (card) -> bool
+ * Finestra di ricerca di una carta (stessa grafica in tutto il Combo Trainer e nel calcolatore).
+ * Restituisce il codice scelto o null.
+ * @param pool  se indicato, solo queste carte (es. la decklist), mostrate tutte nell'ordine del deck builder;
+ *              altrimenti l'intero database, con `suggest` mostrati quando la ricerca è vuota
+ * @param filter (card) -> bool
  */
-export function pickCard({ title = "Choose a card", suggest = [], filter = () => true, hint = "" } = {}) {
-  const input = h("input.input", { placeholder: "Search by name or text…", autocomplete: "off" });
+export function pickCard({ title = "Choose a card", suggest = [], filter = () => true, hint = "", pool = null } = {}) {
+  const input = h("input.input", { placeholder: pool ? "Filter by name or text…" : "Search the card database…", autocomplete: "off" });
   const list = h("div.announce-list.card-search-list");
-  const candidates = db.list.filter((c) => c.source !== 1 && filter(c));
-  const row = (code) => h("button.announce-row", { onclick: () => m.close(code) }, cardFace(code), h("span", cardName(code)));
+  const ordered = pool ? sortDeckPart(uniq(pool)).map(getCard).filter((c) => c && filter(c)) : null;
+  const candidates = ordered ?? db.list.filter((c) => c.source !== 1 && filter(c));
+  const row = (code) => h("button.announce-row", { onclick: () => m.close(code) }, cardFace(code), h("span", cardName(code), h("small.muted", statLine(getCard(code)) || typeLine(getCard(code)))));
   const render = () => {
     const q = input.value.trim().toLowerCase();
+    if (!q && ordered) {
+      clear(list).append(...(ordered.length ? ordered.map((c) => row(c.code)) : [h("div.muted.small.card-search-sub", "No cards.")]));
+      return;
+    }
     if (!q) {
       const sug = suggest.filter((code) => getCard(code) && filter(getCard(code)));
       clear(list).append(...(sug.length ? [h("div.muted.small.card-search-sub", "Suggested"), ...sug.slice(0, 60).map(row)] : [h("div.muted.small.card-search-sub", "Type to search the card database.")]));
@@ -267,7 +276,7 @@ function freeZone(list, code) {
   return pref.find((z) => !taken.has(z)) ?? ZONES.map(([z]) => z).find((z) => !taken.has(z)) ?? null;
 }
 
-const emptySetup = () => ({ me: { field: [], gy: [], banished: [] }, opp: { field: [], gy: [], banished: [], hand: [], deckTop: [], extra: [] } });
+const emptySetup = () => ({ me: { field: [], gy: [], banished: [], deckTop: [] }, opp: { field: [], gy: [], banished: [], hand: [], deckTop: [], extra: [] } });
 
 /**
  * Editor di una combo; restituisce la combo salvata o null.
@@ -280,8 +289,15 @@ function editCombo(deck, combo, { setup = false } = {}) {
   const name = h("input.input", { value: c.name, maxLength: 60 });
   const first = h("select.select", h("option", { value: "1" }, "Going first"), h("option", { value: "0" }, "Going second"));
   first.value = c.first ? "1" : "0";
-  const mainCards = uniq(deck.main).sort(byName);
-  const deckCards = uniq([...deck.main, ...deck.extra]).sort(byName);
+  // Carte nell'ordine del deck builder (mostri, magie, trappole...).
+  const mainCards = sortDeckPart(uniq(deck.main));
+  const deckCards = [...mainCards, ...sortDeckPart(uniq(deck.extra))];
+  /** Carte che una scelta precisa può indicare: la decklist e le carte dello stato di partenza (es. quelle dell'avversario). */
+  const choicePool = () => {
+    const st = c.setup;
+    const fromSetup = [st.me, st.opp].flatMap((x) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.hand ?? []), ...(x.deckTop ?? []), ...(x.extra ?? [])]);
+    return uniq([...deckCards, ...fromSetup, ...c.interrupts.map((x) => x.code)]);
+  };
   const handEl = h("div.combo-hand-pick");
   const poolEl = h("div.combo-pool");
   const stepsEl = h("ol.combo-steps-edit");
@@ -367,14 +383,16 @@ function editCombo(deck, combo, { setup = false } = {}) {
       ...c.steps.map((s, i) => {
         const act = h("select.select.step-kind", Object.entries(STEP_ACTIONS).map(([k, l]) => h("option", { value: k }, l)));
         act.value = s.kind;
-        const card = h("select.select", deckCards.map((code) => h("option", { value: code }, cardName(code))));
-        if (s.code) card.value = String(s.code);
-        card.addEventListener("change", () => { s.code = +card.value; snap(); });
+        // Stessa finestra di ricerca di tutto l'editor, limitata alla decklist.
+        const card = h("button.btn.card-pick-btn.step-card", {
+          title: "Choose the card of this step",
+          onclick: () => pickCard({ title: `Card for step ${i + 1}: ${STEP_ACTIONS[s.kind]}`, pool: deckCards }).then((v) => { if (v) { s.code = v; renderSteps(); snap(); } }),
+        }, s.code ? cardName(s.code) : "Choose a card…");
         // End Phase: nessuna carta da scegliere.
         const syncCard = () => (card.style.visibility = NO_CARD.has(s.kind) ? "hidden" : "");
         act.addEventListener("change", () => {
           s.kind = act.value;
-          if (!NO_CARD.has(s.kind) && !s.code) s.code = +card.value;
+          if (!NO_CARD.has(s.kind) && !s.code) s.code = deckCards[0];
           syncCard();
           renderInts();
           snap();
@@ -438,18 +456,62 @@ function editCombo(deck, combo, { setup = false } = {}) {
     renderInts();
   }
 
-  /** Aggiunge a mano una scelta precisa al passo (in registrazione si salvano da sole). */
+  /**
+   * Aggiunge a mano una scelta precisa al passo: gli stessi tipi che la registrazione salva da sola
+   * (carte da scegliere, una carta alla volta, zona, posizione, Sì/No, opzione di un effetto).
+   */
   async function addDetail(s) {
-    const type = h("select.select", h("option", { value: "cards" }, "Select cards (targets, costs, materials…)"), h("option", { value: "zone" }, "Zone to use"), h("option", { value: "pos" }, "Battle position"), h("option", { value: "yesno" }, "Optional effect: Yes / No"));
+    const type = h(
+      "select.select",
+      h("option", { value: "cards" }, "Select cards (targets, costs, materials, searched cards…)"),
+      h("option", { value: "pick" }, "Select one card at a time / finish the selection"),
+      h("option", { value: "zone" }, "Zone to use"),
+      h("option", { value: "pos" }, "Battle position"),
+      h("option", { value: "yesno" }, "Yes / No (e.g. use an optional effect)"),
+      h("option", { value: "option" }, "Option (which effect of a card)")
+    );
+    const pool = choicePool();
+    const pick = (title) => pickCard({ title, pool });
+    // carte
     const codes = [];
     const chosen = h("div.detail-cards");
     const paintCodes = () => clear(chosen).append(...(codes.length ? codes.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { codes.splice(i, 1); paintCodes(); } }, cardName(code), " ×")) : [h("span.muted.small", "No cards yet.")]));
-    const addCard = h("button.btn.small", { onclick: () => pickCard({ title: "Card to select", suggest: deckCards }).then((v) => { if (v) { codes.push(v); paintCodes(); } }) }, icon("add"), " Add card");
-    const zone = h("select.select", ZONES.map(([z, l]) => h("option", { value: z }, l)));
+    const addCard = h("button.btn.small", { onclick: () => pick("Card to select").then((v) => { if (v) { codes.push(v); paintCodes(); } }) }, icon("add"), " Add card");
+    // una carta / fine
+    let one = 0;
+    const oneBtn = h("button.btn.card-pick-btn", { onclick: () => pick("Card to select").then((v) => { if (v) { one = v; oneBtn.textContent = cardName(v); finish.checked = false; } }) }, "Choose a card…");
+    const finish = h("input", { type: "checkbox", onchange: () => { if (finish.checked) { one = 0; oneBtn.textContent = "Choose a card…"; } } });
+    // zona
+    const ZONE_CHOICES = [...ZONES, ["p6", "Left Pendulum Zone (Master Rule 3)"], ["p7", "Right Pendulum Zone (Master Rule 3)"]];
+    const zone = h("select.select", ZONE_CHOICES.map(([z, l]) => h("option", { value: z }, l)));
     const whose = h("select.select", h("option", { value: "1" }, "Your zone"), h("option", { value: "0" }, "Opponent's zone"));
-    const pos = h("select.select", [[POS.FACEUP_ATTACK, "Face-up Attack"], [POS.FACEUP_DEFENSE, "Face-up Defense"], [POS.FACEDOWN_DEFENSE, "Face-down Defense"]].map(([v, l]) => h("option", { value: v }, l)));
-    const yes = h("select.select", h("option", { value: "1" }, "Yes, use it"), h("option", { value: "0" }, "No"));
-    const parts = { cards: h("div.detail-part", chosen, addCard), zone: h("div.detail-part", zone, whose), pos: h("div.detail-part", pos), yesno: h("div.detail-part", yes) };
+    // posizione
+    const pos = h("select.select", [[POS.FACEUP_ATTACK, "Face-up Attack"], [POS.FACEDOWN_ATTACK, "Face-down Attack"], [POS.FACEUP_DEFENSE, "Face-up Defense"], [POS.FACEDOWN_DEFENSE, "Face-down Defense"]].map(([v, l]) => h("option", { value: v }, l)));
+    // sì / no
+    const yes = h("select.select", h("option", { value: "1" }, "Yes"), h("option", { value: "0" }, "No"));
+    let yesCard = 0;
+    const yesCardBtn = h("button.btn.card-pick-btn", { title: "Optional: the card whose effect is asked (\"Use the effect of …?\")", onclick: () => pick("Card whose effect is asked").then((v) => { yesCard = v ?? 0; yesCardBtn.textContent = v ? cardName(v) : "Any question"; }) }, "Any question");
+    // opzione
+    let optCard = 0;
+    const optSel = h("select.select", { disabled: true }, h("option", "Choose a card first"));
+    const optCardBtn = h("button.btn.card-pick-btn", {
+      onclick: () => pick("Card with the effect").then((v) => {
+        if (!v) return;
+        optCard = v;
+        optCardBtn.textContent = cardName(v);
+        const strings = (getCard(v)?.strings ?? []).map((t, i) => [i, t]).filter(([, t]) => t);
+        clear(optSel).append(...(strings.length ? strings.map(([i, t]) => h("option", { value: i }, t)) : [h("option", { value: "" }, "This card has no effect options")]));
+        optSel.disabled = !strings.length;
+      }),
+    }, "Choose a card…");
+    const parts = {
+      cards: h("div.detail-part", chosen, addCard),
+      pick: h("div.detail-part", oneBtn, h("label.check", finish, "Finish the selection instead")),
+      zone: h("div.detail-part", zone, whose),
+      pos: h("div.detail-part", pos),
+      yesno: h("div.detail-part", yes, h("span.muted.small", "for"), yesCardBtn),
+      option: h("div.detail-part", optCardBtn, optSel),
+    };
     const sync = () => Object.entries(parts).forEach(([k, el]) => (el.hidden = k !== type.value));
     type.addEventListener("change", sync);
     paintCodes();
@@ -464,13 +526,20 @@ function editCombo(deck, combo, { setup = false } = {}) {
           label: "Add",
           primary: true,
           onClick: (close) => {
-            if (type.value === "cards") return codes.length ? close({ t: "cards", codes: [...codes].sort((a, b) => a - b) }) : alertModal("Select cards", "Add at least one card.");
-            if (type.value === "zone") {
-              const z = zone.value;
-              return close({ t: "zone", places: [{ mine: whose.value === "1", loc: z === "f" ? "s" : z[0], seq: z === "f" ? 5 : +z.slice(1) }] });
+            switch (type.value) {
+              case "cards": return codes.length ? close({ t: "cards", codes: [...codes].sort((a, b) => a - b) }) : alertModal("Select cards", "Add at least one card.");
+              case "pick": return one || finish.checked ? close({ t: "pick", code: finish.checked ? 0 : one }) : alertModal("Select a card", "Choose a card or \"Finish the selection\".");
+              case "zone": {
+                const z = zone.value;
+                const place = z === "f" ? { loc: "s", seq: 5 } : z[0] === "p" ? { loc: "s", seq: +z.slice(1) } : { loc: z[0], seq: +z.slice(1) };
+                return close({ t: "zone", places: [{ mine: whose.value === "1", ...place }] });
+              }
+              case "pos": return close({ t: "pos", pos: +pos.value });
+              case "yesno": return close(yesCard ? { t: "yesno", yes: yes.value === "1", code: yesCard } : { t: "yesno", yes: yes.value === "1" });
+              case "option":
+                if (!optCard || optSel.disabled) return alertModal("Option", "Choose a card with effect options.");
+                return close({ t: "option", desc: String((BigInt(optCard) << 20n) | BigInt(+optSel.value)) });
             }
-            if (type.value === "pos") return close({ t: "pos", pos: +pos.value });
-            return close({ t: "yesno", yes: yes.value === "1" });
           },
         },
       ],
@@ -500,11 +569,11 @@ function editCombo(deck, combo, { setup = false } = {}) {
   });
 
   // ---- stato di partenza (carte già in gioco, mano e Deck dell'avversario)
-  function cardList(arr, { title, suggest, filter, ordered = false }) {
+  function cardList(arr, { title, suggest, filter, pool, ordered = false }) {
     return h(
       "div.setup-list",
       arr.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { arr.splice(i, 1); renderSetup(); snap(); } }, ordered ? `${i + 1}. ` : "", cardName(code), " ×")),
-      h("button.btn.small.ghost", { onclick: () => pickCard({ title, suggest, filter }).then((v) => { if (v) { arr.push(v); renderSetup(); snap(); } }) }, icon("add"), " Add")
+      h("button.btn.small.ghost", { onclick: () => pickCard({ title, suggest, filter, pool }).then((v) => { if (v) { arr.push(v); renderSetup(); snap(); } }) }, icon("add"), " Add")
     );
   }
   function fieldList(list, suggest) {
@@ -538,7 +607,8 @@ function editCombo(deck, combo, { setup = false } = {}) {
         h("h4", "You"),
         h("span.muted.small", "Field"), fieldList(s.me.field, mine),
         h("span.muted.small", "GY"), cardList(s.me.gy, { title: "Card in your GY", suggest: mine }),
-        h("span.muted.small", "Banished"), cardList(s.me.banished, { title: "Your banished card", suggest: mine })
+        h("span.muted.small", "Banished"), cardList(s.me.banished, { title: "Your banished card", suggest: mine }),
+        h("span.muted.small", "Top of your Deck, after the starting hand (1 = next draw)"), cardList(s.me.deckTop, { title: "Card on top of your Deck", pool: mainCards, ordered: true })
       ),
       h(
         "div.setup-col",
@@ -562,7 +632,7 @@ function editCombo(deck, combo, { setup = false } = {}) {
         const text = h("input.input", { value: t.text, maxLength: 40, placeholder: "e.g. Omni-negate", list: "combo-tag-names" });
         text.addEventListener("input", () => (t.text = text.value));
         text.addEventListener("change", snap);
-        return h("div.combo-tag-row", cardBtn(t.code, (v) => { t.code = v; renderTags(); snap(); }, { title: "Card on the final board", suggest: deckCards }), text, h("button.btn.small.ghost", { title: "Remove", onclick: () => { c.tags.splice(i, 1); renderTags(); snap(); } }, icon("close")));
+        return h("div.combo-tag-row", cardBtn(t.code, (v) => { t.code = v; renderTags(); snap(); }, { title: "Card on the final board", pool: deckCards }), text, h("button.btn.small.ghost", { title: "Remove", onclick: () => { c.tags.splice(i, 1); renderTags(); snap(); } }, icon("close")));
       })
     );
   }
@@ -611,7 +681,6 @@ function editCombo(deck, combo, { setup = false } = {}) {
         onClick: (close) => {
           c.name = name.value.trim() || "Combo";
           c.first = first.value === "1";
-          if (!c.hand.length) return alertModal("Starting hand", "Add at least one card to the starting hand.");
           if (!setup && !c.steps.length) return alertModal("Steps", "Add at least one step.");
           delete c.recorded;
           c.steps = c.steps.map(cleanStep);
@@ -713,7 +782,8 @@ function startDuel(app, deck, combo, controller, title) {
       draw: 1,
       decks,
       shuffle: pair(true, false),
-      top: pair(combo.hand, oppTop),
+      // La mano, poi le carte scelte per la cima del Deck (stato di partenza).
+      top: pair([...combo.hand, ...(s.me.deckTop ?? [])], oppTop),
       handSize: pair(combo.hand.length, oppHand.length),
       noTurnDraw: pair(false, true),
       place: [...placeCards(me, s.me), ...placeCards(opp, s.opp)],

@@ -170,17 +170,45 @@ const cloneDeck = (d) => ({ ...d, main: [...d.main], extra: [...d.extra], side: 
 const isEmptyDeck = (d) => !d.main.length && !d.extra.length && !d.side.length;
 const LONG_PRESS = 450;
 
-export function showEditor(app) {
+/**
+ * Side Deck tra i duelli di una partita al meglio di N: lo stesso deck editor in modalità limitata
+ * (si spostano solo carte tra Main/Extra e Side, al massimo 15), aperto sopra il duello.
+ * Restituisce il mazzo da usare nel duello successivo (il mazzo salvato non cambia), oppure
+ * { surrendered: true } se il giocatore abbandona la partita da qui.
+ * La promessa ha .close(value): chiude la schermata dall'esterno (es. l'avversario si è arreso).
+ */
+export function openSideEditor(deck, { banlist = null, allowUnofficial = false, game = 2, who = "", canSurrender = true } = {}) {
+  let finish;
+  const promise = new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v);
+    };
+    showEditor(host, { side: { deck, banlist, allowUnofficial, game, who, canSurrender, onDone: finish } });
+  });
+  promise.close = (v) => finish?.(v);
+  return promise;
+}
+
+export function showEditor(app, { side = null } = {}) {
   const root = clear(app.root);
   // decks contiene solo le versioni salvate; deck è la bozza su cui si lavora.
-  let decks = loadDecks();
+  // Side Deck: un solo mazzo, la copia per la partita (non si salva nulla).
+  let decks = side ? [cloneDeck({ ...side.deck, side: side.deck.side ?? [] })] : loadDecks();
   if (!decks.length) decks = [emptyDeck()];
-  saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
+  if (!side) saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
   let deck;
   let baseline = "";
   let undoStack = [];
   let redoStack = [];
-  let banlist = banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
+  let banlist = side ? banlistByName(side.banlist) : banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
   // ------------------------------------------------------------ preferiti (bookmark)
   const isBookmarked = (code) => settings.bookmarks?.includes(code);
   function toggleBookmark(code) {
@@ -221,7 +249,7 @@ export function showEditor(app) {
     baseline = snap();
     undoStack = [];
     redoStack = [];
-    settings.lastDeck = deck.id;
+    if (!side) settings.lastDeck = deck.id;
     refreshDeckSel();
     renderDeck();
   }
@@ -288,7 +316,7 @@ export function showEditor(app) {
   }
 
   const onBeforeUnload = (e) => {
-    if (!isDirty()) return;
+    if (side || !isDirty()) return;
     e.preventDefault();
     e.returnValue = "";
   };
@@ -297,6 +325,8 @@ export function showEditor(app) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
     if (document.querySelector(".modal-backdrop")) return; // c'è una finestra aperta
     const k = e.key.toLowerCase();
+    // Side Deck: solo annulla/ripeti.
+    if (side && !["z", "y"].includes(k)) return;
     if (k === "s") {
       e.preventDefault();
       save();
@@ -529,6 +559,32 @@ export function showEditor(app) {
     validity
   );
 
+  // Side Deck: barra ridotta (scambi, annulla/ripeti, ripristina, validità, pronto).
+  const swapsEl = h("span.side-swaps");
+  const sideToolbar = side && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", `Side Deck${side.who ? ` — ${side.who}` : ""}`), h("span.muted", `Game ${side.game}`)),
+    swapsEl,
+    undoBtn,
+    redoBtn,
+    h("button.btn", { title: "Back to the Deck of the previous Duel", onclick: () => change(() => { const d = cloneDeck(side.deck); deck.main = d.main; deck.extra = d.extra; deck.side = d.side ?? []; }) }, icon("restart_alt"), " Reset"),
+    h("div.spacer"),
+    side.canSurrender && h("button.btn.danger", {
+      title: "Give up the whole match",
+      onclick: async () => {
+        if (await confirmModal("Surrender the match?", "You lose the match: no more Duels are played.", "Surrender", "Cancel", { danger: true, top: true })) side.onDone({ surrendered: true });
+      },
+    }, icon("flag"), " Surrender"),
+    validity,
+    h("button.btn.primary", {
+      onclick: () => {
+        const errs = validateDeck(deck, banlist, { allowUnofficial: side.allowUnofficial });
+        if (errs.length) return alertModal("Invalid Deck", errs.slice(0, 8).join("\n"));
+        side.onDone(cloneDeck(deck));
+      },
+    }, icon("check"), " Ready")
+  );
+
   // ------------------------------------------------------------ area mazzo
   const PART_NAME = { main: "Main", extra: "Extra", side: "Side" };
   // Dati del trascinamento: { code } dai risultati, { code, from, index } da una carta del mazzo.
@@ -543,7 +599,7 @@ export function showEditor(app) {
   function dropInto(data, p, at = null) {
     if (!data.code) return;
     if (data.from) moveCard(data.from, data.index, p, at);
-    else addCard(data.code, p, at);
+    else if (!side) addCard(data.code, p, at);
   }
   const parts = {};
   for (const p of ["main", "extra", "side"]) {
@@ -606,12 +662,27 @@ export function showEditor(app) {
       return;
     }
     if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
+    if (side && part === "side" && swapped() >= SIDE_SWAPS) return toast(`You can swap at most ${SIDE_SWAPS} cards`, { kind: "error" });
     // Main↔Extra non cambia per tipo: l'indice di destinazione vale solo se la parte è quella richiesta
     change(() => {
       deck[from].splice(index, 1);
       deck[part].splice(part === target && at != null ? at : deck[part].length, 0, code);
     });
   }
+
+  /** Side Deck: carte del Main/Extra di partenza ora nel Side (= carte scambiate). */
+  const SIDE_SWAPS = 15;
+  const startSide = side ? [...(side.deck.side ?? [])] : [];
+  const swapped = () => {
+    const left = [...startSide];
+    let n = 0;
+    for (const c of deck.side) {
+      const i = left.indexOf(c);
+      if (i >= 0) left.splice(i, 1);
+      else n++;
+    }
+    return n;
+  };
 
   // Pressione lunga: il rilascio non deve contare come clic (che rimuove la carta).
   let longPressed = false;
@@ -633,6 +704,7 @@ export function showEditor(app) {
       if (e.button !== 0) return;
       start = [e.clientX, e.clientY];
       cancel();
+      if (side) return; // Side Deck: niente copie aggiunte con la pressione lunga
       timer = setTimeout(() => {
         timer = null;
         longPressed = true;
@@ -643,9 +715,10 @@ export function showEditor(app) {
       if (timer && start && Math.hypot(e.clientX - start[0], e.clientY - start[1]) > 6) cancel();
     });
     for (const ev of ["pointerup", "pointercancel", "pointerleave", "dragstart"]) el.addEventListener(ev, cancel);
-    // Clic: rimuove. Tasto destro: Main/Extra → Side, Side → Main/Extra.
+    // Clic: rimuove (Side Deck: sposta tra Deck e Side). Tasto destro: Main/Extra → Side, Side → Main/Extra.
     el.addEventListener("click", () => {
       if (longPressed) return void (longPressed = false);
+      if (side) return moveCard(p, index, p === "side" ? "main" : "side");
       removeAt(p, index);
     });
     el.addEventListener("contextmenu", (e) => {
@@ -689,7 +762,8 @@ export function showEditor(app) {
       );
       clear(grid).append(...codes.map((code, index) => deckCard(code, p, index)));
     }
-    const errs = validateDeck(deck, banlist);
+    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial });
+    if (side) swapsEl.textContent = `Swapped ${swapped()} / ${SIDE_SWAPS}`;
     validity.textContent = errs.length ? `⚠ ${errs.length} issues` : "✓ Valid";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
     refreshState();
@@ -906,8 +980,15 @@ export function showEditor(app) {
     )
   );
 
-  const page = h("div.page.editor", toolbar, h("div.editor-body", detail.el, h("div.deck-area", parts.main.el, parts.extra.el, parts.side.el), search));
+  const sideHelp = side && h(
+    "aside.search-panel.side-help",
+    h("h3", "Side Deck"),
+    h("p", "Swap up to 15 cards between your Deck and your Side Deck for the next Duel."),
+    h("p.muted.small", "Click a card of the Main or Extra Deck to move it to the Side Deck, click a Side Deck card to put it back in the Deck (or drag the cards). Ctrl+Z undo, Reset goes back to the Deck of the previous Duel."),
+    h("p.muted.small", "Changes are only for this match: your saved Deck does not change.")
+  );
+  const page = h(`div.page.editor${side ? ".side-mode" : ""}`, side ? sideToolbar : toolbar, h("div.editor-body", detail.el, h("div.deck-area", parts.main.el, parts.extra.el, parts.side.el), side ? sideHelp : search));
   root.append(page);
-  openDeck(decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
-  runSearch();
+  openDeck(side ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
+  if (!side) runSearch();
 }

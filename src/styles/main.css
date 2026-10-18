@@ -553,3 +553,9 @@ html:has(.home) body::before, html:has(.boot) body::before {
     repeating-linear-gradient(125deg, transparent 0 46px, rgba(130, 12, 28, 0.2) 46px 52px, transparent 52px 120px, rgba(130, 12, 28, 0.12) 120px 123px, transparent 123px 210px),
     repeating-linear-gradient(125deg, transparent 0 70px, rgba(31, 107, 255, 0.14) 70px 74px, transparent 74px 170px);
 }
+
+/* sottomenu "Training" della home */
+.menu-section { font: 700 14px var(--mono); letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.menu-back { margin-bottom: 6px; }
+.install-app[hidden] { display: none; }
+.modal-backdrop.top { z-index: 160; }
