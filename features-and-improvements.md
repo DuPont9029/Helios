@@ -49,6 +49,8 @@
 - [x] \* Integrare nella sezione spredsheets modo di aggiungere una sample decklist.
 - [x] \* Far calcolare a una spreadsheet tutte le carte necessarie per quel deck usando le informazinìoni su le carte necessarie per le combo individuali.
 - [x] separare la funzionalità di spreadsheet in editor e viewer e implemenatre la possibilità di esportare le spreadsheet come vengono esportate le combo
+- [ ] non aprire una finestra per costi che scartano e far selezionare direttamente dalla mano
+- [ ] mettere una flag per segnalare che è una beta e modifica l’app in modo che la versione sia 1.0
 - [ ] * genesys support
 
 

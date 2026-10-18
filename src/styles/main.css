@@ -168,6 +168,8 @@ input[type="range"] { accent-color: var(--accent); }
 .home-head { grid-column: 1 / -1; display: flex; align-items: center; gap: 20px; padding: 26px 48px 0; position: relative; z-index: 2; }
 .home-head .logo { font-size: 40px; }
 .logo small { font: 600 16px var(--mono); color: var(--muted); letter-spacing: 0.04em; margin-left: 6px; }
+/* Versione beta: badge accanto al numero di versione. */
+.beta-badge { align-self: center; margin-left: 8px; padding: 2px 7px; font: 700 12px var(--mono); letter-spacing: 0.12em; color: var(--on-gold); background: var(--accent); }
 .home-user { margin-left: auto; text-align: right; font: 500 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
 .home-user b { display: block; color: var(--accent); font-size: 14px; }
 .btn.round { width: 44px; height: 44px; padding: 0; border-radius: 50%; clip-path: none; display: grid; place-items: center; font-size: 22px; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.5); color: var(--accent); }

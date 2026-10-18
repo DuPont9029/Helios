@@ -145,14 +145,15 @@ export class Board {
   }
 
   /** Un giocatore può vedere questa carta? */
-  canSee(player, loc, info) {
+  canSee(player, loc, info, seq = -1) {
     if (this.opts.reveal) return true;
     if (!info) return false;
     if (player === this.me) {
       return loc !== LOC.DECK;
     }
     if (loc & (LOC.MZONE | LOC.SZONE)) return !isFaceDown(info.position);
-    if (loc === LOC.HAND) return !!info.isPublic;
+    // Mano: carte rivelate (pubbliche) o appena mostrate al giocatore da un effetto.
+    if (loc === LOC.HAND) return !!info.isPublic || !!this.opts.isConfirmed?.(player, seq);
     if (loc === LOC.EXTRA) return !isFaceDown(info.position ?? POS.FACEDOWN);
     return loc === LOC.GRAVE || loc === LOC.REMOVED ? !isFaceDown(info.position ?? POS.FACEUP) || info.isPublic : false;
   }
@@ -187,6 +188,7 @@ export class Board {
     const visible = this.canSee(p, loc, info);
     const el = cardFace(visible ? info.code : 0, { faceDown: !visible });
     el.dataset.owner = p; // per lo sleeve del giocatore
+    if (this.side(p) === 1) el.classList.add("theirs"); // carte dell'avversario: girate verso di lui
     if (isFaceDown(info.position)) el.classList.add("facedown");
     if (isDefense(info.position) && loc === LOC.MZONE) el.classList.add("defense");
     if (info.status & STATUS_DISABLED && !isFaceDown(info.position)) el.classList.add("negated");
@@ -235,6 +237,7 @@ export class Board {
       const visible = top && this.canSee(p, loc, top);
       const el = cardFace(visible ? top.code : 0, { faceDown: !visible });
       el.dataset.owner = p;
+      if (this.side(p) === 1) el.classList.add("theirs");
       el.classList.add("pile-top");
       if (count > 1) el.style.setProperty("--stack", Math.min(6, Math.ceil(count / 6)));
       z.append(el);
@@ -250,7 +253,7 @@ export class Board {
     clear(el);
     el.style.setProperty("--n", hand.length);
     hand.forEach((info, i) => {
-      const visible = info && this.canSee(p, LOC.HAND, info);
+      const visible = info && this.canSee(p, LOC.HAND, info, i);
       const c = cardFace(visible ? info.code : 0, { faceDown: !visible });
       c.dataset.owner = p;
       c.style.setProperty("--i", i);
