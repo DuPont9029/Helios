@@ -8,7 +8,7 @@ import { Board, key } from "./board.js";
 import { Prompter } from "./prompts.js";
 import { ChainContext } from "./chain-context.js";
 import { seriesLabel } from "../../duel/series.js";
-import { describe } from "./describe.js";
+import { describe, cardList } from "./describe.js";
 import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { HINT, LOC, MSG, PHASE, PHASE_NAMES, POS } from "../../core/constants.js";
@@ -60,6 +60,12 @@ export class DuelView {
     // (MSG_PLAYER_HINT) e alle carte (MSG_CARD_HINT), es. "Non puoi Evocare Specialmente mostri dall'Extra Deck".
     this.lingering = [];
     this.build();
+    // Finestre aperte durante il duello (in <body>): si chiudono tutte uscendo dal duello.
+    this.modals = new Set();
+    this.modalObserver = new MutationObserver((list) => {
+      for (const r of list) for (const n of r.addedNodes) if (n.classList?.contains("modal-backdrop")) this.modals.add(n);
+    });
+    this.modalObserver.observe(document.body, { childList: true });
     // Sul documento: le finestre delle richieste stanno fuori dal campo (in <body>).
     this.contextHandler = (e) => this.onContextMenu(e);
     document.addEventListener("contextmenu", this.contextHandler);
@@ -213,8 +219,26 @@ export class DuelView {
     this.floatClocks = [floatClock("me"), floatClock("op")];
     this.floatClocks[0].firstChild.textContent = this.names[this.me];
     this.floatClocks[1].firstChild.textContent = this.names[1 - this.me];
-    this.floatBar = h("div.duel-float", this.floatClocks[1], h("div.chain-mode.float", h("span.chain-label", "Chain"), h("div.chain-btns", floatBtns)), this.floatClocks[0]);
+    // Effetti persistenti (si apre l'elenco) e istruzione del Combo Trainer, visibili anche con una finestra aperta.
+    this.floatEffects = h("button.lp-effects.float-effects", { hidden: true, title: "Lingering effects", onclick: () => this.showLingering() }, h("span.icon", { "aria-hidden": "true" }, "auto_awesome"), h("b", ""));
+    this.floatTrainer = h("div.float-trainer", { hidden: true });
+    this.floatBar = h(
+      "div.duel-float",
+      h("div.float-row", this.floatClocks[1], h("div.chain-mode.float", h("span.chain-label", "Chain"), h("div.chain-btns", floatBtns)), this.floatEffects, this.floatClocks[0]),
+      this.floatTrainer
+    );
     document.body.append(this.floatBar);
+    if (this.opts.trainerEl) {
+      const sync = () => {
+        const st = this.opts.trainerEl.querySelector(".trainer-status");
+        this.floatTrainer.hidden = !st?.textContent;
+        this.floatTrainer.textContent = st?.textContent ?? "";
+        this.floatTrainer.className = `float-trainer ${st?.className.replace("trainer-status", "") ?? ""}`;
+      };
+      this.trainerObserver = new MutationObserver(sync);
+      this.trainerObserver.observe(this.opts.trainerEl, { subtree: true, childList: true, characterData: true });
+      sync();
+    }
     this.resetChainMode();
 
     this.overlay = h("div.fx-layer");
@@ -497,20 +521,24 @@ export class DuelView {
     while (this.logEl.lastElementChild && this.logEl.lastElementChild !== mark) this.logEl.lastElementChild.remove();
   }
 
-  log(entry) {
-    if (!entry) return;
-    // I nomi delle carte sono cliccabili: mostrano la carta nel pannello dei dettagli.
-    const parts = (entry.parts ?? [entry.text]).map((p) =>
+  /** Parti di una riga del registro come nodi: i nomi delle carte sono cliccabili (mostrano la carta). */
+  logParts(parts) {
+    return parts.map((p) =>
       typeof p === "string"
         ? p
         : p.code
           ? h("span.log-card", { title: "Show card", onclick: () => this.hover(p.code) }, cardName(p.code))
           : "a card"
     );
-    const line = h(`div.log-line.${entry.cls || "plain"}${entry.sub ? ".sub" : ""}`, parts);
+  }
+
+  log(entry) {
+    if (!entry) return null;
+    const line = h(`div.log-line.${entry.cls || "plain"}${entry.sub ? ".sub" : ""}`, this.logParts(entry.parts ?? [entry.text]));
     this.logEl.append(line);
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
     this.logEl.scrollTop = this.logEl.scrollHeight;
+    return line;
   }
 
   addChat(name, text, mine = false) {
@@ -610,6 +638,23 @@ export class DuelView {
     this.el.querySelectorAll(".chain-badge").forEach((b) => b.remove());
   }
 
+  /**
+   * Dopo un ritorno indietro (Back): la catena torna quella dello stato ricostruito. Il core annuncia
+   * l'attivazione prima dei costi, quindi senza questo il segnalino di un'attivazione annullata resterebbe.
+   */
+  syncChain(chain = []) {
+    this.clearChainBadges();
+    this.chainLinks = [];
+    this.resolving = null;
+    this.chainCtx.chain = [];
+    chain.forEach((c, i) => {
+      const link = { code: c.code, controller: c.controller, location: c.location, sequence: c.sequence, chain_size: i + 1 };
+      this.chainLinks[i + 1] = { code: c.code, controller: c.controller };
+      this.chainCtx.chain.push({ code: c.code, player: c.controller, link: i + 1 });
+      this.showChainBadge(link);
+    });
+  }
+
   /** Carte rivelate: grandi al centro del campo per poco più di un secondo, come gli effetti in catena. */
   async confirmCards(cards, label = "Revealed") {
     const codes = cards.map((c) => c.code).filter(Boolean);
@@ -650,10 +695,10 @@ export class DuelView {
     }
   }
 
-  /** Codice della carta in una zona del campo (dall'ultimo stato disegnato), 0 se non si conosce. */
+  /** Codice della carta in una posizione (dall'ultimo stato disegnato): campo, Cimitero, bandite, mano, Extra. 0 se non si conosce. */
   codeAt(p, loc, seq) {
     const ps = this.board.snapshot?.players[p];
-    const list = loc & LOC.MZONE ? ps?.mzone : loc & LOC.SZONE ? ps?.szone : null;
+    const list = loc & LOC.MZONE ? ps?.mzone : loc & LOC.SZONE ? ps?.szone : loc & LOC.GRAVE ? ps?.grave : loc & LOC.REMOVED ? ps?.removed : loc & LOC.HAND ? ps?.hand : loc & LOC.EXTRA ? ps?.extra : null;
     return list?.[seq]?.code ?? 0;
   }
 
@@ -662,11 +707,25 @@ export class DuelView {
    * i bersagli sotto l'attivazione e, a fine anello, il riepilogo delle carte coinvolte.
    */
   logMessage(m) {
+    const canSee = (p, loc, pos) => this.canSeeMsg(p, loc, pos);
     const ctx = {
       codeAt: (p, loc, seq) => this.codeAt(p, loc, seq),
       chainCode: (n) => this.chainLinks[n]?.code ?? 0,
+      chainTargets: (n) => this.chainLinks[n]?.targets ?? [],
+      pendulum: !!this.pendulumSummon,
+      me: this.me,
     };
-    const entry = describe(m, this.names, (p, loc, pos) => this.canSeeMsg(p, loc, pos), ctx);
+    // Bersagli scelti all'attivazione: vanno sulla riga "Chain N: ... activates X" (e alla risoluzione).
+    if (m.type === MSG.BECOME_TARGET && !this.resolving && this.lastChain?.line.isConnected && m.cards.length) {
+      const parts = cardList(m.cards, canSee, ctx);
+      const link = this.chainLinks[this.lastChain.link];
+      if (link) link.targets = [...(link.targets ?? []), ...parts.filter((p) => p !== ", ")];
+      this.lastChain.line.append(this.lastChain.targeted ? ", " : " targeting ", ...this.logParts(parts));
+      this.lastChain.targeted = true;
+      this.logEl.scrollTop = this.logEl.scrollHeight;
+      return;
+    }
+    const entry = describe(m, this.names, canSee, ctx);
     switch (m.type) {
       case MSG.CHAINING:
         this.chainLinks[m.chain_size] = { code: m.code, controller: m.controller };
@@ -678,7 +737,10 @@ export class DuelView {
     if (entry) {
       if (this.resolving && m.type !== MSG.CHAIN_SOLVING && !["turn", "phase"].includes(entry.cls)) entry.sub = true;
       else if (m.type === MSG.BECOME_TARGET || m.type === MSG.CARD_SELECTED) entry.sub = true;
-      this.log(entry);
+      const line = this.log(entry);
+      // Riga dell'ultima attivazione: ci si aggiungono i bersagli che il core comunica subito dopo.
+      if (m.type === MSG.CHAINING) this.lastChain = { line, link: m.chain_size, targeted: false };
+      else if (m.type !== MSG.BECOME_TARGET) this.lastChain = null;
     }
     // Carte coinvolte dalla risoluzione (spostate, cambiate di posizione, equipaggiate...).
     if (this.resolving) {
@@ -737,6 +799,8 @@ export class DuelView {
       ui.hidden = !n;
       ui.lastChild.textContent = n || "";
     }
+    this.floatEffects.hidden = !this.lingering.length;
+    this.floatEffects.lastChild.textContent = this.lingering.length || "";
     if (this.lingeringModal) this.fillLingering(this.lingeringModal.body);
   }
 
@@ -806,7 +870,10 @@ export class DuelView {
       case MSG.SUMMONING:
         return this.splash(m.code, "Normal Summon", "summon");
       case MSG.SPSUMMONING:
-        return this.splash(m.code, "Special Summon", "spsummon");
+        return this.splash(m.code, this.pendulumSummon ? "Pendulum Summon" : "Special Summon", "spsummon");
+      case MSG.SPSUMMONED:
+        this.pendulumSummon = false; // fine della Pendulum Summon (vedi DuelSession)
+        return;
       case MSG.FLIPSUMMONING:
         return this.splash(m.code, "Flip Summon", "summon");
       case MSG.CHAINING:
@@ -894,7 +961,11 @@ export class DuelView {
     this.prompter.abort();
     this.closeActionMenu();
     this.lingeringModal?.close();
+    this.trainerObserver?.disconnect();
     this.floatBar.remove();
+    // Finestre del duello rimaste aperte (anche ridotte): non devono restare né ricomparire dopo l'uscita.
+    this.modalObserver.disconnect();
+    for (const b of this.modals) b.remove();
     this.el.remove();
   }
 }

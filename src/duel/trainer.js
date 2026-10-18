@@ -7,10 +7,11 @@ import { cardName, descString } from "../data/db.js";
 import { MSG, RESP, IDLE, BATTLE, PHASE, LOC, POS } from "../core/constants.js";
 import { availableZones } from "../core/zones.js";
 
-export const STEP_ACTIONS = { summon: "Normal Summon", spsummon: "Special Summon", set: "Set", activate: "Activate", endphase: "End Phase" };
-// Passi senza carta (il codice è un segnaposto).
-export const NO_CARD = new Set(["endphase"]);
+export const STEP_ACTIONS = { summon: "Normal Summon", spsummon: "Special Summon", pendulum: "Pendulum Summon", set: "Set", activate: "Activate", endphase: "End Phase" };
+// Passi senza carta (il codice è un segnaposto). La Pendulum Summon: le carte evocate sono una scelta del passo.
+export const NO_CARD = new Set(["endphase", "pendulum"]);
 const EP = "EP";
+const PEND = "PEND";
 
 // Eventi del duello che corrispondono ai tipi di passo.
 const EVENT_KIND = { [MSG.SUMMONING]: "summon", [MSG.SPSUMMONING]: "spsummon", [MSG.SET]: "set", [MSG.CHAINING]: "activate" };
@@ -30,6 +31,8 @@ export function actionOf(prompt, response) {
   if (!response) return null;
   if (prompt.type === MSG.SELECT_IDLECMD) {
     if (response.action === IDLE.TO_EP) return { kind: "endphase", code: EP };
+    // "Special Summon" della carta nella zona Pendulum = Pendulum Summon.
+    if (response.action === IDLE.SPSUMMON && prompt.special_summons?.[response.index]?.location & LOC.SZONE) return { kind: "pendulum", code: PEND };
     const kind = IDLE_KIND[response.action];
     if (!kind) return { kind: "other", code: 0 };
     return { kind, code: prompt[IDLE_LIST[response.action]]?.[response.index]?.code ?? 0 };
@@ -166,6 +169,10 @@ export function detailResponse(d, prompt, me) {
 function stepResponse(step, prompt) {
   if (prompt.type === MSG.SELECT_IDLECMD) {
     if (step.kind === "endphase") return prompt.to_ep ? { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 } : null;
+    if (step.kind === "pendulum") {
+      const index = (prompt.special_summons ?? []).findIndex((c) => c.location & LOC.SZONE);
+      return index >= 0 ? { type: RESP.SELECT_IDLECMD, action: IDLE.SPSUMMON, index } : null;
+    }
     const lists = step.kind === "set" ? [IDLE.MSET, IDLE.SSET] : Object.keys(IDLE_KIND).map(Number).filter((a) => IDLE_KIND[a] === step.kind);
     for (const action of lists) {
       const index = (prompt[IDLE_LIST[action]] ?? []).findIndex((c) => c.code === step.code);
@@ -185,6 +192,10 @@ function stepResponse(step, prompt) {
   }
   return null;
 }
+
+/** L'azione scelta è il passo atteso? (una Pendulum Summon può realizzare anche un passo "Special Summon"). */
+const sameAction = (act, want) =>
+  !!want && (act.kind === want.kind ? NO_CARD.has(want.kind) || act.code === want.code : act.kind === "pendulum" && want.kind === "spsummon");
 
 /** Copia di un passo senza dettagli vuoti (per salvare e condividere). */
 export const cleanStep = (s) => (s.details?.length ? { kind: s.kind, code: s.code, details: s.details.map((d) => ({ ...d })) } : { kind: s.kind, code: s.code });
@@ -215,11 +226,20 @@ export class ComboTrainer {
     // Dopo un passo sbagliato: torna a prima del passo precedente (lo si rifà), quando lo decide il giocatore.
     this.backBtn = h("button.btn.small.primary.trainer-back", { hidden: true, title: "Undo the wrong action and the step before it", onclick: () => this.goBack() }, "↶ Back");
     const strictBox = h("input", { type: "checkbox", checked: strict, onchange: (e) => { this.strict = e.target.checked; onStrictChange?.(this.strict); this.render(); } });
+    // Auto-play: il trainer gioca la combo da solo da questo punto (anche senza registrare un video).
+    this.autoBox = h("input", { type: "checkbox", checked: autoplay, onchange: (e) => { this.autoplay = e.target.checked; this.render(); this.onAutoplay?.(this.autoplay); } });
     this.el = h(
       "div.trainer-panel",
-      h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
-      h("label.check.trainer-strict", { title: "Strict mode: actions and choices that differ from the combo are blocked, and the trainer tells you what to do instead" }, strictBox, "Strict mode"),
-      this.status,
+      h(
+        "div.trainer-top",
+        h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
+        h(
+          "div.trainer-toggles",
+          h("label.check.trainer-strict", { title: "Strict mode: actions and choices that differ from the combo are blocked, and the trainer tells you what to do instead" }, strictBox, "Strict mode"),
+          h("label.check.trainer-strict", { title: "The trainer plays the combo by itself from here, with the choices saved in each step" }, this.autoBox, "Auto-play")
+        ),
+        this.status
+      ),
       this.list
     );
     this.render();
@@ -227,6 +247,19 @@ export class ComboTrainer {
 
   get done() {
     return !this.interrupted && this.next >= this.combo.steps.length;
+  }
+
+  /** Stato da ripristinare quando la sessione torna indietro (Back di una summon/attivazione, rewind). */
+  save() {
+    return {
+      next: this.next, active: this.active ? { ...this.active } : null, chosen: this.chosen, interrupted: this.interrupted,
+      used: [...this.used], stepMarks: [...this.stepMarks], completePending: !!this.completePending, pendulum: !!this.pendulum,
+    };
+  }
+
+  restore(st) {
+    Object.assign(this, { ...st, active: st.active ? { ...st.active } : null, used: new Set(st.used), stepMarks: [...st.stepMarks] });
+    this.render();
   }
 
   /** Il giocatore preme "Back": la sessione ricostruisce lo stato salvato (vedi DuelSession.loop). */
@@ -314,7 +347,9 @@ export class ComboTrainer {
       const act = actionOf(prompt, response);
       // Passare in catena non è mai bloccato: la carta del passo si può attivare anche in un momento successivo.
       if (!act) return null;
-      if (act.kind === want.kind && (NO_CARD.has(want.kind) || act.code === want.code)) return null;
+      if (sameAction(act, want)) return null;
+      // Attivazioni in catena dentro il passo in corso (es. l'effetto innescato dalla summon): permesse.
+      if (prompt.type === MSG.SELECT_CHAIN && this.expectedDetail()) return null;
       return `Strict mode: you must ${stepText(want)}.`;
     }
     const want = this.expectedDetail();
@@ -327,10 +362,15 @@ export class ComboTrainer {
     if (prompt.player !== this.me) return;
     const act = actionOf(prompt, response);
     if (act) {
+      const want = !this.interrupted && this.combo.steps[this.next];
+      const match = sameAction(act, want);
+      // Un'attivazione in catena che non è il passo successivo (es. l'effetto innescato dalla summon)
+      // fa parte del passo in corso: le sue scelte restano quelle attese.
+      if (!match && prompt.type === MSG.SELECT_CHAIN && this.active) return;
       this.chosen = act.kind === "endphase" ? EP : act.code;
       this.chosenMark = mark; // stato di prima dell'azione: in caso di errore si torna qui
-      const want = !this.interrupted && this.combo.steps[this.next];
-      this.active = want && act.kind === want.kind && (NO_CARD.has(want.kind) || act.code === want.code) && want.details?.length ? { step: this.next, pos: 0 } : null;
+      this.pendulum = act.kind === "pendulum";
+      this.active = match && want.details?.length ? { step: this.next, pos: 0 } : null;
       this.render();
       return;
     }
@@ -353,10 +393,18 @@ export class ComboTrainer {
   onMessages(messages) {
     for (const raw of messages) {
       if (raw.type === MSG.NEW_TURN) this.turnPlayer = raw.player;
+      if (raw.type === MSG.SPSUMMONED) this.pendulum = false;
       // End Phase del proprio turno: evento "endphase" (senza carta).
       const m = raw.type === MSG.NEW_PHASE && raw.phase === PHASE.END ? { type: "endphase", controller: this.turnPlayer, code: EP } : raw;
-      const kind = m.type === "endphase" ? "endphase" : EVENT_KIND[m.type];
+      let kind = m.type === "endphase" ? "endphase" : EVENT_KIND[m.type];
       if (!kind) continue;
+      // Pendulum Summon in corso: la prima summon realizza il passo "Pendulum Summon" (o lo "Special Summon"
+      // di quella carta), le altre fanno parte dello stesso passo.
+      if (kind === "spsummon" && this.pendulum && m.controller === this.me) {
+        const want = this.combo.steps[this.next];
+        if (this.chosen !== PEND) continue;
+        if (!(want?.kind === "spsummon" && want.code === m.code)) kind = "pendulum";
+      }
       if (m.controller !== this.me) {
         // Attivazione dell'avversario: se è una hand trap della combo, da qui in poi si gioca liberamente.
         const it = (this.combo.interrupts ?? []).find((x) => x.code === m.code && this.used.has(x) && !this.interrupted);
@@ -372,6 +420,7 @@ export class ComboTrainer {
       if (this.interrupted || this.done) continue;
       const want = this.combo.steps[this.next];
       if (want.kind === kind && (NO_CARD.has(kind) || want.code === m.code)) {
+        if (this.chosen === PEND) this.chosen = 0; // le altre summon della Pendulum Summon non sono passi
         this.stepMarks[this.next] = this.chosenMark;
         this.next++;
         this.backTarget = null; // il giocatore ha rimediato da solo
@@ -383,7 +432,8 @@ export class ComboTrainer {
         if (this.done && kind === "endphase") this.complete();
         else if (this.done) this.completePending = true;
         this.render();
-      } else if (m.code && m.code === this.chosen) {
+      } else if ((m.code && m.code === this.chosen) || (kind === "pendulum" && this.chosen === PEND)) {
+        if (this.chosen === PEND) this.chosen = 0;
         // Passo sbagliato: il pulsante "Back" annulla l'azione sbagliata e anche l'ultimo passo giusto,
         // che va rifatto (al primo passo solo l'azione sbagliata). La sessione ricostruisce lo stato.
         this.chosen = 0;
@@ -402,13 +452,18 @@ export class ComboTrainer {
    * Auto-play: risposta per il giocatore (passo o dettaglio della combo). undefined = il trainer non sa
    * cosa fare (la sessione usa l'IA per le scelte, o lascia giocare il giocatore se manca l'azione).
    */
+  stopAuto() {
+    this.autoplay = false;
+    if (this.autoBox) this.autoBox.checked = false;
+  }
+
   autoRespond(prompt) {
     if (!this.autoplay || this.interrupted || prompt.player !== this.me) return undefined;
     const want = this.expectedDetail();
     if (want && detailKind(prompt.type) === want.t) return detailResponse(want, prompt, this.me) ?? undefined;
     if (ACTION_PROMPTS.has(prompt.type)) {
       if (this.done) {
-        this.autoplay = false;
+        this.stopAuto();
         return undefined;
       }
       const r = stepResponse(this.combo.steps[this.next], prompt);
@@ -416,7 +471,7 @@ export class ComboTrainer {
       // In catena e nelle finestre di battaglia si passa finché non si può fare il passo.
       if (prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
       if (prompt.type === MSG.SELECT_BATTLECMD && prompt.to_m2) return { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_M2, index: 0 };
-      this.autoplay = false;
+      this.stopAuto();
       this.notify(`Auto-play stopped: "${stepText(this.combo.steps[this.next])}" is not possible now. Continue yourself.`, "error");
       return undefined;
     }
@@ -460,7 +515,8 @@ export class ComboRecorder {
     this.undoBtn = h("button.btn.small.ghost", { title: "Undo the last recorded action", onclick: () => this.goBack() }, "↶ Undo last");
     this.el = h(
       "div.trainer-panel",
-      h("div.trainer-head", h("b", `● Recording: ${combo.name}`), (this.btns = h("div.trainer-btns", this.undoBtn, h("button.btn.small.primary", { onclick: () => onFinish?.(this.result()) }, "Finish")))),
+      // Intestazione fissa: "Finish" resta visibile anche scorrendo i passi registrati (la spiegazione scorre con loro).
+      h("div.trainer-top", h("div.trainer-head", h("b", `● Recording: ${combo.name}`), (this.btns = h("div.trainer-btns", this.undoBtn, h("button.btn.small.primary", { onclick: () => onFinish?.(this.result()) }, "Finish"))))),
       h("div.trainer-status", "Play the combo: every action you choose becomes a step, with the cards, zones and answers you pick. Press Finish when done."),
       this.list
     );
@@ -493,6 +549,22 @@ export class ComboRecorder {
   check() { return null; }
   autoRespond() { return undefined; }
 
+  save() {
+    return {
+      steps: this.steps.map((x) => ({ ...x, details: [...x.details] })), marks: [...this.marks], pending: [...this.pending], chosen: this.chosen,
+      // Le scelte in corso sono quelle dell'ultimo passo registrato (stesso array)?
+      pendingIsLast: !!this.steps.length && this.pending === this.steps.at(-1).details,
+    };
+  }
+
+  restore(st) {
+    this.steps = st.steps.map((x) => ({ ...x, details: [...x.details] }));
+    this.marks = [...st.marks];
+    this.pending = st.pendingIsLast ? this.steps.at(-1).details : [...st.pending];
+    this.chosen = st.chosen;
+    this.render();
+  }
+
   onResponse(prompt, response, mark) {
     if (prompt.player !== this.me) return;
     const act = actionOf(prompt, response);
@@ -514,10 +586,12 @@ export class ComboRecorder {
     for (const raw of messages) {
       if (raw.type === MSG.NEW_TURN) this.turnPlayer = raw.player;
       const m = raw.type === MSG.NEW_PHASE && raw.phase === PHASE.END ? { type: "endphase", controller: this.turnPlayer, code: EP } : raw;
-      const kind = m.type === "endphase" ? "endphase" : EVENT_KIND[m.type];
-      if (!kind || m.controller !== this.me || !m.code || m.code !== this.chosen) continue;
+      let kind = m.type === "endphase" ? "endphase" : EVENT_KIND[m.type];
+      // Pendulum Summon: un solo passo, con le carte evocate come scelta.
+      if (kind === "spsummon" && this.chosen === PEND && m.controller === this.me) kind = "pendulum";
+      else if (!kind || m.controller !== this.me || !m.code || m.code !== this.chosen) continue;
       // Lo stesso array: le scelte fatte durante la risoluzione si aggiungono ancora a questo passo.
-      this.steps.push({ kind, code: kind === "endphase" ? 0 : m.code, details: this.pending });
+      this.steps.push({ kind, code: NO_CARD.has(kind) ? 0 : m.code, details: this.pending });
       this.marks.push(this.chosenMark);
       this.chosen = 0;
       this.notify(`● Recorded: ${stepText(this.steps.at(-1))}`, "ok");
@@ -552,7 +626,7 @@ export function cleanSetup(s) {
   if (!s || typeof s !== "object") return undefined;
   const codes = (a) => (Array.isArray(a) ? a.filter((x) => Number.isInteger(x)).slice(0, 40) : []);
   const field = (a) => (Array.isArray(a) ? a.filter((x) => x && Number.isInteger(x.code) && ZONE_KEYS.test(x.zone)).map((x) => ({ code: x.code, zone: x.zone, pos: ["atk", "def", "set"].includes(x.pos) ? x.pos : "atk" })) : []);
-  const side = (x = {}, opp) => ({ field: field(x.field), gy: codes(x.gy), banished: codes(x.banished), ...(opp ? { hand: codes(x.hand), deckTop: codes(x.deckTop), extra: codes(x.extra) } : {}) });
+  const side = (x = {}, opp) => ({ field: field(x.field), gy: codes(x.gy), banished: codes(x.banished), deckTop: codes(x.deckTop), ...(opp ? { hand: codes(x.hand), extra: codes(x.extra) } : {}) });
   return { me: side(s.me, false), opp: side(s.opp, true) };
 }
 

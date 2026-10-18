@@ -18,6 +18,8 @@ export function openModal({ title, body = [], actions = [], dismissable = true, 
   const box = h(`div.modal.${className || "plain"}`, head, bodyEl, footer);
   const restore = minimizable && h("button.modal-restore", { onclick: () => minimize(false) }, h("span.icon", "open_in_full"), h("span", title || "Show the choice"));
   const backdrop = h("div.modal-backdrop", box, restore);
+  // "top": sopra a tutte le altre finestre (es. la conferma della resa durante una scelta).
+  if (/\btop\b/.test(className)) backdrop.classList.add("top");
   let closed = false;
   const close = (value) => {
     if (closed) return;
@@ -53,10 +55,10 @@ export function alertModal(title, message) {
 }
 
 /** danger: il pulsante di conferma è rosso (azioni distruttive come l'eliminazione). */
-export function confirmModal(title, message, yes = "Yes", no = "No", { danger = false } = {}) {
+export function confirmModal(title, message, yes = "Yes", no = "No", { danger = false, top = false } = {}) {
   return openModal({
     title,
-    className: danger ? "danger" : "",
+    className: [danger ? "danger" : "", top ? "top" : ""].filter(Boolean).join(" "),
     body: [h("p", message)],
     actions: [{ label: no, value: false }, { label: yes, value: true, primary: !danger, danger }],
   }).result.then((v) => v === true);

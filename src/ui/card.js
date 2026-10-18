@@ -50,13 +50,29 @@ export function cardFace(code, opts = {}) {
     return el;
   }
   el.classList.add(frameClass(c));
-  const src = imageUrl(c.code);
-  if (failed.has(src)) {
+  // Immagini da provare: il codice della carta e, per le stampe con codice alternativo (es. Dark Magician
+  // Girl 38033120), il codice base, che è quello con cui le pubblica ygoprodeck.
+  const sources = [...new Set([c.code, c.alias].filter(Boolean).map(imageUrl))].filter((u) => !failed.has(u));
+  if (!sources.length) {
     el.append(fallbackFace(c));
   } else {
-    const img = h("img", { src, alt: c.name, loading: "lazy", draggable: false, decoding: "async" });
+    const img = h("img", { src: sources[0], alt: c.name, loading: "lazy", draggable: false, decoding: "async" });
+    let i = 0;
+    let retried = false;
     img.onerror = () => {
-      failed.add(src);
+      // Un secondo tentativo dopo poco (il server delle immagini a volte rifiuta le richieste a raffica),
+      // poi l'immagine alternativa e infine la cornice disegnata in CSS.
+      if (!retried) {
+        retried = true;
+        setTimeout(() => img.isConnected && (img.src = `${sources[i]}${sources[i].includes("?") ? "&" : "?"}r=1`), 1200);
+        return;
+      }
+      failed.add(sources[i]);
+      if (++i < sources.length) {
+        retried = false;
+        img.src = sources[i];
+        return;
+      }
       img.replaceWith(fallbackFace(c));
     };
     el.append(img);
