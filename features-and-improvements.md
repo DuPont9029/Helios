@@ -43,4 +43,16 @@
 - [ ] implementare una Hypergeometric Distribution Probability Calculator (da abbreviare come HDPC) necessaria a capire la probabilità di aprire certe carte nella tua mano iniziale prendendo ispirazione da https://stattrek.com/online-calculator/hypergeometric e https://www.deck-probability.com/ che funzionano bene.
 - [ ] Raggruppare le sezioni del menu principale (vs cpu, test duel, combo trainer e Hypergeometric Distribution Probability Calculator) in una sola sezione chiamata training.
 
+- [ ] Staccare le combo da una decklist e chiedere cosa serva a nel deck e extradeck per compiere la combo dal combo trainer editor riconoscere le carte necessarie nel dalla registrazione.
+
+- [ ] Branching combos nel combo trainer per vedere versioni diverse della stessa combo magari con carte diverse necessarie nel deck o extradeck.
+
+- [ ] Schema per la visualizzazione della combo (includere l'opzione di mettere note per il giocatore quando si crea una combo nuova) (prendere ad esempio la sezione combo di https://www.masterduelmeta.com/combos-and-counters#combos) e fork delle combo, versioni diverse con leggere differenze.
+
+- [ ] Aggiungere una sezione spreadsheets che permette di creare spreadsheets che includono più combo per uno stesso deck con diversi starter e permettere di aggiungere combo ad essa o rimuoverle permettendo sia di registranrne o programmarne di nuove che di prenderne di già esistenti (Prendere ispirazione da https://www.masterduelmeta.com/combos-and-counters#spreadsheets).
+
+- [ ] Integrare nella sezione spredsheets modo di aggiungere una sample decklist.
+
+- [ ] Far calcolare a una spreadsheet tutte le carte necessarie per quel deck usando le informazinìoni su le carte necessarie per le combo individuali.
+
 
