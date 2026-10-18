@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Helios · Trailer</title>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,400;0,500;0,600;0,700;1,700&family=JetBrains+Mono:wght@500;600;700&display=block" rel="stylesheet">
+<style>
+:root { --bg:#07070a; --ink:#eef0f6; --muted:#8b90a0; --faint:#5d6272; --accent:#38c6ff; --soft:#9ae2ff; --red:#d92338; --line-d:#14161f;
+  --display:"Chakra Petch",system-ui,sans-serif; --mono:"JetBrains Mono",ui-monospace,monospace; }
+* { box-sizing:border-box; margin:0; padding:0; }
+html,body { background:#000; height:100%; overflow:hidden; }
+body { display:grid; place-items:center; font-family:var(--display); }
+#stage { position:relative; width:1920px; height:1080px; overflow:hidden; background:var(--bg); flex:none; transform-origin:center; }
+.abs { position:absolute; }
+.scene { position:absolute; inset:0; opacity:0; display:none; }
+#glow { position:absolute; inset:-200px; background:radial-gradient(900px 600px at var(--gx,70%) var(--gy,40%), rgba(56,198,255,.12), transparent 70%), radial-gradient(800px 600px at 10% 90%, rgba(217,35,56,.22), transparent 70%); }
+#rules { position:absolute; inset:-400px; opacity:.5; background-image:repeating-linear-gradient(115deg, transparent 0, transparent 62px, var(--line-d) 62px, var(--line-d) 64px); }
+#vignette { position:absolute; inset:0; background:radial-gradient(ellipse at center, transparent 65%, rgba(0,0,0,.45)); pointer-events:none; }
+
+.cap { position:absolute; left:130px; top:235px; width:580px; }
+.cap .k { font:700 19px/1 var(--mono); letter-spacing:.2em; text-transform:uppercase; color:var(--accent); display:flex; align-items:center; gap:16px; }
+.cap .k i { display:block; height:2px; width:44px; background:var(--accent); transform-origin:left; }
+.cap .h { margin-top:28px; font:700 76px/1.02 var(--display); letter-spacing:-.01em; text-transform:uppercase; color:var(--ink); }
+.cap .h .w { display:inline-block; margin-right:.22em; }
+.cap .subs { position:relative; margin-top:32px; }
+.cap .s { position:absolute; left:0; top:0; font:400 27px/1.45 var(--display); color:var(--muted); width:560px; }
+.cap .s b { color:var(--ink); font-weight:600; }
+.chips { position:absolute; left:130px; top:840px; display:flex; gap:12px; flex-wrap:wrap; width:600px; }
+.chip { font:600 15px/1 var(--mono); letter-spacing:.06em; text-transform:uppercase; color:var(--soft); border:1.5px solid rgba(56,198,255,.4); background:rgba(56,198,255,.07); padding:11px 16px; white-space:nowrap;
+  clip-path:polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px)); }
+
+.win { position:absolute; left:760px; top:168px; width:1080px; background:#0b0c12; overflow:hidden;
+  box-shadow:0 50px 120px -20px rgba(0,0,0,.85), 0 0 0 1px rgba(56,198,255,.25), 0 0 60px rgba(56,198,255,.08); }
+.win .bar { height:46px; background:#121216; border-bottom:1px solid #1f2230; display:flex; align-items:center; gap:9px; padding:0 18px; }
+.win .bar .d { width:12px; height:12px; border-radius:50%; background:#2a2d3a; }
+.win .bar .url { margin-left:16px; flex:1; height:30px; background:#07070a; border:1px solid #1f2230; display:flex; align-items:center; padding:0 14px; font:500 14px var(--mono); color:#6c7182; gap:8px; }
+.win .bar .url b { color:var(--ink); font-weight:600; }
+.win .vp { position:relative; width:1080px; height:675px; overflow:hidden; background:#07070a; }
+.win .vp img { position:absolute; left:0; top:0; width:1080px; height:675px; transform-origin:0 0; }
+.skip { position:absolute; right:16px; top:16px; z-index:5; font:700 14px var(--mono); color:var(--bg); background:var(--accent); padding:8px 13px; opacity:0; letter-spacing:.04em; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+
+#fade { position:absolute; inset:0; background:#000; opacity:0; z-index:100; pointer-events:none; }
+#hud { position:fixed; left:12px; bottom:10px; color:#777; font:12px var(--mono); }
+.card-back { position:absolute; width:150px; height:222px; background:url("card_back.jpg") center / cover; border-radius:4px; box-shadow:0 20px 40px rgba(0,0,0,.55); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="glow"></div><div id="rules"></div>
+
+  <div class="scene" id="s-open">
+    <div id="backs"></div>
+    <div class="abs" style="left:0;right:0;top:330px;text-align:center">
+      <div class="open-l" style="font:600 66px/1.45 var(--display);color:var(--ink)">You found a new combo.</div>
+      <div class="open-l" style="font:600 66px/1.45 var(--display);color:var(--ink)">You get Ash Blossomed at locals.</div>
+      <div class="open-l" style="font:700 66px/1.45 var(--display);color:var(--accent)">Practice it until it sticks.</div>
+    </div>
+  </div>
+
+  <div class="scene" id="s-logo">
+    <div class="abs" id="logo-ring" style="left:960px;top:400px;width:10px;height:10px;border:2px solid var(--accent);transform:rotate(45deg)"></div>
+    <svg class="abs" id="logo-big" style="left:885px;top:300px;width:150px;height:150px"><use href="#mark"/></svg>
+    <div class="abs" id="logo-word" style="left:0;right:0;top:480px;text-align:center;font:700 170px/1 var(--display);letter-spacing:.02em;color:var(--ink)"></div>
+    <div class="abs" id="logo-tag" style="left:0;right:0;top:690px;text-align:center;font:500 34px/1.3 var(--display);color:var(--muted)">A free Yu-Gi-Oh! client that <span style="color:var(--ink);font-weight:700">trains you</span>.</div>
+  </div>
+
+  <div class="scene" id="s-end">
+    <svg class="abs" id="end-logo" style="left:910px;top:110px;width:100px;height:100px"><use href="#mark"/></svg>
+    <div class="abs" id="end-word" style="left:0;right:0;top:235px;display:flex;justify-content:center;align-items:baseline;gap:22px;font:700 140px/1 var(--display);letter-spacing:.02em;color:var(--ink)"><span>HELI<span style="color:var(--accent)">OS</span></span><span style="font:600 34px var(--mono);color:var(--muted);letter-spacing:.04em">v1.0</span><span style="font:700 22px/1 var(--mono);letter-spacing:.14em;color:var(--bg);background:var(--accent);padding:6px 12px">BETA</span></div>
+    <div class="abs" id="end-tag" style="left:0;right:0;top:410px;text-align:center;font:600 42px var(--display);color:var(--ink)">Record it. <span style="color:var(--accent)">Practice it.</span> Share it.</div>
+    <div class="abs" id="end-feat" style="left:0;right:0;top:492px;text-align:center;font:600 17px var(--mono);letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">Deck builder · Trainer · Strict mode · Auto-play · Spreadsheets · HDPC · P2P duels</div>
+    <div class="abs" id="end-free" style="left:0;right:0;top:575px;text-align:center;font:700 58px/1 var(--display);text-transform:uppercase;color:var(--accent)">Free. Open source. In your browser.</div>
+    <div class="abs" id="end-cta" style="left:0;right:0;top:680px;text-align:center"><span style="display:inline-block;font:700 24px var(--mono);letter-spacing:.06em;color:var(--bg);background:var(--accent);padding:19px 34px;clip-path:polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 16px 100%, 0 calc(100% - 16px))">dupont9029.github.io/Helios</span></div>
+    <div class="abs" id="end-by" style="left:0;right:0;top:800px;text-align:center;font:500 24px/1.5 var(--display);color:var(--ink)">Created by: <b style="font-weight:700">DuPont9029</b> <span style="color:var(--accent)">||</span> <b style="font-weight:700">David Novelli</b><br><b style="font-weight:700">GodOfAllJeffery</b> <span style="color:var(--accent)">||</span> <b style="font-weight:700">Elio Felli</b></div>
+    <div class="abs" id="end-url" style="left:0;right:0;top:886px;text-align:center;font:500 18px var(--mono);color:var(--faint)">github.com/DuPont9029/Helios</div>
+    <div class="abs" id="end-fine" style="left:0;right:0;top:1018px;text-align:center;font:500 15px var(--mono);color:var(--faint)">Unofficial, non-profit client. Yu-Gi-Oh! is a trademark of Konami.</div>
+  </div>
+
+  <div id="apps"></div>
+  <div id="vignette"></div>
+  <div id="fade"></div>
+</div>
+<svg width="0" height="0" style="position:absolute"><defs><symbol id="mark" viewBox="0 0 32 32"><path d="M16 2 30 16 16 30 2 16Z" fill="#38c6ff"/><path d="M16 8 24 16 16 24 8 16Z" fill="#07070a"/></symbol></defs></svg>
+<div id="hud"></div>
+<script src="work/timeline.js"></script>
+<script>
+// ───────── timeline (1 battuta = 2,4 s)
+const BAR = 2.4;
+const BARS = [3, 2, 4, 5, 14, 6, 6, 5, 6, 5, 3, 4];
+const IDS = ["s-open", "s-logo", "s-home", "s-deck", "s-rec", "s-edit", "s-prac", "s-auto", "s-sheet", "s-hdpc", "s-online", "s-end"];
+const START = []; { let a = 0; for (const b of BARS) { START.push(a); a += b * BAR; } }
+const TOTAL = START.at(-1) + BARS.at(-1) * BAR;
+
+// ───────── scene con l'app vera: clip, didascalie, zoom [t, scala, x, y] in pixel della registrazione (1280×800)
+const APP = {
+  "s-home": { clip: "home", k: "01 · Home", h: "Just open the browser.",
+    subs: [[0, "The <b>EDOPro engine</b> runs in WebAssembly, right in the page. No download, no account. Install it as an app if you like."]],
+    chips: ["EDOPro engine · WASM", "Installable app", "20,000+ cards"], zoom: [[0, 1, 640, 400]] },
+  "s-deck": { clip: "deck", k: "02 · Deck builder", h: "Build your Deck.",
+    subs: [[0, "Search every card with filters and banlists. Import from <b>Omega</b>, <b>.ydk</b> or <b>ydke://</b>, export the same way."]],
+    chips: ["TCG · OCG banlists", "Omega · YDK · ydke"], zoom: [[0, 1, 640, 400], [4.5, 1, 640, 400], [5.5, 1.3, 980, 400], [9.5, 1.3, 980, 400], [10.4, 1, 640, 400]] },
+  "s-rec": { clip: "record", k: "03 · Trainer", h: "Play the combo once.",
+    subs: [[0, "Pick a starting decklist and hand, then <b>just play</b>: the Trainer records every Summon, activation and choice."], [14, "Targets, materials, zones, positions: even the cards taken <b>from the Deck</b>, so it knows how many copies you need."], [27, "Every choice becomes a <b>sub-step</b> you can read and edit."]],
+    chips: ["Record by playing", "Precise choices", "Cards needed"], zoom: [[0, 1, 640, 400], [29, 1, 640, 400], [30.2, 1.35, 560, 560], [33, 1.35, 560, 560]] },
+  "s-edit": { clip: "edit", k: "04 · Combo editor", h: "Plan for the hand trap.",
+    subs: [[0, "Fold, reorder and edit the steps. Add notes for the player."], [7.2, "Put <b>Ash Blossom</b> in the opponent's hand and choose after which step they use it."]],
+    chips: ["Sub-steps", "Notes", "Starting board state"], zoom: [[0, 1, 640, 400], [10, 1, 640, 400], [11, 1.4, 900, 520], [14.4, 1.4, 900, 520]] },
+  "s-prac": { clip: "practice", k: "05 · Practice", h: "Then they Ash you.",
+    subs: [[0, "<b>Strict mode</b> blocks every move that is not the combo."], [9.2, "The opponent drops the hand trap at the right moment: now find a way around it."]],
+    chips: ["Strict mode", "Hand traps", "Back & retry"], zoom: [[0, 1, 640, 400], [10.9, 1, 640, 400], [11.7, 1.3, 660, 370], [14.4, 1.3, 660, 370]] },
+  "s-auto": { clip: "auto", k: "06 · Auto-play", h: "Watch it, then play it.",
+    subs: [[0, "The Trainer plays the combo by itself and labels the final board. Export it as a <b>video</b> or a share code."]],
+    chips: ["Auto-play", "Board tags", "Video export"], zoom: [[0, 1, 640, 400], [9.6, 1, 640, 400], [10.5, 1.45, 760, 360], [12, 1.45, 760, 360]] },
+  "s-sheet": { clip: "sheet", k: "07 · Spreadsheets", h: "A combo guide for your Deck.",
+    subs: [[0, "Combos grouped by starter, with their variants and a sample decklist."], [6.6, "Every card you need, checked against the list. Share it all with <b>one code</b>."]],
+    chips: ["Variants", "Cards needed", "HELIOS-SHEET codes"], zoom: [[0, 1, 640, 400]] },
+  "s-hdpc": { clip: "hdpc", k: "08 · HDPC", h: "Will you open it?",
+    subs: [[0, "The <b>hypergeometric calculator</b> gives you the odds of opening your starters, picked straight from your Deck."]],
+    chips: ["Groups & hands", "Exact odds"], zoom: [[0, 1, 640, 400], [8.6, 1, 640, 400], [9.6, 1.4, 900, 330], [12, 1.4, 900, 330]] },
+  "s-online": { clip: "online", k: "09 · Online", h: "Duel your friends.",
+    subs: [[0, "Send a room code: the Duel runs <b>peer-to-peer</b>, straight between two browsers. Best of 3 with side decking."]],
+    chips: ["P2P · WebRTC", "No game server", "Best of 3"], zoom: [[0, 1, 640, 400]] },
+};
+
+// ───────── utilità
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const cl = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const P = (t, a, b) => cl((t - a) / (b - a));
+const eo = (x) => 1 - Math.pow(1 - x, 3);
+const eo5 = (x) => 1 - Math.pow(1 - x, 5);
+const eio = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const back = (x) => { const c1 = 1.5, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+const css = (el, o) => { for (const k in o) el.style[k] = o[k]; };
+const show = (el, p, dy = 30) => css(el, { opacity: p, transform: `translateY(${(1 - p) * dy}px)` });
+const H = (html) => { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; };
+
+// ───────── costruzione delle scene con l'app
+for (const [id, a] of Object.entries(APP)) {
+  const clip = CLIPS[a.clip];
+  // tagli: dove il tempo sorgente salta in avanti più di mezzo secondo
+  a.cuts = [];
+  for (let i = 1; i < clip.src.length; i++) { const jump = clip.src[i] - clip.src[i - 1]; if (jump > 0.6) a.cuts.push([i / 30, Math.round(jump)]); }
+  const el = H(`<div class="scene" id="${id}">
+    <div class="cap"><div class="k"><i></i><span>${a.k}</span></div>
+      <div class="h">${a.h.split(" ").map((w) => `<span class="w">${w}</span>`).join("")}</div>
+      <div class="subs">${a.subs.map(([, s]) => `<div class="s">${s}</div>`).join("")}</div></div>
+    <div class="chips">${a.chips.map((c) => `<span class="chip">${c}</span>`).join("")}</div>
+    <div class="win"><div class="bar"><span class="d"></span><span class="d"></span><span class="d"></span><div class="url">🔒 <span>dupont9029.github.io/<b>Helios</b></span></div></div>
+      <div class="vp"><img alt=""><div class="skip"></div></div></div>
+  </div>`);
+  $("#apps").appendChild(el);
+}
+
+// carte coperte dell'apertura
+const BACKS = Array.from({ length: 14 }, (_, i) => {
+  const r = (n) => { const x = Math.sin(i * 97.13 + n * 13.7) * 43758.5453; return x - Math.floor(x); };
+  const el = H(`<div class="card-back"></div>`);
+  $("#backs").appendChild(el);
+  return { el, x: r(1) * 1920 - 75, y: r(2) * 1080 - 110, rot: r(3) * 50 - 25, sp: 0.4 + r(4), z: 0.55 + r(5) * 0.5 };
+});
+$("#logo-word").innerHTML = "HELIOS".split("").map((c, i) => `<span style="display:inline-block;${i >= 4 ? "color:var(--accent)" : ""}">${c}</span>`).join("");
+
+// ───────── animazione delle didascalie
+function caption(sc, lt, dur, subTimes) {
+  const cap = $(".cap", sc); if (!cap) return;
+  const out = 1 - P(lt, dur - 0.45, dur - 0.05);
+  const pk = eo(P(lt, 0.1, 0.7));
+  css($(".k", cap), { opacity: pk * out, transform: `translateX(${(1 - pk) * -24}px)` });
+  $(".k i", cap).style.transform = `scaleX(${eo(P(lt, 0.1, 0.9))})`;
+  $$(".w", cap).forEach((w, i) => { const p = eo5(P(lt, 0.25 + i * 0.07, 1.05 + i * 0.07)); css(w, { opacity: p * out, transform: `translateY(${(1 - p) * 46}px)`, filter: `blur(${(1 - p) * 10}px)` }); });
+  const subs = $$(".s", cap);
+  subs.forEach((s, i) => {
+    const a = subTimes[i] + (i === 0 ? 0.9 : 0), b = subTimes[i + 1] ?? dur;
+    const pin = eo(P(lt, a, a + 0.6)), pout = i < subs.length - 1 ? P(lt, b - 0.35, b) : 0;
+    css(s, { opacity: pin * (1 - pout) * out, transform: `translateY(${(1 - pin) * 18 - pout * 14}px)` });
+  });
+  $$(".chip", sc).forEach((c, i) => { const p = back(P(lt, 1.6 + i * 0.12, 2.2 + i * 0.12)); css(c, { opacity: cl(p) * out, transform: `translateY(${(1 - p) * 20}px)` }); });
+}
+
+function zoomAt(keys, t) {
+  let a = keys[0], b = keys[0];
+  for (let i = 0; i < keys.length; i++) { if (keys[i][0] <= t) { a = keys[i]; b = keys[i + 1] ?? keys[i]; } }
+  const p = b === a ? 0 : eio(P(t, a[0], b[0]));
+  return [lerp(a[1], b[1], p), lerp(a[2], b[2], p), lerp(a[3], b[3], p)];
+}
+
+const pending = [];
+function updateApp(id, el, lt, dur) {
+  const a = APP[id], clip = CLIPS[a.clip];
+  caption(el, lt, dur, a.subs.map(([t]) => t));
+  const win = $(".win", el);
+  const p = eo5(P(lt, 0.15, 1.15)), q = P(lt, dur - 0.45, dur - 0.05);
+  css(win, { opacity: cl(p) * (1 - q), transform: `translate(${(1 - p) * 80}px, ${(1 - p) * 30}px) perspective(2400px) rotateY(${(1 - p) * -10}deg) scale(${1 - q * 0.03})` });
+  const i = Math.min(clip.frames.length - 1, Math.max(0, Math.round(lt * 30)));
+  const img = $("img", el);
+  if (img.dataset.src !== clip.frames[i]) {
+    img.dataset.src = clip.frames[i];
+    img.src = clip.frames[i];
+    pending.push(img.decode().catch(() => {}));
+  }
+  const [s, fx, fy] = zoomAt(a.zoom, lt);
+  const d = 1080 / 1280, W = 1080, Hh = 675;
+  const tx = cl(W / 2 - fx * d * s, W - W * s, 0), ty = cl(Hh / 2 - fy * d * s, Hh - Hh * s, 0);
+  img.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  // badge sulle attese tagliate (caricamento del motore, risoluzione...)
+  const skip = $(".skip", el);
+  const cut = a.cuts.find(([t]) => lt >= t - 0.05 && lt < t + 1.1);
+  if (cut) { skip.textContent = `⏩ ${cut[1]} s`; skip.style.opacity = Math.min(P(lt, cut[0] - 0.05, cut[0] + 0.15), 1 - P(lt, cut[0] + 0.8, cut[0] + 1.1)); }
+  else skip.style.opacity = 0;
+}
+
+const UPDATE = {
+  "s-open"(t) {
+    $$(".open-l").forEach((l, i) => { const a = 0.4 + i * 1.5, p = eo(P(t, a, a + 1.1)), q = eio(P(t, 5.4, 6.4)); css(l, { opacity: p * (1 - q), transform: `translateY(${(1 - p) * 30 - q * 20}px)`, filter: `blur(${(1 - p) * 8 + q * 10}px)` }); });
+    const conv = eio(P(t, 5.6, 7.2));
+    BACKS.forEach((s, i) => {
+      const x = s.x + Math.sin(t * 0.4 * s.sp + i) * 30, y = s.y - t * 18 * s.sp;
+      css(s.el, { transform: `translate(${lerp(x, 885, conv)}px, ${lerp(y, 430, conv)}px) rotate(${lerp(s.rot + t * 3 * s.sp, 45, conv)}deg) scale(${lerp(s.z, 0.05, conv)})`, opacity: cl(P(t, 0, 1.2) * 0.55 + conv * 0.45) * (1 - P(t, 6.8, 7.2)), filter: `blur(${(1 - s.z) * 6 * (1 - conv)}px)` });
+    });
+  },
+  "s-logo"(t, d) {
+    const p = back(P(t, 0, 0.8));
+    css($("#logo-big"), { transform: `scale(${lerp(0.2, 1, p)}) rotate(${(1 - eo(P(t, 0, 0.8))) * -45}deg)`, opacity: cl(p * 2) });
+    const r = eo(P(t, 0.05, 1.6));
+    css($("#logo-ring"), { transform: `translate(-50%,-50%) rotate(45deg) scale(${r * 90})`, opacity: (1 - r) * 0.7 });
+    $$("#logo-word span").forEach((s, i) => { const q = eo5(P(t, 0.5 + i * 0.07, 1.3 + i * 0.07)); css(s, { opacity: q, transform: `translateY(${(1 - q) * 60}px)`, filter: `blur(${(1 - q) * 12}px)` }); });
+    show($("#logo-tag"), eo(P(t, 1.3, 2.1)), 24);
+    css($("#s-logo"), { transform: `scale(${1 + eio(P(t, d - 0.6, d)) * 0.08})` });
+  },
+  "s-end"(t) {
+    const l = back(P(t, 0.1, 0.8)); css($("#end-logo"), { transform: `scale(${l})`, opacity: cl(l * 2) });
+    show($("#end-word"), eo5(P(t, 0.4, 1.3)), 50);
+    show($("#end-tag"), eo5(P(t, 1.2, 2.0)), 30);
+    show($("#end-feat"), eo(P(t, 1.8, 2.6)), 16);
+    const f = back(P(t, 2.6, 3.3)); css($("#end-free"), { opacity: cl(f), transform: `scale(${0.85 + f * 0.15})` });
+    const c = back(P(t, 3.4, 4.0)); css($("#end-cta"), { opacity: cl(c), transform: `scale(${0.8 + c * 0.2})` });
+    show($("#end-by"), eo(P(t, 4.4, 5.1)), 12);
+    show($("#end-url"), eo(P(t, 4.8, 5.4)), 10);
+    show($("#end-fine"), eo(P(t, 5.0, 5.6)), 6);
+  },
+};
+
+function renderAt(T) {
+  T = cl(T, 0, TOTAL - 1e-3);
+  IDS.forEach((id, i) => {
+    const el = document.getElementById(id), s = START[i], d = BARS[i] * BAR;
+    if (!(T >= s - 0.001 && T < s + d)) { el.style.display = "none"; return; }
+    el.style.display = "block";
+    const lt = T - s;
+    el.style.opacity = (i === 0 ? P(lt, 0, 0.6) : P(lt, 0, 0.25)) * (1 - P(lt, d - 0.12, d));
+    if (APP[id]) updateApp(id, el, lt, d); else UPDATE[id].call(el, lt, d);
+  });
+  $("#glow").style.setProperty("--gx", 60 + Math.sin(T * 0.13) * 15 + "%");
+  $("#glow").style.setProperty("--gy", 40 + Math.cos(T * 0.11) * 12 + "%");
+  $("#rules").style.transform = `translateX(${(T * 8) % 140}px)`;
+  $("#fade").style.opacity = Math.max(1 - P(T, 0, 0.8), P(T, TOTAL - 1.2, TOTAL));
+}
+// Retro delle carte dell'apertura: ogni fotogramma aspetta che l'immagine sia caricata (se manca, il rendering si ferma).
+const CARD_BACK = new Image();
+CARD_BACK.src = "card_back.jpg";
+window.seek = async (T) => { pending.length = 0; renderAt(T); await Promise.all([...pending, CARD_BACK.decode()]); };
+window.TOTAL = TOTAL;
+
+const params = new URLSearchParams(location.search);
+function fit() { $("#stage").style.transform = `scale(${Math.min(innerWidth / 1920, innerHeight / 1080)})`; }
+if (params.has("render")) { $("#hud").remove(); document.body.style.display = "block"; renderAt(0); }
+else {
+  addEventListener("resize", fit); fit();
+  let t0 = performance.now() - (parseFloat(params.get("t")) || 0) * 1000, paused = false, pt = 0;
+  addEventListener("keydown", (e) => {
+    if (e.code === "Space") { paused = !paused; if (paused) pt = (performance.now() - t0) / 1000; else t0 = performance.now() - pt * 1000; }
+    if (e.code === "ArrowRight") t0 -= 5000; if (e.code === "ArrowLeft") t0 += 5000;
+  });
+  document.fonts.ready.then(() => { t0 = performance.now() - (parseFloat(params.get("t")) || 0) * 1000; (function loop() {
+    const T = paused ? pt : ((performance.now() - t0) / 1000) % TOTAL; renderAt(T);
+    $("#hud").textContent = `${T.toFixed(1)}s / ${TOTAL.toFixed(1)}s · space pause · ← → 5s`;
+    requestAnimationFrame(loop);
+  })(); });
+}
+</script>
+</body>
+</html>
