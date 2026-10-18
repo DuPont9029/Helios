@@ -104,11 +104,9 @@ function describeParts(m, names, canSee, ctx) {
     case MSG.SET: return { text: `${who(m.controller)} Sets a card in ${zone(m.location, m.sequence, m.controller)}` };
     case MSG.CHAINING: return { cls: "chain", text: t`Chain ${m.chain_size}: ${who(m.controller)} activates ${C(m.code)}${whereActivated(m, ctx.me)}` };
     case MSG.CHAIN_SOLVING: {
+      // I bersagli si dichiarano all'attivazione (sulla sua riga, vedi DuelView.logMessage): qui non si ripetono.
       const code = ctx.chainCode?.(m.chain_size);
-      // I bersagli dichiarati all'attivazione (vedi DuelView.logMessage) si ripetono alla risoluzione.
-      const targets = ctx.chainTargets?.(m.chain_size) ?? [];
-      const aim = targets.length ? [" (targeting ", ...targets.flatMap((p, i) => (i ? [", ", p] : [p])), ")"] : [];
-      return { cls: "resolve", text: code ? t`Chain Link ${m.chain_size} resolves: ${C(code)}${aim}` : `Chain Link ${m.chain_size} resolves` };
+      return { cls: "resolve", text: code ? t`Chain Link ${m.chain_size} resolves: ${C(code)}` : `Chain Link ${m.chain_size} resolves` };
     }
     case MSG.BECOME_TARGET: return m.cards.length ? { cls: "target", text: t`Targets: ${list(m.cards)}` } : null;
     case MSG.CARD_SELECTED: return m.cards.length ? { cls: "dim", text: t`Selected: ${list(m.cards)}` } : null;

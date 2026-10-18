@@ -3,7 +3,8 @@
 // Ogni passo può avere dei dettagli (carte da scegliere, zona, posizione, sì/no, opzione): il trainer li
 // suggerisce, li controlla (in modalità strict blocca le scelte sbagliate) e l'auto-play li usa per giocare da solo.
 import { h, clear } from "../ui/dom.js";
-import { cardName, descString } from "../data/db.js";
+import { cardName, descString, getCard, isExtraDeckCard } from "../data/db.js";
+import { sortDeckPart, loadDecks } from "../deck/deck.js";
 import { MSG, RESP, IDLE, BATTLE, PHASE, LOC, POS } from "../core/constants.js";
 import { availableZones } from "../core/zones.js";
 
@@ -64,6 +65,28 @@ export function detailKind(type) {
 const zoneLoc = (location) => (location === LOC.MZONE ? "m" : location === LOC.SZONE ? "s" : String(location));
 const unselectList = (prompt) => [...(prompt.select_cards ?? []), ...(prompt.unselect_cards ?? [])];
 
+/**
+ * Il giocatore annulla una selezione (Cancel, non Finish): il core torna alla scelta precedente (es. nelle
+ * Fusion Summon, annullando i materiali si sceglie di nuovo il mostro Fusione).
+ */
+export function isCancel(prompt, response) {
+  if (!response || response.back) return false;
+  switch (prompt.type) {
+    case MSG.SELECT_UNSELECT_CARD: return response.index == null && !!prompt.can_cancel && !prompt.can_finish;
+    case MSG.SELECT_CARD: case MSG.SELECT_TRIBUTE: case MSG.SELECT_SUM: return response.indicies == null && !!prompt.can_cancel;
+  }
+  return false;
+}
+/** La scelta a cui riporta un annullamento: solo una selezione di carte (una zona o un Sì/No non si rifanno). */
+const reselectable = (d) => d?.t === "cards" || d?.t === "pick";
+
+/** Carta già scelta che il giocatore toglie dalla selezione (SELECT_UNSELECT_CARD), altrimenti 0. */
+export function unselectedCode(prompt, response) {
+  if (prompt.type !== MSG.SELECT_UNSELECT_CARD || response?.index == null) return 0;
+  const n = prompt.select_cards?.length ?? 0;
+  return response.index >= n ? prompt.unselect_cards?.[response.index - n]?.code ?? 0 : 0;
+}
+
 /** Dettaglio registrato dalla risposta del giocatore `me` (null se la richiesta non è un dettaglio). */
 export function detailOf(prompt, response, me) {
   if (!response || response.back) return null;
@@ -71,10 +94,15 @@ export function detailOf(prompt, response, me) {
     case "cards": {
       if (!response.indicies) return null;
       const list = prompt.selects ?? [];
-      return { t: "cards", codes: response.indicies.map((i) => list[i]?.code ?? 0).sort((a, b) => a - b) };
+      const picked = response.indicies.map((i) => list[i]);
+      // Carte prese dal Deck (ricerche, materiali, evocazioni dal Deck): ognuna è una copia in più che serve nel mazzo.
+      const deck = picked.filter((c) => c?.location === LOC.DECK).map((c) => c.code).sort((a, b) => a - b);
+      return { t: "cards", codes: picked.map((c) => c?.code ?? 0).sort((a, b) => a - b), ...(deck.length ? { deck } : {}) };
     }
-    case "pick":
-      return { t: "pick", code: response.index == null ? 0 : unselectList(prompt)[response.index]?.code ?? 0 };
+    case "pick": {
+      const card = response.index == null ? null : unselectList(prompt)[response.index];
+      return { t: "pick", code: card?.code ?? 0, ...(card?.location === LOC.DECK ? { deck: true } : {}) };
+    }
     case "zone":
       return { t: "zone", places: (response.places ?? []).map((p) => ({ mine: p.player === me, loc: zoneLoc(p.location), seq: p.sequence })) };
     case "pos":
@@ -114,8 +142,8 @@ export function zoneText(p) {
 /** Testo leggibile di un dettaglio. */
 export function detailText(d) {
   switch (d.t) {
-    case "cards": return d.codes.length ? `Select ${quoted(d.codes)}` : "Select no cards";
-    case "pick": return d.code ? `Select "${cardName(d.code)}"` : "Finish the selection";
+    case "cards": return d.codes.length ? `Select ${quoted(d.codes)}${d.deck?.length ? " (from the Deck)" : ""}` : "Select no cards";
+    case "pick": return d.code ? `Select "${cardName(d.code)}"${d.deck ? " (from the Deck)" : ""}` : "Finish the selection";
     case "zone": return `Zone: ${d.places.map(zoneText).join(", ")}`;
     case "pos": return `Position: ${POS_NAMES[d.pos] ?? d.pos}`;
     case "yesno": return d.code ? `Use the effect of "${cardName(d.code)}": ${d.yes ? "Yes" : "No"}` : `Answer: ${d.yes ? "Yes" : "No"}`;
@@ -197,8 +225,13 @@ function stepResponse(step, prompt) {
 const sameAction = (act, want) =>
   !!want && (act.kind === want.kind ? NO_CARD.has(want.kind) || act.code === want.code : act.kind === "pendulum" && want.kind === "spsummon");
 
-/** Copia di un passo senza dettagli vuoti (per salvare e condividere). */
-export const cleanStep = (s) => (s.details?.length ? { kind: s.kind, code: s.code, details: s.details.map((d) => ({ ...d })) } : { kind: s.kind, code: s.code });
+/** Copia di un passo senza dettagli e note vuoti (per salvare e condividere). */
+export const cleanStep = (s) => ({
+  kind: s.kind,
+  code: s.code,
+  ...(s.details?.length ? { details: s.details.map((d) => ({ ...d })) } : {}),
+  ...(s.note?.trim() ? { note: s.note.trim().slice(0, 300) } : {}),
+});
 
 // ------------------------------------------------------------- allenamento
 
@@ -240,6 +273,7 @@ export class ComboTrainer {
         ),
         this.status
       ),
+      combo.notes ? h("details.trainer-notes", h("summary", "Notes"), h("p", combo.notes)) : null,
       this.list
     );
     this.render();
@@ -254,6 +288,8 @@ export class ComboTrainer {
     return {
       next: this.next, active: this.active ? { ...this.active } : null, chosen: this.chosen, interrupted: this.interrupted,
       used: [...this.used], stepMarks: [...this.stepMarks], completePending: !!this.completePending, pendulum: !!this.pendulum,
+      lastPick: this.lastPick ? { ...this.lastPick } : null,
+      lastDone: this.lastDone ? { ...this.lastDone } : null,
     };
   }
 
@@ -281,7 +317,7 @@ export class ComboTrainer {
     if (this.backTarget) this.backBtn.textContent = `↶ Back to step ${this.backTarget.next + 1}`;
     const { steps, interrupts = [] } = this.combo;
     const rows = [];
-    const interruptRow = (it) => h(`li.trainer-interrupt${this.interrupted === it ? ".fired" : ""}`, `⚡ Hand trap: "${cardName(it.code)}"`);
+    const interruptRow = (it) => h(`li.trainer-interrupt${this.interrupted === it ? ".fired" : ""}`, `⚡ The opponent uses "${cardName(it.code)}"`);
     for (const it of interrupts.filter((x) => x.after === 0)) rows.push(interruptRow(it));
     steps.forEach((s, i) => {
       const state = this.interrupted && i >= this.next ? "skipped" : i < this.next ? "ok" : i === this.next ? "current" : "todo";
@@ -289,7 +325,12 @@ export class ComboTrainer {
         h(
           `li.trainer-step.${state}`,
           h("span.trainer-mark", state === "ok" ? "✓" : state === "current" ? "▶" : ""),
-          h("span", stepText(s), s.details?.length ? h("ul.trainer-details", s.details.map((d, j) => h(`li${this.active?.step === i && this.active.pos === j ? ".now" : ""}`, detailText(d)))) : null)
+          h(
+            "span",
+            stepText(s),
+            s.details?.length ? h("ul.trainer-details", s.details.map((d, j) => h(`li${this.active?.step === i && this.active.pos === j ? ".now" : ""}`, detailText(d)))) : null,
+            s.note && state !== "ok" ? h("div.trainer-note", s.note) : null
+          )
         )
       );
       for (const it of interrupts.filter((x) => x.after === i + 1)) rows.push(interruptRow(it));
@@ -352,6 +393,8 @@ export class ComboTrainer {
       if (prompt.type === MSG.SELECT_CHAIN && this.expectedDetail()) return null;
       return `Strict mode: you must ${stepText(want)}.`;
     }
+    // Togliere una carta già scelta o annullare la selezione non è mai bloccato: si torna alla scelta di prima (vedi onResponse).
+    if (unselectedCode(prompt, response) || isCancel(prompt, response)) return null;
     const want = this.expectedDetail();
     if (!want || detailKind(prompt.type) !== want.t) return null;
     return sameDetail(detailOf(prompt, response, this.me), want) ? null : `Strict mode: ${detailText(want)}.`;
@@ -371,12 +414,38 @@ export class ComboTrainer {
       this.chosenMark = mark; // stato di prima dell'azione: in caso di errore si torna qui
       this.pendulum = act.kind === "pendulum";
       this.active = match && want.details?.length ? { step: this.next, pos: 0 } : null;
+      this.lastPick = null;
+      this.lastDone = null;
       this.render();
+      return;
+    }
+    // Selezione annullata: il core richiede la scelta precedente del passo, che torna quella attesa.
+    if (isCancel(prompt, response)) {
+      const step = this.active?.step ?? this.lastDone?.step;
+      const pos = this.active ? this.active.pos - 1 : this.lastDone?.pos;
+      const prev = step != null && pos >= 0 ? this.combo.steps[step]?.details?.[pos] : null;
+      if (reselectable(prev)) {
+        this.active = { step, pos };
+        this.lastPick = null;
+        this.render();
+      }
+      return;
+    }
+    // Carta tolta dalla selezione: se era la scelta precedente del passo, la si richiede di nuovo.
+    const removed = unselectedCode(prompt, response);
+    if (removed) {
+      const last = this.lastPick;
+      if (last?.code === removed) {
+        this.active = { step: last.step, pos: last.pos };
+        this.lastPick = null;
+        this.render();
+      }
       return;
     }
     const want = this.expectedDetail();
     if (!want || detailKind(prompt.type) !== want.t) return;
     const got = detailOf(prompt, response, this.me);
+    this.lastPick = got.t === "pick" && got.code ? { step: this.active.step, pos: this.active.pos, code: got.code } : null;
     if (!sameDetail(got, want)) {
       // Scelta diversa da quella della combo: si avvisa (in strict non arriva qui, viene rifiutata prima).
       this.notify(`✗ ${detailText(got)}. Expected: ${detailText(want)}`, "error");
@@ -384,6 +453,7 @@ export class ComboTrainer {
       // "Back" torna a prima dell'azione di questo passo, che va rifatto con le scelte giuste.
       if (this.chosenMark) this.backTarget = { mark: this.chosenMark, next: this.active.step };
     }
+    this.lastDone = { step: this.active.step, pos: this.active.pos };
     this.active.pos++;
     if (this.active.pos >= (this.combo.steps[this.active.step].details?.length ?? 0)) this.active = null;
     this.render();
@@ -393,17 +463,25 @@ export class ComboTrainer {
   onMessages(messages) {
     for (const raw of messages) {
       if (raw.type === MSG.NEW_TURN) this.turnPlayer = raw.player;
+      // Fine di una Pendulum Summon fatta per un passo "Special Summon" che non ha evocato quella carta:
+      // evento "pendulum" (passo sbagliato).
+      const pendEnd = raw.type === MSG.SPSUMMONED && this.pendulum && this.chosen === PEND;
       if (raw.type === MSG.SPSUMMONED) this.pendulum = false;
       // End Phase del proprio turno: evento "endphase" (senza carta).
-      const m = raw.type === MSG.NEW_PHASE && raw.phase === PHASE.END ? { type: "endphase", controller: this.turnPlayer, code: EP } : raw;
-      let kind = m.type === "endphase" ? "endphase" : EVENT_KIND[m.type];
+      const m =
+        raw.type === MSG.NEW_PHASE && raw.phase === PHASE.END ? { type: "endphase", controller: this.turnPlayer, code: EP }
+        : pendEnd ? { type: "pendulum", controller: this.me, code: 0 }
+        : raw;
+      let kind = m.type === "endphase" || m.type === "pendulum" ? m.type : EVENT_KIND[m.type];
       if (!kind) continue;
-      // Pendulum Summon in corso: la prima summon realizza il passo "Pendulum Summon" (o lo "Special Summon"
-      // di quella carta), le altre fanno parte dello stesso passo.
+      // Pendulum Summon in corso: realizza il passo "Pendulum Summon" con la prima summon, o lo "Special Summon"
+      // di una delle carte evocate (in qualsiasi ordine); le altre summon fanno parte dello stesso passo.
       if (kind === "spsummon" && this.pendulum && m.controller === this.me) {
         const want = this.combo.steps[this.next];
         if (this.chosen !== PEND) continue;
-        if (!(want?.kind === "spsummon" && want.code === m.code)) kind = "pendulum";
+        if (want?.kind === "spsummon" && !this.interrupted) {
+          if (want.code !== m.code) continue;
+        } else kind = "pendulum";
       }
       if (m.controller !== this.me) {
         // Attivazione dell'avversario: se è una hand trap della combo, da qui in poi si gioca liberamente.
@@ -462,6 +540,9 @@ export class ComboTrainer {
     const want = this.expectedDetail();
     if (want && detailKind(prompt.type) === want.t) return detailResponse(want, prompt, this.me) ?? undefined;
     if (ACTION_PROMPTS.has(prompt.type)) {
+      // Passo fatto ma con scelte ancora da fare (es. l'attivazione che si risolve dopo la catena):
+      // si passa in catena e si aspettano le scelte.
+      if (this.active && prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
       if (this.done) {
         this.stopAuto();
         return undefined;
@@ -574,6 +655,20 @@ export class ComboRecorder {
       this.pending = []; // nuova azione: i dettagli successivi sono suoi
       return;
     }
+    const last = this.pending.at(-1);
+    // Selezione annullata: il core torna alla scelta precedente, che va rifatta (quella vecchia non si registra).
+    if (isCancel(prompt, response)) {
+      if (reselectable(last)) this.pending.pop();
+      this.render();
+      return;
+    }
+    // Carta tolta dalla selezione subito dopo averla scelta: la scelta non si registra.
+    const removed = unselectedCode(prompt, response);
+    if (removed && last?.t === "pick" && last.code === removed) {
+      this.pending.pop();
+      this.render();
+      return;
+    }
     const d = detailOf(prompt, response, this.me);
     if (d) {
       this.pending.push(d);
@@ -609,13 +704,22 @@ export class ComboRecorder {
 
 const SHARE_PREFIX = "HELIOS-COMBO:";
 
-/** Codice da condividere: prefisso + JSON in base64 (solo i dati della combo, niente id locale). */
-export function comboToCode(c) {
-  const data = { v: 2, name: c.name, first: c.first, hand: c.hand, steps: c.steps.map(cleanStep), interrupts: c.interrupts, setup: c.setup, tags: c.tags };
-  const bytes = new TextEncoder().encode(JSON.stringify(data));
+const toBase64 = (bytes) => {
   let bin = "";
   for (const b of bytes) bin += String.fromCharCode(b);
-  return SHARE_PREFIX + btoa(bin);
+  return btoa(bin);
+};
+const fromBase64 = (t) => Uint8Array.from(atob(t), (ch) => ch.charCodeAt(0));
+
+/** Dati da condividere di una combo (niente id locale). */
+const comboData = (c) => ({
+  v: 3, name: c.name, first: c.first, hand: c.hand, steps: c.steps.map(cleanStep), interrupts: c.interrupts, setup: c.setup, tags: c.tags,
+  notes: c.notes || undefined, cards: c.cards, branch: c.branch || undefined,
+});
+
+/** Codice da condividere: prefisso + JSON in base64 (solo i dati della combo, niente id locale). */
+export function comboToCode(c) {
+  return SHARE_PREFIX + toBase64(new TextEncoder().encode(JSON.stringify(comboData(c))));
 }
 
 const DETAIL_TYPES = new Set(["cards", "pick", "zone", "pos", "yesno", "option"]);
@@ -636,35 +740,251 @@ export function comboFromCode(text) {
   if (!t.startsWith(SHARE_PREFIX)) throw new Error("This is not a Helios combo code");
   let data;
   try {
-    const bin = atob(t.slice(SHARE_PREFIX.length));
-    data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, (ch) => ch.charCodeAt(0))));
+    data = JSON.parse(new TextDecoder().decode(fromBase64(t.slice(SHARE_PREFIX.length))));
   } catch {
     throw new Error("The combo code is damaged or incomplete");
   }
+  return comboFromData(data);
+}
+
+/** Combo (senza id) dai dati condivisi, o un errore leggibile se non sono validi. */
+function comboFromData(data) {
   const nums = (a) => Array.isArray(a) && a.every((x) => Number.isInteger(x));
   const okDetails = (d) => d == null || (Array.isArray(d) && d.every((x) => x && DETAIL_TYPES.has(x.t)));
   const okSteps = Array.isArray(data.steps) && data.steps.every((s) => s && s.kind in STEP_ACTIONS && Number.isInteger(s.code) && okDetails(s.details));
   const okInts = Array.isArray(data.interrupts ?? []) && (data.interrupts ?? []).every((x) => x && Number.isInteger(x.after) && Number.isInteger(x.code));
   if (!nums(data.hand) || !okSteps || !okInts) throw new Error("The combo code is not valid");
   const tags = Array.isArray(data.tags) ? data.tags.filter((x) => x && Number.isInteger(x.code) && typeof x.text === "string").map((x) => ({ code: x.code, text: x.text.slice(0, 40) })) : [];
-  return { name: String(data.name || "Imported combo").slice(0, 60), first: data.first !== false, hand: data.hand, steps: data.steps.map(cleanStep), interrupts: data.interrupts ?? [], setup: cleanSetup(data.setup), tags };
+  return {
+    name: String(data.name || "Imported combo").slice(0, 60), first: data.first !== false, hand: data.hand, steps: data.steps.map(cleanStep), interrupts: data.interrupts ?? [], setup: cleanSetup(data.setup), tags,
+    notes: typeof data.notes === "string" ? data.notes.slice(0, NOTES_MAX) : "",
+    cards: cleanCards(data.cards),
+    branch: typeof data.branch === "string" ? data.branch.slice(0, 40) : "",
+  };
 }
 
-// ------------------------------------------------------------- archivio delle combo (per mazzo)
+export const NOTES_MAX = 2000;
+
+// Spreadsheet: nome, note, decklist d'esempio e tutte le sue combo (le varianti restano legate alla loro
+// combo originale), JSON compresso (deflate) in base64: il codice resta corto anche con molte combo.
+const SHEET_PREFIX = "HELIOS-SHEET:";
+
+async function deflate(bytes, mode) {
+  const stream = new Blob([bytes]).stream().pipeThrough(mode === "in" ? new CompressionStream("deflate-raw") : new DecompressionStream("deflate-raw"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+/** Codice da condividere di uno spreadsheet con le sue combo. */
+export async function sheetToCode(sheet, combos) {
+  const index = new Map(combos.map((c, i) => [c.id, i]));
+  const data = {
+    v: 1,
+    name: sheet.name,
+    notes: sheet.notes || undefined,
+    sample: sheet.sample ?? undefined,
+    combos: combos.map((c) => ({ ...comboData(c), parent: index.has(c.parent) ? index.get(c.parent) : undefined })),
+  };
+  return SHEET_PREFIX + toBase64(await deflate(new TextEncoder().encode(JSON.stringify(data)), "in"));
+}
+
+export const isSheetCode = (text) => String(text ?? "").trim().startsWith(SHEET_PREFIX);
+
+/**
+ * Legge il codice di uno spreadsheet: { name, notes, sample, combos } con le combo senza id
+ * (parentIndex = indice della combo originale per le varianti), o lancia un errore leggibile.
+ */
+export async function sheetFromCode(text) {
+  const t = String(text ?? "").trim();
+  if (!t.startsWith(SHEET_PREFIX)) throw new Error("This is not a Helios spreadsheet code");
+  let data;
+  try {
+    data = JSON.parse(new TextDecoder().decode(await deflate(fromBase64(t.slice(SHEET_PREFIX.length)), "out")));
+  } catch {
+    throw new Error("The spreadsheet code is damaged or incomplete");
+  }
+  if (!Array.isArray(data.combos)) throw new Error("The spreadsheet code is not valid");
+  const combos = data.combos.map((x, i) => {
+    const c = comboFromData(x);
+    const p = x.parent;
+    return { ...c, parentIndex: Number.isInteger(p) && p !== i && p >= 0 && p < data.combos.length ? p : null };
+  });
+  const sample = cleanCards(data.sample);
+  return {
+    name: String(data.name || "Imported spreadsheet").slice(0, 60),
+    notes: typeof data.notes === "string" ? data.notes.slice(0, NOTES_MAX) : "",
+    sample: sample && (sample.main.length || sample.extra.length) ? sample : null,
+    combos,
+  };
+}
+
+/** Decklist valida ({ main, extra, side } di codici interi) o undefined. */
+export function cleanCards(x) {
+  if (!x || typeof x !== "object") return undefined;
+  const codes = (a) => (Array.isArray(a) ? a.filter((v) => Number.isInteger(v)).slice(0, 90) : []);
+  return { main: codes(x.main), extra: codes(x.extra), side: codes(x.side) };
+}
+
+// ------------------------------------------------------------- carte necessarie
+
+const tally = (codes) => codes.reduce((m, c) => m.set(c, (m.get(c) ?? 0) + 1), new Map());
+const repeat = (m) => [...m].flatMap(([code, n]) => Array(n).fill(code));
+const sideCodes = (x = {}) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.hand ?? []), ...(x.extra ?? []), ...(x.deckTop ?? [])];
+
+/** Carte indicate da una scelta precisa. */
+function detailCodes(d) {
+  switch (d.t) {
+    case "cards": return d.codes;
+    case "pick": case "yesno": return d.code ? [d.code] : [];
+    case "option": return d.desc ? [Number(BigInt(d.desc) >> 20n)] : [];
+  }
+  return [];
+}
+
+/**
+ * Carte che servono nel Main e nell'Extra Deck per fare la combo: mano e cima del Deck più le carte prese
+ * dal Deck durante la combo (le scelte registrate sanno da dove viene ogni carta: ognuna è una copia in più),
+ * le altre carte dei passi e delle scelte precise almeno una copia; nell'Extra Deck una per ogni Special Summon.
+ * Non contano le carte dell'avversario e quelle già in gioco nello stato di partenza.
+ * deck: se indicato, solo le carte che contiene (al più con le sue copie).
+ */
+export function detectCards(combo, deck = null) {
+  const st = combo.setup ?? {};
+  const theirs = new Set([...(combo.interrupts ?? []).map((x) => x.code), ...sideCodes(st.opp)]);
+  const placed = new Set(sideCodes({ ...st.me, deckTop: [] }));
+  const fromDeck = tally(combo.steps.flatMap((s) => (s.details ?? []).flatMap((d) => (d.t === "cards" ? d.deck ?? [] : d.t === "pick" && d.deck && d.code ? [d.code] : []))));
+  const need = tally([...(combo.hand ?? []), ...(st.me?.deckTop ?? [])]);
+  for (const [code, n] of fromDeck) if (!theirs.has(code)) need.set(code, (need.get(code) ?? 0) + n);
+  // La stessa carta scelta più volte nella stessa selezione (es. due Refrain come materiali) sono copie diverse,
+  // anche nelle registrazioni che non sanno da dove venivano le carte.
+  const together = new Map();
+  const keep = (codes) => {
+    for (const [code, n] of tally(codes)) together.set(code, Math.max(n, together.get(code) ?? 0));
+  };
+  for (const s of combo.steps) {
+    let run = []; // scelte "una carta alla volta" della stessa selezione
+    for (const d of s.details ?? []) {
+      if (d.t === "pick" && d.code) {
+        run.push(d.code);
+        continue;
+      }
+      keep(run);
+      run = [];
+      if (d.t === "cards") keep(d.codes);
+    }
+    keep(run);
+  }
+  for (const [code, n] of together) if (!theirs.has(code) && !placed.has(code)) need.set(code, Math.max(n, need.get(code) ?? 0));
+  const summons = tally(combo.steps.filter((s) => s.kind === "spsummon" || s.kind === "summon").map((s) => s.code));
+  const mention = (code) => {
+    if (!code || !getCard(code) || need.has(code) || theirs.has(code) || placed.has(code)) return;
+    need.set(code, isExtraDeckCard(getCard(code)) ? Math.max(1, summons.get(code) ?? 0) : 1);
+  };
+  for (const s of combo.steps) {
+    if (!NO_CARD.has(s.kind)) mention(s.code);
+    for (const d of s.details ?? []) detailCodes(d).forEach(mention);
+  }
+  for (const t of combo.tags ?? []) mention(t.code);
+  if (deck) {
+    const have = tally([...deck.main, ...deck.extra]);
+    for (const [code, n] of need) {
+      if (!have.has(code)) need.delete(code);
+      else need.set(code, Math.min(n, have.get(code)));
+    }
+  }
+  const all = repeat(need);
+  return { main: sortDeckPart(all.filter((c) => !isExtraDeckCard(getCard(c)))), extra: sortDeckPart(all.filter((c) => isExtraDeckCard(getCard(c)))) };
+}
+
+const hasCards = (x) => !!(x?.main?.length || x?.extra?.length);
+
+/**
+ * Le interruzioni ({ after, code }) dicono quando l'avversario usa una carta della sua mano o del suo campo
+ * (stato di partenza). Carte delle interruzioni che lì non ci sono (combo vecchie, in cui le hand trap
+ * partivano in mano da sole): vanno nella mano dell'avversario.
+ */
+export function interruptsOutsideBoard(combo) {
+  const opp = combo.setup?.opp ?? {};
+  const have = tally([...(opp.hand ?? []), ...(opp.field ?? []).map((f) => f.code)]);
+  const out = [];
+  for (const it of combo.interrupts ?? []) {
+    const n = have.get(it.code) ?? 0;
+    if (n > 0) have.set(it.code, n - 1);
+    else out.push(it.code);
+  }
+  return out;
+}
+
+/** Carte che la combo usa davvero, prese dalla sua decklist (se ne ha una). */
+export const usedCards = (combo) => detectCards(combo, hasCards(combo.cards) ? combo.cards : null);
+
+/**
+ * Mazzo con cui si gioca la combo: la sua decklist (combo.cards, indipendente dai mazzi salvati) o, se è vuota,
+ * le carte che usa; sempre con tutte le copie della mano e della cima del Deck.
+ */
+export function comboDeck(combo) {
+  const cards = hasCards(combo.cards) ? combo.cards : detectCards(combo);
+  const main = tally(cards.main);
+  for (const [code, n] of tally([...combo.hand, ...(combo.setup?.me?.deckTop ?? [])])) main.set(code, Math.max(n, main.get(code) ?? 0));
+  return { id: null, name: combo.name, main: repeat(main), extra: [...cards.extra], side: [] };
+}
+
+/**
+ * Carte necessarie di uno spreadsheet: per ogni carta le copie che servono alla combo che ne usa di più
+ * (le combo sono alternative tra loro), e in quante combo compare.
+ * @returns {{ main: number[], extra: number[], uses: Map<number, number> }}
+ */
+export function sheetCards(combos) {
+  const need = new Map();
+  const uses = new Map();
+  for (const c of combos) {
+    const cards = usedCards(c);
+    for (const [code, n] of tally([...cards.main, ...cards.extra])) {
+      need.set(code, Math.max(n, need.get(code) ?? 0));
+      uses.set(code, (uses.get(code) ?? 0) + 1);
+    }
+  }
+  const all = repeat(need);
+  return { main: sortDeckPart(all.filter((c) => !isExtraDeckCard(getCard(c)))), extra: sortDeckPart(all.filter((c) => isExtraDeckCard(getCard(c)))), uses };
+}
+
+// ------------------------------------------------------------- archivio delle combo e degli spreadsheet
 
 const KEY = "ygoweb.combos";
 
-export function loadCombos() {
+/**
+ * Archivio: { combos, sheets }. Le combo non dipendono dai mazzi salvati: ognuna ha la sua decklist (cards,
+ * di solito copiata da un mazzo come punto di partenza); le varianti hanno parent = id della combo da cui
+ * derivano. Uno spreadsheet raccoglie più combo (ids) con una decklist d'esempio (sample).
+ * Formati vecchi: { [deckId]: [combo] } e combo legate a un mazzo (deckId): la decklist diventa una copia
+ * di quel mazzo.
+ */
+export function loadComboStore() {
+  let raw;
   try {
-    return JSON.parse(localStorage.getItem(KEY) || "{}") ?? {};
+    raw = JSON.parse(localStorage.getItem(KEY) || "{}") ?? {};
   } catch {
-    return {};
+    raw = {};
   }
+  const store = Array.isArray(raw.combos)
+    ? { combos: raw.combos, sheets: Array.isArray(raw.sheets) ? raw.sheets : [] }
+    : { combos: Object.entries(raw).flatMap(([deckId, list]) => (Array.isArray(list) ? list.map((c) => ({ ...c, deckId: c.deckId ?? deckId })) : [])), sheets: [] };
+  if (store.combos.some((c) => "deckId" in c) || store.sheets.some((s) => "deckId" in s)) {
+    const decks = loadDecks();
+    for (const c of store.combos) {
+      const d = c.deckId && decks.find((x) => x.id === c.deckId);
+      if (d) c.cards = { main: [...d.main], extra: [...d.extra], side: [...(d.side ?? [])] };
+      else if (!hasCards(c.cards)) c.cards = detectCards(c);
+      delete c.deckId;
+    }
+    for (const s of store.sheets) delete s.deckId;
+    saveComboStore(store);
+  }
+  return store;
 }
 
-export function saveCombos(all) {
+export function saveComboStore(store) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(all));
+    localStorage.setItem(KEY, JSON.stringify({ v: 2, combos: store.combos, sheets: store.sheets }));
   } catch {
     /* storage non disponibile */
   }

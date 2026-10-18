@@ -1,6 +1,7 @@
 // Pilota un'istanza di ocgcore (sync) e ne espone lo stato in forma serializzabile.
 // Non dipende dal DOM: gira nel Web Worker del browser e negli script Node.
-import { LOC, MSG, PROCESS, PROMPT_MSGS, QUERY } from "./constants.js";
+import { LOC, MSG, PROCESS, PROMPT_MSGS, QUERY, RESP } from "./constants.js";
+import { availableZones } from "./zones.js";
 import { toCoreCard } from "./carddata.js";
 
 const FIELD_QUERY =
@@ -118,10 +119,32 @@ export class DuelEngine {
     });
     // cfg.place: carte già in gioco all'inizio (stato di partenza del Combo Trainer):
     // [{ player, code, location, sequence, position }] su campo, Cimitero o tra le carte bandite.
+    // Le zone Pendulum (location PZONE, sequence 0 = sinistra, 1 = destra) non si possono riempire con
+    // duelNewCard: la carta parte tra quelle bandite e uno script la sposta nella zona all'inizio del duello.
+    const scales = [];
     for (const c of cfg.place ?? []) {
+      const pz = c.location === LOC.PZONE;
+      if (pz) scales.push(c);
       lib.duelNewCard(this.handle, {
-        team: c.player, duelist: 0, code: c.code, controller: c.player, location: c.location, sequence: c.sequence ?? 0, position: c.position ?? 0x1,
+        team: c.player, duelist: 0, code: c.code, controller: c.player, location: pz ? LOC.REMOVED : c.location, sequence: pz ? 0 : c.sequence ?? 0, position: pz ? 0x5 : c.position ?? 0x1,
       });
+    }
+    if (scales.length) {
+      const list = scales.map((c) => `{${c.player},${c.code | 0}}`).join(",");
+      const src = `local e=Effect.GlobalEffect()
+e:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+e:SetCode(EVENT_STARTUP)
+e:SetOperation(function(e)
+  for _,v in ipairs({${list}}) do
+    local c=Duel.GetFirstMatchingCard(Card.IsCode,v[1],LOCATION_REMOVED,0,nil,v[2])
+    if c then Duel.MoveToField(c,v[1],v[1],LOCATION_PZONE,POS_FACEUP,true) end
+  end
+  e:Reset()
+end)
+Duel.RegisterEffect(e,0)`;
+      if (!lib.loadScript(this.handle, "helios_scales.lua", src)) throw new Error("Unable to place the Pendulum Scales");
+      // Il core chiede la zona di ogni scala: risponde run() (sinistra = prima zona Pendulum, destra = l'ultima).
+      this.scaleZones = scales.map((c) => ({ player: c.player, right: !!c.sequence }));
     }
     lib.startDuel(this.handle);
   }
@@ -153,6 +176,16 @@ export class DuelEngine {
       }
       if (status === PROCESS.WAITING) {
         if (this.ended) return { messages: out, prompt: null, ended: true };
+        if (this.scaleZones?.length && prompt?.type === MSG.SELECT_PLACE) {
+          const want = this.scaleZones.shift();
+          const zones = availableZones(prompt).filter((z) => z.player === want.player);
+          const z = want.right ? zones.at(-1) : zones[0];
+          if (z) {
+            this.respond({ type: RESP.SELECT_PLACE, places: [z] });
+            prompt = null;
+            continue;
+          }
+        }
         return { messages: out, prompt, ended: false };
       }
     }

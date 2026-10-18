@@ -704,22 +704,19 @@ export class DuelView {
 
   /**
    * Registro: le righe durante la risoluzione di un anello della catena stanno sotto "Chain Link N resolves",
-   * i bersagli sotto l'attivazione e, a fine anello, il riepilogo delle carte coinvolte.
+   * i bersagli sulla riga dell'attivazione (non si ripetono alla risoluzione).
    */
   logMessage(m) {
     const canSee = (p, loc, pos) => this.canSeeMsg(p, loc, pos);
     const ctx = {
       codeAt: (p, loc, seq) => this.codeAt(p, loc, seq),
       chainCode: (n) => this.chainLinks[n]?.code ?? 0,
-      chainTargets: (n) => this.chainLinks[n]?.targets ?? [],
       pendulum: !!this.pendulumSummon,
       me: this.me,
     };
-    // Bersagli scelti all'attivazione: vanno sulla riga "Chain N: ... activates X" (e alla risoluzione).
+    // Bersagli scelti all'attivazione: vanno sulla riga "Chain N: ... activates X".
     if (m.type === MSG.BECOME_TARGET && !this.resolving && this.lastChain?.line.isConnected && m.cards.length) {
       const parts = cardList(m.cards, canSee, ctx);
-      const link = this.chainLinks[this.lastChain.link];
-      if (link) link.targets = [...(link.targets ?? []), ...parts.filter((p) => p !== ", ")];
       this.lastChain.line.append(this.lastChain.targeted ? ", " : " targeting ", ...this.logParts(parts));
       this.lastChain.targeted = true;
       this.logEl.scrollTop = this.logEl.scrollHeight;
@@ -731,7 +728,7 @@ export class DuelView {
         this.chainLinks[m.chain_size] = { code: m.code, controller: m.controller };
         break;
       case MSG.CHAIN_SOLVING:
-        this.resolving = { link: m.chain_size, code: this.chainLinks[m.chain_size]?.code ?? 0, affected: [] };
+        this.resolving = { link: m.chain_size };
         break;
     }
     if (entry) {
@@ -742,21 +739,8 @@ export class DuelView {
       if (m.type === MSG.CHAINING) this.lastChain = { line, link: m.chain_size, targeted: false };
       else if (m.type !== MSG.BECOME_TARGET) this.lastChain = null;
     }
-    // Carte coinvolte dalla risoluzione (spostate, cambiate di posizione, equipaggiate...).
-    if (this.resolving) {
-      const add = (code) => code && !this.resolving.affected.includes(code) && this.resolving.affected.push(code);
-      if (m.type === MSG.MOVE && m.from.location !== m.to.location && (this.canSeeMsg(m.to.controller, m.to.location, m.to.position) || this.canSeeMsg(m.from.controller, m.from.location, m.from.position))) add(m.card);
-      if (m.type === MSG.POS_CHANGE || m.type === MSG.SPSUMMONING || m.type === MSG.SUMMONING) add(m.code);
-      if (m.type === MSG.BECOME_TARGET) m.cards.forEach((c) => add(this.codeAt(c.controller, c.location, c.sequence)));
-    }
-    if (m.type === MSG.CHAIN_SOLVED && this.resolving) {
-      const r = this.resolving;
-      this.resolving = null;
-      if (r.affected.length) {
-        const list = r.affected.flatMap((code, i) => (i ? [", ", { code }] : [{ code }]));
-        this.log({ cls: "affected", sub: true, parts: [...(r.code ? ["Resolved ", { code: r.code }, ": "] : ["Resolved: "]), ...list] });
-      }
-    }
+    // Fine dell'anello: le righe che seguono non sono più della sua risoluzione (che è già descritta riga per riga).
+    if (m.type === MSG.CHAIN_SOLVED) this.resolving = null;
     if (m.type === MSG.CHAIN_END) this.chainLinks = [];
   }
 
