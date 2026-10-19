@@ -6,5 +6,6 @@
 * controllare per bene le spreadsheet (per GodOfAllJeffery)
 * ricontrollare i nomi delle opzioni sul menu
 * dare più regole generali a Claude da applicare per il resto del progetto
+* chiedre a claude cosa indica la window al lato della hdpc, a quale categoria si riferisce.
 
 
