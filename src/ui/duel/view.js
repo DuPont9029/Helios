@@ -551,7 +551,9 @@ export class DuelView {
   // ---------------------------------------------------------------- animazioni
 
   get speed() {
-    return settings.animSpeed;
+    // Auto-play del Trainer (minSpeed = 1): la combo va guardata, quindi le animazioni restano almeno a
+    // velocità normale anche se il giocatore le ha spente.
+    return Math.max(settings.animSpeed, this.minSpeed ?? 0);
   }
 
   wait(ms) {
