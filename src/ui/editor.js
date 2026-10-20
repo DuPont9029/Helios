@@ -5,7 +5,7 @@ import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
-import { baseDecks } from "../data/base-content.js";
+import { BASE_READY, baseDecks, hideBaseDeck, restoreBaseDecks, hiddenBaseDecks } from "../data/base-content.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
@@ -154,7 +154,17 @@ export function showDeckList(app) {
           deckBox(d),
           h("div.deck-tile-name", d.name),
           h("div.deck-tile-meta", h("span.deck-level", d.level), ` ${d.main.length} · ${d.extra.length} · ${d.side.length}`),
-          h("button.deck-tile-add", { title: "Add a copy to your Decks", onclick: copy }, icon("add"))
+          h("button.deck-tile-add", { title: "Add a copy to your Decks", onclick: copy }, icon("add")),
+          h("button.deck-tile-del", {
+            title: "Delete this Base deck (and its Base combos)",
+            onclick: async (e) => {
+              e.stopPropagation();
+              if (!(await confirmModal("Delete Base deck?", `"${d.name}" and its Base combos in the Trainer will be removed. Your copies of it stay. You can bring the Base decks back from this screen.`, "Delete", "Cancel", { danger: true }))) return;
+              hideBaseDeck(d.name);
+              toast("Base deck deleted");
+              render();
+            },
+          }, icon("delete"))
         );
         tile.addEventListener("click", view);
         tile.addEventListener("keydown", (e) => e.key === "Enter" && view());
@@ -163,7 +173,19 @@ export function showDeckList(app) {
     clear(grid).append(
       h("button.deck-tile.new", { title: "New Deck", onclick: async () => { const n = await promptModal("New Deck", "Name", "New Deck"); if (n) add(emptyDeck(n)); } }, h("span.plus", icon("add")), h("div.deck-tile-name", "New Deck")),
       ...tiles,
-      ...(base.length && !selecting ? [h("div.decks-section", h("b", "Base decks"), h("span.muted.small", "Ready-made Decks of the game, Basic level: look at them or add a copy to your Decks.")), ...base] : [])
+      // Mazzi base non ancora pronti: solo l'avviso.
+      ...(!selecting && !BASE_READY ? [h("div.decks-section", h("b", "Base decks"), h("span.muted.small", "Ready-made Decks of the game, Basic level.")), h("div.coming-soon", icon("schedule"), h("b", "Coming soon"), h("span.muted.small", "Base decks with their combos for the Trainer are on the way."))] : []),
+      ...(!selecting && BASE_READY && (base.length || hiddenBaseDecks())
+        ? [
+            h(
+              "div.decks-section",
+              h("b", "Base decks"),
+              h("span.muted.small", "Ready-made Decks of the game, Basic level: look at them or add a copy to your Decks."),
+              hiddenBaseDecks() ? h("button.btn.small.ghost", { title: "Bring back the deleted Base decks and their Base combos", onclick: () => { restoreBaseDecks(); toast("Base decks restored"); render(); } }, icon("restore"), ` Restore deleted (${hiddenBaseDecks()})`) : null
+            ),
+            ...base,
+          ]
+        : [])
     );
   }
 

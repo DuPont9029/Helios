@@ -578,7 +578,12 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .decks-section { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; padding: 14px 2px 2px; border-top: 1px solid var(--line); }
 .decks-section b { font: 700 15px var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
 .deck-level { display: inline-block; padding: 1px 6px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #06121f; background: var(--accent); }
-.deck-tile-add { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(8, 10, 16, 0.85); color: var(--accent-soft); opacity: 0; transition: opacity 0.15s; }
+.deck-tile-add { position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(8, 10, 16, 0.85); color: var(--accent-soft); opacity: 0; transition: opacity 0.15s; }
 .deck-tile:hover .deck-tile-add, .deck-tile:focus-within .deck-tile-add { opacity: 1; }
 .deck-tile-add:hover { color: #06121f; background: var(--accent); }
 @media (hover: none) { .deck-tile-add { opacity: 1; } }
+
+/* Avviso "Coming soon" (mazzi e combo base non ancora pronti) */
+.coming-soon { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 18px 22px; border: 1px dashed var(--accent); background: linear-gradient(90deg, rgba(56, 198, 255, 0.12), transparent 70%); clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); }
+.coming-soon .icon { color: var(--accent); font-size: 26px; }
+.coming-soon b { font: 700 18px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-soft); }

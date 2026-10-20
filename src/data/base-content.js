@@ -2,13 +2,30 @@
 // "Base decks" di livello base, sempre disponibili anche dopo averli cancellati dai propri mazzi, e una combo
 // per ognuno nel Trainer (provate con l'auto-play: arrivano a "Combo complete!").
 import { db } from "./db.js";
+import { settings } from "./settings.js";
+
+/** Mazzi e combo base pronti da mostrare: per ora no (le schermate mostrano "Coming soon"). */
+export const BASE_READY = false;
 
 /** Livello dei mazzi base (se starter-decks.json non lo indica). */
 const LEVELS = { "Starter - Dark Magician": "Basic", "Starter - Blue-Eyes": "Basic" };
 
-/** Mazzi base: { id, name, level, main, extra, side }. */
+// Mazzi base cancellati dal giocatore (settings.hiddenBaseDecks: nomi): spariscono con le loro combo base,
+// finché non li si ripristina dalla schermata Deck.
+const hidden = () => new Set(Array.isArray(settings.hiddenBaseDecks) ? settings.hiddenBaseDecks : []);
+export function hideBaseDeck(name) {
+  settings.hiddenBaseDecks = [...hidden(), name];
+}
+export function restoreBaseDecks() {
+  settings.hiddenBaseDecks = [];
+}
+export const hiddenBaseDecks = () => hidden().size;
+
+/** Mazzi base (senza quelli cancellati): { id, name, level, main, extra, side }. */
 export function baseDecks() {
-  return (db.starters ?? []).map((d) => ({
+  if (!BASE_READY) return [];
+  const off = hidden();
+  return (db.starters ?? []).filter((d) => !off.has(d.name)).map((d) => ({
     id: `base:${d.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     name: d.name,
     level: d.level ?? LEVELS[d.name] ?? "Basic",
@@ -58,9 +75,10 @@ const COMBOS = [
 
 /** Combo base (in sola lettura nel Trainer), con la decklist del loro mazzo base; quelle senza mazzo si saltano. */
 export function baseCombos() {
+  if (!BASE_READY) return [];
   return COMBOS.flatMap(({ deck, ...c }) => {
     const d = (db.starters ?? []).find((x) => x.name === deck);
-    if (!d) return [];
+    if (!d || hidden().has(d.name)) return [];
     const empty = () => ({ field: [], gy: [], banished: [], deckTop: [] });
     return [{
       ...structuredClone(c),

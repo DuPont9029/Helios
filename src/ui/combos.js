@@ -21,7 +21,7 @@ import { canRecordVideo, startVideo } from "./video-capture.js";
 import { showComboSchema } from "./combo-view.js";
 import { renderSheets, decklistPicker } from "./combo-sheets.js";
 import { openDecklistEditor, openDeckPicker, openCardCollector } from "./editor.js";
-import { baseCombos } from "../data/base-content.js";
+import { BASE_READY, baseCombos } from "../data/base-content.js";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const uniq = (codes) => [...new Set(codes)];
@@ -164,6 +164,13 @@ export function showComboTrainer(app, { review } = {}) {
   }
   /** Sezione delle combo base, sotto le proprie (o nella pagina vuota). */
   function baseSection() {
+    if (!BASE_READY) {
+      return h(
+        "section.combo-base",
+        h("div.combo-toolbar-title", h("h2", "Base combos")),
+        h("div.coming-soon", icon("schedule"), h("b", "Coming soon"), h("span.muted.small", "Combos for the Base decks of the game (Basic level), ready to practice."))
+      );
+    }
     const list = baseCombos();
     if (!list.length) return null;
     return h(
