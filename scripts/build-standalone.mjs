@@ -5,6 +5,7 @@
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
 const root = new URL("..", import.meta.url).pathname;
@@ -35,6 +36,7 @@ const archive = gzipSync(Buffer.concat([size, index, ...chunks]), { level: 9 }).
 
 // Il CSS e il JS del build dentro la pagina; via i riferimenti ai file della PWA (manifest, icone).
 let html = readFileSync(join(out, "index.html"), "utf8");
+let scriptHash = "";
 const asset = (p) => readFileSync(join(out, p.replace(/^\.\//, "")), "utf8");
 html = html
   .replace(/\s*<link rel="(manifest|apple-touch-icon)"[^>]*>/g, "")
@@ -44,8 +46,26 @@ html = html
     const js = readdirSync(join(out, "assets")).find((n) => n.startsWith("index-") && n.endsWith(".js"));
     // Il JS va dopo i dati (la pagina li legge all'avvio); "</script" nel codice spezzerebbe il tag.
     const code = asset(`assets/${js}`).replace(/<\/(script)/gi, "<\\/$1");
+    scriptHash = createHash("sha256").update(code).digest("base64");
     return `<script id="helios-data" type="application/octet-stream">${archive}</script>\n<script type="module">${code}</script>\n</body>`;
   });
+
+// CSP del file singolo: solo lo script incorporato (per impronta), il worker del motore da blob, il WASM;
+// dati, immagini, relay Nostr, TURN e GitHub (banlist) come nel sito.
+const CSP = [
+  "default-src 'none'",
+  `script-src 'sha256-${scriptHash}' 'wasm-unsafe-eval'`,
+  "worker-src blob: data:",
+  "connect-src https: wss: data: blob:",
+  "img-src https: data: blob:",
+  "media-src blob:",
+  "style-src 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src https://fonts.gstatic.com",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+html = html.replace(/<meta charset="utf-8" \/>/i, (m) => `${m}\n<meta http-equiv="Content-Security-Policy" content="${CSP}" />`);
 
 mkdirSync(join(root, "standalone"), { recursive: true });
 writeFileSync(join(root, "standalone/Helios.html"), html);

@@ -1,5 +1,11 @@
 // Piccolo helper per creare elementi senza framework.
 //   h("div.card.big", { onclick, dataset: {code} }, child1, "testo", ...)
+// I figli diventano sempre nodi di testo (mai HTML). Difesa in più se un oggetto arrivato da fuori (rete,
+// codici importati) finisse per errore al posto delle proprietà: niente HTML grezzo e niente URL "javascript:".
+const RAW_HTML = new Set(["innerHTML", "outerHTML", "srcdoc", "insertAdjacentHTML"]);
+const URL_PROPS = new Set(["href", "src", "action", "formAction", "xlink:href", "data", "poster"]);
+const SCRIPT_URL = /^[\u0000-\u0020]*(javascript|vbscript|data:text\/html)/i;
+
 export function h(tag, props, ...children) {
   const [name, ...classes] = tag.split(".");
   const el = document.createElement(name || "div");
@@ -10,6 +16,8 @@ export function h(tag, props, ...children) {
   }
   for (const [k, v] of Object.entries(props ?? {})) {
     if (v == null || v === false) continue;
+    if (RAW_HTML.has(k)) throw new Error(`h(): "${k}" is not allowed`);
+    if (URL_PROPS.has(k) && SCRIPT_URL.test(String(v).replace(/[\t\n\r]/g, ""))) continue;
     if (k === "dataset") Object.assign(el.dataset, v);
     else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);

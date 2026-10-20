@@ -1,5 +1,31 @@
 import { defineConfig, loadEnv } from "vite";
 
+// Content Security Policy del sito (solo nel build: in sviluppo Vite usa script inline e websocket propri).
+// Script solo dal sito (più la compilazione del WASM del motore); niente plugin, base o form esterni.
+// Immagini, relay Nostr, TURN e GitHub (banlist) sono esterni: si permettono https:/wss: per connessioni e immagini.
+// Il file singolo ha la sua (con l'impronta dello script incorporato): vedi scripts/build-standalone.mjs.
+export const CSP = [
+  "default-src 'self'",
+  "script-src 'self' 'wasm-unsafe-eval'",
+  "worker-src 'self' blob:",
+  "connect-src 'self' https: wss: data: blob:",
+  "img-src 'self' https: data: blob:",
+  "media-src 'self' blob:",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'none'",
+  "form-action 'none'",
+].join("; ");
+
+const cspPlugin = {
+  name: "helios-csp",
+  apply: "build",
+  transformIndexHtml: (html, ctx) =>
+    ctx.server ? html : html.replace(/<meta charset="utf-8" \/>/, (m) => `${m}\n    <meta http-equiv="Content-Security-Policy" content="${CSP}" />`),
+};
+
 export default defineConfig(({ mode }) => {
   // npm run standalone: tutto in un solo bundle (worker e import dinamici compresi), poi
   // scripts/build-standalone.mjs lo incolla in un unico HTML insieme ai dati.
@@ -10,6 +36,8 @@ export default defineConfig(({ mode }) => {
   return {
     // Percorsi relativi: il build funziona anche in una sottocartella (es. GitHub Pages).
     base: "./",
+    // Il file singolo mette la sua CSP (con l'impronta dello script incorporato).
+    plugins: standalone ? [] : [cspPlugin],
     publicDir: standalone ? false : "public",
     // Da file:// Chrome non avvia i worker "module" creati da un blob: nel file singolo il worker è classico (iife).
     worker: standalone ? { format: "iife", rollupOptions: single } : { format: "es" },
