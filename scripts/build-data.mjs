@@ -7,6 +7,7 @@ import { DatabaseSync } from "node:sqlite";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { parseLflist, sortBanlists } from "../src/data/lflist.js";
 
 const ROOT = path.resolve(import.meta.dirname, "..");
 const VENDOR = path.join(ROOT, "vendor");
@@ -140,29 +141,8 @@ function buildStrings() {
 
 function buildBanlists() {
   const dir = path.join(VENDOR, "LFLists");
-  const lists = [];
-  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith(".lflist.conf")).sort()) {
-    let cur = null;
-    for (const raw of fs.readFileSync(path.join(dir, file), "utf8").split(/\r?\n/)) {
-      const line = raw.trim();
-      if (!line || line.startsWith("#")) continue;
-      if (line.startsWith("!")) {
-        cur = { name: line.slice(1).trim(), file, whitelist: false, cards: {} };
-        lists.push(cur);
-        continue;
-      }
-      if (!cur) continue;
-      if (line.startsWith("$whitelist")) {
-        cur.whitelist = true;
-        continue;
-      }
-      const m = line.match(/^(\d+)\s+(-?\d+)/);
-      if (m) cur.cards[m[1]] = parseInt(m[2], 10);
-    }
-  }
-  // Le banlist "correnti" (TCG/OCG) prima, poi le altre.
-  const rank = (l) => (/TCG/.test(l.file) ? 0 : /OCG/.test(l.file) ? 1 : 2);
-  lists.sort((a, b) => rank(a) - rank(b));
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".lflist.conf")).sort();
+  const lists = sortBanlists(files.flatMap((file) => parseLflist(fs.readFileSync(path.join(dir, file), "utf8"), file)));
   fs.writeFileSync(path.join(OUT, "banlists.json"), JSON.stringify(lists));
   console.log(`banlists.json: ${lists.length} banlist`);
 }
