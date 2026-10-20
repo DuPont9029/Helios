@@ -1380,7 +1380,10 @@ function practice(app, combo, { video = null, autoplay = false } = {}) {
   });
   const session = startDuel(app, deck, combo, trainer, autoplay ? `Auto-play: ${combo.name}` : `Practice: ${combo.name}`);
   // Durante l'auto-play il duello non accetta i clic del giocatore (resta solo l'interruttore dell'auto-play).
-  trainer.onAutoChange = (on) => [session.view.el, session.view.floatBar].forEach((el) => el.classList.toggle("autoplaying", on));
+  trainer.onAutoChange = (on) => {
+    [session.view.el, session.view.floatBar].forEach((el) => el.classList.toggle("autoplaying", on));
+    session.view.minSpeed = on ? 1 : 0;
+  };
   trainer.onAutoChange(autoplay);
   // Combo completa: tag sulle carte, poi "Play again" (o fine del video in auto-play).
   trainer.onComplete = () => {

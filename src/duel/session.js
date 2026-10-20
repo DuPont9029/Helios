@@ -325,8 +325,8 @@ export class DuelSession {
           this.view.prompter.forceManual = false;
         }
         if (auto !== undefined) {
-          // Ritmo dell'auto-play: segue la velocità delle animazioni, ma con le animazioni spente (0) non va a
-          // velocità infinita (la combo si giocava tutta in un istante): resta quello normale.
+          // Ritmo dell'auto-play: segue la velocità delle animazioni (durante l'auto-play almeno quella normale,
+          // vedi DuelView.speed); mai a velocità infinita.
           const ms = prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300;
           await sleep(ms / (this.view.speed || 1));
           response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
