@@ -1250,19 +1250,20 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     filters.hidden = !open;
     const n = activeFilters();
     filterCount.textContent = n ? String(n) : "";
-    clear(filterToggle).append(icon("tune"), " Filters", filterCount, icon(open ? "expand_less" : "expand_more"));
+    // Filters non è una scheda ma apre/chiude i filtri: solo icona (con il contatore e la freccia).
+    clear(filterToggle).append(icon("tune"), filterCount, icon(open ? "expand_less" : "expand_more"));
   }
   for (const el of [fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat, fUnoff]) el.addEventListener("change", () => setFilters(settings.editorFilters));
   for (const el of [fLevel, fAtk, fDef]) el.addEventListener("input", () => setFilters(settings.editorFilters));
   setFilters(settings.editorFilters !== false);
 
-  const tabAll = h("button.search-tab", { onclick: () => setTab("all") }, icon("view_module"), " Cards");
-  const tabMarks = h("button.search-tab", { onclick: () => setTab("bookmarks") });
+  const tabAll = h("button.search-tab", { title: "Cards", onclick: () => setTab("all") }, icon("view_module"), h("span.tab-label", "Cards"));
+  const tabMarks = h("button.search-tab", { title: "Bookmarks", onclick: () => setTab("bookmarks") });
   refreshTabs = () => {
     tabAll.classList.toggle("on", tab === "all");
     tabMarks.classList.toggle("on", tab === "bookmarks");
     const n = (settings.bookmarks ?? []).length;
-    clear(tabMarks).append(icon("bookmarks"), " Bookmarks", h("b.filter-count", n ? String(n) : ""));
+    clear(tabMarks).append(icon("bookmarks"), h("span.tab-label", "Bookmarks"), h("b.filter-count", n ? String(n) : ""));
   };
   // Trascinare una carta (dal mazzo o dai risultati) sulla scheda Bookmarks, o sui risultati quando
   // la scheda è aperta, la salva tra i preferiti; il mazzo non cambia.
