@@ -12,8 +12,8 @@
 - [ ] le carte che rivelano o guardano la mano dell’avversario appaiono face down e non vengono mostrate quando dovrebbero essere rivelate
 - [ ] le carte dell’avversario dovrebbero essere orientate verso di loro nel duel field altrimenti si confondono
 - [ ] nell’HDPC quando si aggiunge una carta a una categoria apre il deck builder e il deck builder mostra ogni carta del tuo deck come nonocopia (tutto giusto fino a qui) tuttavia le carte dell’extradeck sono mostrate in multipli anche se non dovrebbero
-
-  \
-  \
-
+- [ ] Il combo trainer editor torna in cima alla combo ogni volta che si cancella un substep.
+- [ ] se si abilita auto mode nel combo trainer dopo aver modificato una combo manualmente (in questo caso levando le zone selezionate) la combo avviene instantaneamente.
+- [ ] la descrizione della HDPC viene tagliataprima di finire.
+- [ ] le carte nell'HDPC possono essere solo in una categoria alla volta, questo è sbagliato.
 

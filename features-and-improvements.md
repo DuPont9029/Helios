@@ -52,5 +52,10 @@
 - [ ] non aprire una finestra per costi che scartano e far selezionare direttamente dalla mano
 - [ ] mettere una flag per segnalare che è una beta e modifica l’app in modo che la versione sia 1.0
 - [ ] * genesys support
-
-
+- [ ] salvare e importare board state nel trainer editor.
+- [ ] presets for game setting before a game.
+- [ ] decklist base nel gioco con livello base.
+- [ ] combo per decklist base.
+- [ ] disabilitare gli input del giocatore durante l'autoplay tranne l'abilità di disabilitare l'autoplay.
+- [ ] disabilitare l'opzione di levare l'autoplay quando si apre una combo in modalità autoplay dal menu.
+- [ ] quando si seleziona una carta con la visualizzazione in modalità in cui si vede una copia di ogni carta, cambiare la visualizzazione per permettere di vedere tutte le copie delle carte presenti nella decklist ma di muovere le carte solo in blocco con le sue altre copie. ES: quando si selezionano gli starter nell'HDPC al posto di vedere una copia di ogni carta nel mio deck dovrei vedere tutte le copie presenti ma poterle spostare nella categoria starter solo insieme alle loro altre copie. Inoltre aggiungere auto sorting dopo ogni spostamento in queste schermate per tenere l'ordine del cìdeck dato che cambiarne l'ordine non serve.

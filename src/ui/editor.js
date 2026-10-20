@@ -5,6 +5,7 @@ import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
+import { baseDecks } from "../data/base-content.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
@@ -137,9 +138,32 @@ export function showDeckList(app) {
         tile.addEventListener("keydown", (e) => e.key === "Enter" && act());
         return tile;
       });
+    // Mazzi base del gioco (livello base): sempre qui, anche dopo aver cancellato le proprie copie.
+    // Clic = si guardano nel deck builder; "+" = una copia tra i propri mazzi, da modificare.
+    const base = baseDecks()
+      .filter((d) => !text || d.name.toLowerCase().includes(text))
+      .map((d) => {
+        const copy = (e) => {
+          e.stopPropagation();
+          add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] });
+        };
+        const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." });
+        const tile = h(
+          "div.deck-tile.base",
+          { tabIndex: 0, title: `${d.level} level · ${d.main.length} main · ${d.extra.length} extra — click to look at it` },
+          deckBox(d),
+          h("div.deck-tile-name", d.name),
+          h("div.deck-tile-meta", h("span.deck-level", d.level), ` ${d.main.length} · ${d.extra.length} · ${d.side.length}`),
+          h("button.deck-tile-add", { title: "Add a copy to your Decks", onclick: copy }, icon("add"))
+        );
+        tile.addEventListener("click", view);
+        tile.addEventListener("keydown", (e) => e.key === "Enter" && view());
+        return tile;
+      });
     clear(grid).append(
       h("button.deck-tile.new", { title: "New Deck", onclick: async () => { const n = await promptModal("New Deck", "Name", "New Deck"); if (n) add(emptyDeck(n)); } }, h("span.plus", icon("add")), h("div.deck-tile-name", "New Deck")),
-      ...tiles
+      ...tiles,
+      ...(base.length && !selecting ? [h("div.decks-section", h("b", "Base decks"), h("span.muted.small", "Ready-made Decks of the game, Basic level: look at them or add a copy to your Decks.")), ...base] : [])
     );
   }
 
@@ -224,9 +248,11 @@ export function openDecklistEditor(list, { title = "Decklist" } = {}) {
  * Side Deck tra i duelli. Sopra la scelta (label), sotto Main, Extra e Side Deck: un clic sposta la carta
  * nella scelta (solo carte che possono stare in mano: niente Extra Deck) e la rimette al suo posto,
  * trascinando si riordina. main/extra/side: le carte disponibili; picked: quelle già scelte.
+ * block: si vedono tutte le copie ma una carta si sposta sempre insieme alle sue copie e le parti restano
+ * nell'ordine del deck builder (es. i gruppi dell'HDPC, dove conta la carta e non la singola copia).
  * Restituisce le carte scelte (in ordine) o null (annullato).
  */
-export function openDeckPicker({ main, extra = [], side = [], picked = [], title, label, max = 10, hint = "" }) {
+export function openDeckPicker({ main, extra = [], side = [], picked = [], title, label, max = 10, hint = "", block = false }) {
   return new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
     document.body.append(layer);
@@ -247,8 +273,8 @@ export function openDeckPicker({ main, extra = [], side = [], picked = [], title
       if (i >= 0) rest.splice(i, 1);
       else if (restSide.indexOf(code) >= 0) restSide.splice(restSide.indexOf(code), 1);
     }
-    const deck = { id: "combo-pick", name: title, main: sortDeckPart(rest), extra: sortDeckPart(extra), side: sortDeckPart(restSide), hand: [...picked] };
-    showEditor(host, { embed: { deck, title, onDone: finish, pick: { label, max, hint, side: [...side] } } });
+    const deck = { id: "combo-pick", name: title, main: sortDeckPart(rest), extra: sortDeckPart(extra), side: sortDeckPart(restSide), hand: block ? sortDeckPart(picked) : [...picked] };
+    showEditor(host, { embed: { deck, title, onDone: finish, pick: { label, max, hint, block, side: [...side] } } });
   });
 }
 
@@ -775,8 +801,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     "aside.search-panel.side-help",
     h("h3", pick.label),
     h("p", `Click a card to put it in the ${pick.label.toLowerCase()} (at most ${pick.max}); click it there to put it back. Extra Deck cards cannot be in the hand.`),
+    pick.block ? h("p.muted.small", "All the copies of a card move together; the cards stay in the Deck Builder order.") : null,
     pick.hint ? h("p.muted.small", pick.hint) : null,
-    h("p.muted.small", "Drag the cards to reorder them. Ctrl+Z undo, Reset goes back to the cards chosen before.")
+    h("p.muted.small", `${pick.block ? "" : "Drag the cards to reorder them. "}Ctrl+Z undo, Reset goes back to the cards chosen before.`)
   );
 
   // ------------------------------------------------------------ area mazzo
@@ -868,7 +895,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const to = from === "hand" ? (target === "hand" ? "hand" : pickHome(code)) : target === "hand" ? "hand" : from;
     if (to === from) {
       const dest = at ?? deck[to].length - 1;
-      if (dest === index) return;
+      if (dest === index || pick.block) return; // in blocco l'ordine è sempre quello del deck builder
       return change(() => {
         deck[to].splice(index, 1);
         deck[to].splice(dest, 0, code);
@@ -876,8 +903,16 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     }
     if (to === "hand") {
       if (isExtraDeckCard(getCard(code))) return toast("Extra Deck cards cannot be in the hand", { kind: "error" });
-      if (deck.hand.length >= pick.max) return toast(`At most ${pick.max} cards`, { kind: "error" });
+      const adding = pick.block ? deck[from].filter((x) => x === code).length : 1;
+      if (deck.hand.length + adding > pick.max) return toast(`At most ${pick.max} cards`, { kind: "error" });
     }
+    // In blocco: tutte le copie della parte di partenza, ognuna torna nella sua parte; poi si riordina.
+    if (pick.block) return change(() => {
+      const n = deck[from].filter((x) => x === code).length;
+      deck[from] = deck[from].filter((x) => x !== code);
+      for (let i = 0; i < n; i++) deck[from === "hand" ? pickHome(code) : "hand"].push(code);
+      for (const k of PARTS) deck[k] = sortDeckPart(deck[k]);
+    });
     change(() => {
       deck[from].splice(index, 1);
       deck[to].splice(to === "hand" && at != null ? at : deck[to].length, 0, code);

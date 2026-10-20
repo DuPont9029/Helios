@@ -4,19 +4,23 @@
 import createCore from "../core/ocgcore.js";
 import { DuelEngine } from "../core/engine.js";
 import { parseCard } from "../core/carddata.js";
+import { archiveIndex, archiveText } from "../data/bundle.js";
 
 let lib = null;
 let dataUrl = "";
 let cards = null;
+// Helios in un solo file: carte e script dall'archivio incorporato (ricevuto dalla pagina), niente rete.
+let pack = null;
 let engine = null;
 const scripts = new Map();
 const logs = [];
 
-async function init(url) {
+async function init(url, archive) {
   dataUrl = url;
+  pack = archive ? { bytes: archive, index: archiveIndex(archive) } : null;
   const [core, rows] = await Promise.all([
     createCore({ sync: true }),
-    fetch(dataUrl + "cards.json").then((r) => r.json()),
+    pack ? JSON.parse(archiveText(pack, "cards.json")) : fetch(dataUrl + "cards.json").then((r) => r.json()),
   ]);
   lib = core;
   cards = new Map(rows.map((r) => [r[0], parseCard(r)]));
@@ -31,6 +35,11 @@ const isLua = (status, text) => status === 200 && !/^\s*</.test(text);
 
 function readScript(name) {
   if (scripts.has(name)) return scripts.get(name);
+  if (pack) {
+    const text = archiveText(pack, `script/${name.replace(/^.*[\\/]/, "")}`);
+    scripts.set(name, text);
+    return text;
+  }
   const xhr = new XMLHttpRequest();
   xhr.open("GET", scriptUrl(name), false);
   try {
@@ -53,6 +62,7 @@ const BASE_SCRIPTS = [
 ];
 
 async function prefetch(names) {
+  if (pack) return; // un solo file: gli script si leggono dall'archivio quando servono
   const todo = [...new Set(names)].filter((n) => !scripts.has(n));
   let i = 0;
   const worker = async () => {
@@ -95,7 +105,7 @@ self.onmessage = async (e) => {
     let result;
     switch (cmd) {
       case "init":
-        await init(args.dataUrl);
+        await init(args.dataUrl, args.archive);
         result = { version: lib.getVersion() };
         break;
       case "start": {
