@@ -299,15 +299,21 @@ export class DuelSession {
         // Combo Trainer: il pulsante "Back" interrompe l'attesa della scelta e fa tornare indietro.
         const back = this.trainer ? new Promise((r) => (this.trainer.onBack = () => r({ trainerBack: true }))) : null;
         // Auto-play (esportazione video): il trainer sceglie da solo; undefined = tocca al giocatore.
-        const auto = this.trainer?.autoRespond?.(prompt);
-        if (auto !== undefined) {
-          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
-          response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
-        } else {
+        let auto = this.trainer?.autoRespond?.(prompt);
+        if (auto === undefined) {
           for (;;) {
-            response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+            // Auto-play acceso mentre si aspetta la scelta: si smette di aspettare e sceglie il trainer.
+            const autoOn = this.trainer ? new Promise((r) => (this.trainer.onAutoplay = (on) => on && r({ trainerAuto: true }))) : null;
+            response = await Promise.race([this.view.prompter.ask(prompt), back, autoOn].filter(Boolean));
+            if (this.trainer) this.trainer.onAutoplay = null;
             // Duello chiuso mentre si sceglieva (es. "Leave"): niente nuove richieste.
             if (this.over) return;
+            if (response?.trainerAuto) {
+              this.view.prompter.abort();
+              auto = this.trainer.autoRespond(prompt);
+              if (auto !== undefined) break;
+              continue;
+            }
             if (!response || response.trainerBack || response.back) break;
             // Modalità strict: azione o scelta diversa dalla combo, si richiede (senza scelte automatiche).
             const err = this.trainer?.check?.(prompt, response);
@@ -317,6 +323,10 @@ export class DuelSession {
             this.view.prompter.forceManual = true;
           }
           this.view.prompter.forceManual = false;
+        }
+        if (auto !== undefined) {
+          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
+          response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
         }
         if (this.trainer) this.trainer.onBack = null;
         if (response?.trainerBack) {

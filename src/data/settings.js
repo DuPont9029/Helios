@@ -30,6 +30,8 @@ const DEFAULTS = {
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",
+  gamePresets: [], // preset delle impostazioni di gioco salvati: [{ name, values }] (src/ui/play.js)
+  lastPreset: "", // ultimo preset scelto (nome di uno salvato o "b<i>" di uno già pronto)
   lastBestOf: 1, // partita: 1 (duello singolo), 3 o 5 (al meglio di) // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
   fieldsUrl: "", // cartella dei campi 3D su un sito esterno (vedi src/data/fields3d.js); vuoto = VITE_FIELDS_URL

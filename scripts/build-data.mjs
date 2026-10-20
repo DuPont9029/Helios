@@ -194,6 +194,7 @@ function buildScripts() {
 // Mazzi semplici costruiti per nome, così restano validi anche se cambiano i DB.
 const STARTERS = {
   "Starter - Dark Magician": {
+    level: "Basic",
     main: [
       ["Dark Magician", 3], ["Dark Magician Girl", 2], ["Magician's Rod", 3],
       ["Magicians' Souls", 2], ["Apprentice Illusion Magician", 2], ["Skilled Dark Magician", 1],
@@ -207,6 +208,7 @@ const STARTERS = {
     extra: [["Dark Paladin", 1], ["The Dark Magicians", 1], ["Ebon Illusion Magician", 1]],
   },
   "Starter - Blue-Eyes": {
+    level: "Basic",
     main: [
       ["Blue-Eyes White Dragon", 3], ["Blue-Eyes Alternative White Dragon", 2],
       ["Sage with Eyes of Blue", 3], ["The White Stone of Ancients", 2], ["The White Stone of Legend", 3],
@@ -229,7 +231,8 @@ function buildStarters(cards) {
   for (const c of cards.values()) if (c[14] === 0 && !byName.has(c[11])) byName.set(c[11], c[0]);
   const decks = [];
   for (const [name, def] of Object.entries(STARTERS)) {
-    const deck = { name, main: [], extra: [], side: [] };
+    // level: livello del mazzo base nel gioco (vedi src/data/base-content.js).
+    const deck = { name, level: def.level, main: [], extra: [], side: [] };
     for (const part of ["main", "extra"]) {
       for (const [cardName, count] of def[part]) {
         const id = byName.get(cardName);

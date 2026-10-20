@@ -269,7 +269,7 @@ export class DuelView {
         h("label.check", "Animations", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
         fullscreenButton("btn", "Fullscreen"),
         this.opts.onSurrender && h("button.btn.danger", { onclick: () => this.opts.onSurrender() }, "Surrender"),
-        h("button.btn", { onclick: () => this.opts.onLeave?.() }, "Leave")
+        h("button.btn.duel-leave", { onclick: () => this.opts.onLeave?.() }, "Leave")
       )
     );
   }

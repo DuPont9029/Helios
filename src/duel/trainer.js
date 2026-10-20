@@ -241,8 +241,9 @@ export class ComboTrainer {
    * @param notify (text, kind) avviso a schermo
    * @param strict modalità strict: le azioni e le scelte diverse dalla combo vengono rifiutate
    * @param autoplay il trainer gioca la combo da solo (esportazione video)
+   * @param lockAuto auto-play aperto dal menu: non si può spegnere finché la combo non finisce
    */
-  constructor(combo, { notify, onRestart, strict = false, autoplay = false, onStrictChange }) {
+  constructor(combo, { notify, onRestart, strict = false, autoplay = false, lockAuto = false, onStrictChange }) {
     this.combo = combo;
     this.notify = notify;
     this.strict = strict;
@@ -260,7 +261,7 @@ export class ComboTrainer {
     this.backBtn = h("button.btn.small.primary.trainer-back", { hidden: true, title: "Undo the wrong action and the step before it", onclick: () => this.goBack() }, "↶ Back");
     const strictBox = h("input", { type: "checkbox", checked: strict, onchange: (e) => { this.strict = e.target.checked; onStrictChange?.(this.strict); this.render(); } });
     // Auto-play: il trainer gioca la combo da solo da questo punto (anche senza registrare un video).
-    this.autoBox = h("input", { type: "checkbox", checked: autoplay, onchange: (e) => { this.autoplay = e.target.checked; this.render(); this.onAutoplay?.(this.autoplay); } });
+    this.autoBox = h("input", { type: "checkbox", checked: autoplay, disabled: autoplay && lockAuto, onchange: (e) => { this.autoplay = e.target.checked; this.render(); this.onAutoplay?.(this.autoplay); this.onAutoChange?.(this.autoplay); } });
     this.el = h(
       "div.trainer-panel",
       h(
@@ -269,7 +270,7 @@ export class ComboTrainer {
         h(
           "div.trainer-toggles",
           h("label.check.trainer-strict", { title: "Strict mode: actions and choices that differ from the combo are blocked, and the trainer tells you what to do instead" }, strictBox, "Strict mode"),
-          h("label.check.trainer-strict", { title: "The trainer plays the combo by itself from here, with the choices saved in each step" }, this.autoBox, "Auto-play")
+          h("label.check.trainer-strict.trainer-auto", { title: autoplay && lockAuto ? "Auto-play started from the menu: it plays the whole combo" : "The trainer plays the combo by itself from here, with the choices saved in each step. While it plays, the duel does not take your clicks" }, this.autoBox, "Auto-play")
         ),
         this.status
       ),
@@ -370,6 +371,8 @@ export class ComboTrainer {
   }
 
   complete() {
+    // Combo finita: l'auto-play si ferma e il giocatore riprende i comandi (es. "Play again").
+    if (this.autoplay) this.stopAuto();
     this.notify("✓ Combo complete!", "ok");
     this.caption?.("✓ Combo complete!", "done");
     this.render();
@@ -403,6 +406,20 @@ export class ComboTrainer {
   /** Risposta data dal giocatore: si ricorda la carta scelta e si seguono i dettagli del passo. */
   onResponse(prompt, response, mark) {
     if (prompt.player !== this.me) return;
+    // "Attivare l'effetto?" (effetto innescato, es. dopo una summon) con "Sì" per il passo atteso "Activate":
+    // è l'azione del passo, che da qui segue le sue scelte precise (prima restavano all'IA o al caso).
+    if (prompt.type === MSG.SELECT_EFFECTYN && response?.yes && this.expectedDetail()?.t !== "yesno") {
+      const want = !this.interrupted && this.combo.steps[this.next];
+      if (want?.kind === "activate" && want.code === prompt.code) {
+        this.chosen = want.code;
+        this.chosenMark = mark;
+        this.active = want.details?.length ? { step: this.next, pos: 0 } : null;
+        this.lastPick = null;
+        this.lastDone = null;
+        this.render();
+        return;
+      }
+    }
     const act = actionOf(prompt, response);
     if (act) {
       const want = !this.interrupted && this.combo.steps[this.next];
@@ -532,13 +549,17 @@ export class ComboTrainer {
    */
   stopAuto() {
     this.autoplay = false;
-    if (this.autoBox) this.autoBox.checked = false;
+    if (this.autoBox) Object.assign(this.autoBox, { checked: false, disabled: false });
+    this.onAutoChange?.(false);
   }
 
   autoRespond(prompt) {
     if (!this.autoplay || this.interrupted || prompt.player !== this.me) return undefined;
     const want = this.expectedDetail();
     if (want && detailKind(prompt.type) === want.t) return detailResponse(want, prompt, this.me) ?? undefined;
+    // Effetto innescato che è il passo successivo: si attiva.
+    const step = !this.done && this.combo.steps[this.next];
+    if (prompt.type === MSG.SELECT_EFFECTYN && step?.kind === "activate" && step.code === prompt.code) return { type: RESP.SELECT_EFFECTYN, yes: true };
     if (ACTION_PROMPTS.has(prompt.type)) {
       // Passo fatto ma con scelte ancora da fare (es. l'attivazione che si risolve dopo la catena):
       // si passa in catena e si aspettano le scelte.
@@ -764,6 +785,49 @@ function comboFromData(data) {
 }
 
 export const NOTES_MAX = 2000;
+
+// Stato di partenza da riusare (Trainer → editor → Board state): salvato con un nome nel browser o
+// condiviso come codice; le hand trap dell'avversario restano con il momento in cui vengono usate.
+const BOARD_PREFIX = "HELIOS-BOARD:";
+const BOARDS_KEY = "ygoweb.boards";
+
+const cleanInts = (a) => (Array.isArray(a) ? a.filter((x) => x && Number.isInteger(x.after) && x.after >= 0 && Number.isInteger(x.code)).map((x) => ({ after: x.after, code: x.code })).slice(0, 40) : []);
+
+/** Stati di partenza salvati: [{ id, name, setup, interrupts }]. */
+export function loadBoards() {
+  try {
+    const list = JSON.parse(localStorage.getItem(BOARDS_KEY) || "[]");
+    return Array.isArray(list) ? list.filter((b) => b && b.id && b.setup).map((b) => ({ id: String(b.id), name: String(b.name || "Board state").slice(0, 60), setup: cleanSetup(b.setup), interrupts: cleanInts(b.interrupts) })) : [];
+  } catch {
+    return [];
+  }
+}
+export function saveBoards(list) {
+  try {
+    localStorage.setItem(BOARDS_KEY, JSON.stringify(list));
+  } catch {
+    /* storage non disponibile */
+  }
+}
+
+export function boardToCode({ name, setup, interrupts }) {
+  return BOARD_PREFIX + toBase64(new TextEncoder().encode(JSON.stringify({ v: 1, name, setup, interrupts })));
+}
+
+/** Legge un codice di stato di partenza: { name, setup, interrupts } o un errore leggibile. */
+export function boardFromCode(text) {
+  const t = String(text ?? "").trim();
+  if (!t.startsWith(BOARD_PREFIX)) throw new Error("This is not a Helios board state code");
+  let data;
+  try {
+    data = JSON.parse(new TextDecoder().decode(fromBase64(t.slice(BOARD_PREFIX.length))));
+  } catch {
+    throw new Error("The board state code is damaged or incomplete");
+  }
+  const setup = cleanSetup(data?.setup);
+  if (!setup) throw new Error("The board state code is not valid");
+  return { name: String(data.name || "Imported board state").slice(0, 60), setup, interrupts: cleanInts(data.interrupts) };
+}
 
 // Spreadsheet: nome, note, decklist d'esempio e tutte le sue combo (le varianti restano legate alla loro
 // combo originale), JSON compresso (deflate) in base64: il codice resta corto anche con molte combo.
