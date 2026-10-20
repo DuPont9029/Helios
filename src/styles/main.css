@@ -587,3 +587,13 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .coming-soon { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 18px 22px; border: 1px dashed var(--accent); background: linear-gradient(90deg, rgba(56, 198, 255, 0.12), transparent 70%); clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); }
 .coming-soon .icon { color: var(--accent); font-size: 26px; }
 .coming-soon b { font: 700 18px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-soft); }
+
+/* Schede della ricerca del deck builder: la scheda attiva ha il lato destro tagliato in obliquo (14px),
+   il testo non deve finirci sotto. */
+button.search-tab.on { padding-right: 20px; }
+/* Lo spazio in più della scheda attiva si recupera dal pulsante dei filtri (altrimenti la sua freccia esce). */
+.search-tabs .filter-toggle { padding-left: 4px; padding-right: 4px; }
+/* Pannello della ricerca stretto: schede più compatte, così "Filters" e la sua freccia restano visibili. */
+@media (max-width: 1000px) {
+  .search-tab { font-size: 12px; letter-spacing: 0.02em; }
+}
