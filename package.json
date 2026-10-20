@@ -9,6 +9,7 @@
     "data": "node scripts/build-data.mjs",
     "dev": "vite",
     "build": "vite build",
+    "standalone": "node scripts/build-standalone.mjs",
     "preview": "vite preview",
     "signal": "node server/signal.mjs",
     "test:core": "node scripts/smoke-test.mjs"

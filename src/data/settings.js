@@ -23,9 +23,10 @@ const DEFAULTS = {
   turnPass: "",
   forceRelay: false,
   signalUrl: "", // vuoto = stesso host (server/signal.mjs)
-  // Online Rooms: "server" = server di segnalazione (codici di 6 caratteri), "nostr" = stanze decentralizzate
-  // sui relay Nostr pubblici (src/net/nostr-room.js, codici di 8 caratteri).
-  roomMode: "server",
+  // Online Rooms: "nostr" = stanze decentralizzate sui relay Nostr pubblici (src/net/nostr-room.js, codici di
+  // 8 caratteri), "server" = server di segnalazione (codici di 6 caratteri).
+  roomMode: "nostr",
+  roomModeChosen: false, // l'utente ha scelto lui dove creare le stanze (Settings)
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",
@@ -53,6 +54,9 @@ function load() {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
     // Impostazioni salvate prima della scelta del TURN: chi aveva già un suo server continua a usarlo.
     if (!saved.turnMode && saved.turnUrl) saved.turnMode = "custom";
+    // I relay Nostr sono il predefinito delle stanze: vale anche per chi aveva il vecchio predefinito salvato
+    // (le impostazioni si salvano tutte), tranne se il server l'aveva scelto lui.
+    if (!saved.roomModeChosen) delete saved.roomMode;
     return { ...DEFAULTS, ...saved };
   } catch {
     return { ...DEFAULTS };

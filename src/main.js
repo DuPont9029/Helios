@@ -27,7 +27,8 @@ window.addEventListener("appinstalled", () => {
   installPrompt = null;
   document.querySelectorAll(".install-app").forEach((b) => (b.hidden = true));
 });
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
+// Nel file singolo (npm run standalone) niente service worker: la pagina non ha file da mettere in cache.
+if ("serviceWorker" in navigator && import.meta.env.PROD && import.meta.env.MODE !== "standalone") {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("Service worker:", e)));
 }
 

@@ -10,6 +10,10 @@ import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
 import { h } from "../ui/dom.js";
+import { STANDALONE, loadArchive } from "../data/bundle.js";
+
+// Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
+const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).default : null;
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -26,7 +30,7 @@ const AUTOPLAY = (() => {
 
 class EngineClient {
   constructor() {
-    this.worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+    this.worker = InlineWorker ? new InlineWorker() : new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
     this.pending = new Map();
     this.nextId = 1;
     this.worker.onmessage = (e) => {
@@ -237,7 +241,8 @@ export class DuelSession {
     if (this.mux?.closed) return this.finish({ winner: null, text: "Connection lost", rematch: false });
     this.view.setStatus("Starting engine...");
     try {
-      await this.engine.call("init", { dataUrl: DATA_URL });
+      // Un solo file: il worker riceve una copia dell'archivio dei dati (carte e script Lua).
+      await this.engine.call("init", { dataUrl: DATA_URL, archive: STANDALONE ? (await loadArchive()).bytes : null });
       this.view.setStatus("Loading card scripts...");
       let res = await this.engine.call("start", this.cfg.duel);
       this.view.setStatus("");
