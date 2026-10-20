@@ -9,7 +9,7 @@ import { MSG, DUEL, IDLE, BATTLE, LOC } from "../core/constants.js";
 import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
-import { h } from "../ui/dom.js";
+import { h, sleep } from "../ui/dom.js";
 import { STANDALONE, loadArchive } from "../data/bundle.js";
 
 // Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
@@ -325,7 +325,10 @@ export class DuelSession {
           this.view.prompter.forceManual = false;
         }
         if (auto !== undefined) {
-          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
+          // Ritmo dell'auto-play: segue la velocità delle animazioni, ma con le animazioni spente (0) non va a
+          // velocità infinita (la combo si giocava tutta in un istante): resta quello normale.
+          const ms = prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300;
+          await sleep(ms / (this.view.speed || 1));
           response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
         }
         if (this.trainer) this.trainer.onBack = null;
