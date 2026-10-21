@@ -60,3 +60,5 @@
 - [ ] disabilitare l'opzione di levare l'autoplay quando si apre una combo in modalità autoplay dal menu.
 - [ ] quando si seleziona una carta con la visualizzazione in modalità in cui si vede una copia di ogni carta, cambiare la visualizzazione per permettere di vedere tutte le copie delle carte presenti nella decklist ma di muovere le carte solo in blocco con le sue altre copie. ES: quando si selezionano gli starter nell'HDPC al posto di vedere una copia di ogni carta nel mio deck dovrei vedere tutte le copie presenti ma poterle spostare nella categoria starter solo insieme alle loro altre copie. Inoltre aggiungere auto sorting dopo ogni spostamento in queste schermate per tenere l'ordine del cìdeck dato che cambiarne l'ordine non serve.
 - [ ] Cambiare l'interfaccia e la funzionalità del trainer prendendo ispirazione da https://ygopocket.com/combos e integrando le feature non presenti nel sito che il client già ha.
+- [ ] * modalità carte anime e rush come per ygo omega necessita nuova source per le immagini.
+- [ ] * importazione di collezioni dal altri sim.
