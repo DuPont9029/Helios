@@ -14,6 +14,8 @@ import { openSideEditor } from "./editor.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
+import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
+import { identity, shortKey } from "../net/identity.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
 import "../styles/play.css";
@@ -387,6 +389,7 @@ async function playMatch(app, match, old = null) {
       sleeve: validSleeve(settings.sleeve),
       pendulum: pendulumIcons(),
       options: match.options,
+      ranked: !!settings.ranked,
       chooseFirst: coinToss(toss),
       iFirst,
       // Mentre l'avversario fa il side deck il suo "hello" può tardare.
@@ -405,6 +408,7 @@ async function playMatch(app, match, old = null) {
     setTimeout(() => m.close(), 1800);
   } else if (iFirst != null) toast(iFirst ? "Rematch: you lost the last Duel, so you go first" : "Rematch: your opponent lost the last Duel, so they go first");
   else toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
+  if (settings.ranked) toast(result.ranked ? "Ranked Duel: the result counts for the ELO ranking" : "This Duel is not ranked (your opponent did not enable Ranked)", { kind: result.ranked ? "ok" : "info", ms: 4000 });
   if (!result.sameData) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
   }
@@ -419,6 +423,7 @@ async function playMatch(app, match, old = null) {
   }
   startSession(app, {
     controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, mux: match.mux,
+    ranked: result.ranked,
     sideDeck: match.series.bestOf > 1,
     match: match.series,
     onRematch: (old) => {
@@ -643,10 +648,35 @@ export function showOnline(app) {
     roomHint.textContent = "Your Room code is copied automatically; when you copy your opponent's code it is pasted here and you join by yourself.";
   };
 
+  // Classifica ELO (dai relay Nostr): si carica aprendo la scheda.
+  const rankBody = h("div.online-pane.ranking");
+  const loadRanking = async () => {
+    clear(rankBody).append(h("p.muted", "Loading the ranking from the Nostr relays…"));
+    republishOutbox().catch(() => {});
+    try {
+      const { players, games } = await leaderboard();
+      const me = identity().pk;
+      const mine = players.find((p) => p.pk === me);
+      clear(rankBody).append(
+        h("p.muted.small", "Ranked Duels are signed by both players and published on public Nostr relays; every client checks the signatures and computes the same ranking. Start: 1500, K = 32; at most 5 Duels a day against the same opponent count. Leaving a ranked Duel (Leave, Surrender, closing the tab or the connection) counts as a loss; if both players claim the other left, both lose."),
+        h("div.rank-me", h("b", mine ? `Your rating: ${mine.rating}` : `Your rating: ${START_RATING} (no ranked Duels yet)`), mine ? h("span.muted", ` · ${mine.wins}W ${mine.losses}L ${mine.draws}D`) : null, h("span.muted.small", ` · key ${shortKey(me)}`)),
+        players.length
+          ? h("table.rank-table",
+              h("tr", h("th", "#"), h("th", "Player"), h("th", "Rating"), h("th", "Duels"), h("th", "W / L / D"), h("th", { title: "Duels lost by leaving" }, "Left")),
+              players.slice(0, 100).map((p, i) => h(`tr${p.pk === me ? ".me" : ""}`, h("td", i + 1), h("td", { title: p.pk }, p.name, h("span.muted.small", ` ${shortKey(p.pk)}`)), h("td", h("b", p.rating)), h("td", p.games), h("td", `${p.wins} / ${p.losses} / ${p.draws}`), h("td", p.abandons))))
+          : h("p.muted", "No ranked Duels yet."),
+        h("p.muted.small", `${games.length} ranked Duels counted.`),
+        h("button.btn", { onclick: loadRanking }, icon("refresh"), " Reload")
+      );
+    } catch (e) {
+      clear(rankBody).append(h("p.status-box.error", `Ranking unavailable: ${e.message}`), h("button.btn", { onclick: loadRanking }, "Retry"));
+    }
+  };
+
   const tabs = [
     {
       id: "server",
-      label: "Online Room",
+      label: "Online Room (no server)",
       body: h(
         "div.online-pane",
         h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically and the Duel runs directly between the two browsers (peer-to-peer). No game server is involved: the Room is only used to meet. 8-character codes are serverless Rooms on public Nostr relays; 6-character codes use a signaling server. Choose where new Rooms are created in Settings."),
@@ -683,12 +713,14 @@ export function showOnline(app) {
         )
       ),
     },
+    { id: "ranking", label: "Ranking (ELO)", body: rankBody, onShow: loadRanking },
   ];
   const tabBar = h("div.tabs.big");
   const paneHost = h("div");
   const show = (id) => {
     tabBar.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t.dataset.tab === id));
     clear(paneHost).append(tabs.find((t) => t.id === id).body);
+    tabs.find((t) => t.id === id).onShow?.();
     // Gli appunti si osservano in entrambe le schede: codici stanza e codici invito si incollano da soli.
     startWatch();
   };
@@ -711,6 +743,9 @@ export function showOnline(app) {
           h("h3", "Your Profile"),
           h("label.field", h("span", "Name"), name),
           h("label.field", h("span", "Deck"), deck),
+          h("label.check", { title: "The Duel counts for the ELO ranking only if both players enable this" },
+            h("input", { type: "checkbox", checked: !!settings.ranked, onchange: (e) => (settings.ranked = e.target.checked) }), "Ranked Duel (ELO)"),
+          h("p.muted.small", "Ranked: the result, your name and your player key are published on public Nostr relays (see Settings → Ranked)."),
           h("h3", "Rules (set by the host)"),
           opts.el,
           h("p.muted.small", `Data: ${db.manifest?.version ?? "?"} · Both players must have the same data version.`)

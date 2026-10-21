@@ -6,6 +6,13 @@ import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
 import { validPendulumIcons } from "../data/pendulum.js";
+import { validMessage, cleanOptions } from "./guard.js";
+import { identity } from "./identity.js";
+import { RankedGame } from "./elo.js";
+
+// Messaggi tenuti da parte al massimo (per tipo, e della partita successiva): un avversario che ne manda
+// a raffica non riempie la memoria.
+const MAX_QUEUED = 500;
 
 // 2: mazzi mescolati dal client con il seed comune + sleeve nel messaggio "hello".
 // 3: ogni messaggio porta l'id della partita ("g") per la rivincita sullo stesso collegamento.
@@ -36,16 +43,21 @@ export class LinkMux {
   }
 
   dispatch(msg) {
-    const g = msg?.g ?? this.game;
+    // Messaggi dell'avversario: solo quelli con la forma prevista (vedi guard.js).
+    if (!validMessage(msg)) return;
+    const g = msg.g ?? this.game;
     if (g < this.game) return; // residuo di una partita già chiusa
-    if (g > this.game) return void this.future.push(msg);
+    if (g > this.game) {
+      if (g === this.game + 1 && this.future.length < MAX_QUEUED) this.future.push(msg);
+      return;
+    }
     const t = msg?.t;
     const w = this.waiters.get(t)?.shift();
     if (w) return w(msg);
     const h = this.handlers.get(t);
     if (h) return h(msg);
     if (!this.queue.has(t)) this.queue.set(t, []);
-    this.queue.get(t).push(msg);
+    if (this.queue.get(t).length < MAX_QUEUED) this.queue.get(t).push(msg);
   }
 
   /** Passa alla partita successiva: svuota code e gestori di quella vecchia, consegna i messaggi già arrivati della nuova. */
@@ -137,11 +149,14 @@ export async function negotiate(mux, opts) {
     // Gemme delle zone Pendulum (campo facoltativo: i client che non lo conoscono lo ignorano).
     pendulum: opts.pendulum ?? null,
     options: opts.host ? opts.options : undefined,
+    // Partite classificate (ELO): identità del giocatore e se vuole che il duello conti.
+    pk: identity().pk,
+    ranked: !!opts.ranked,
   });
   const hello = await mux.next("hello", opts.helloTimeout);
   if (hello.v !== PROTOCOL) throw new Error("Protocol version mismatch: both players must update the client");
-  const options = opts.host ? opts.options : hello.options;
-  if (!options) throw new Error("The host did not send the Duel options");
+  // Ospite: le regole dell'host si controllano (valori ammessi, flag del motore della modalità indicata).
+  const options = opts.host ? opts.options : cleanOptions(hello.options);
 
   const sameData = hello.data === (db.manifest?.version ?? "?");
   const banlist = options.banlist ? banlistByName(options.banlist) : null;
@@ -153,7 +168,7 @@ export async function negotiate(mux, opts) {
   mux.send({ t: "reveal", rand: myRand });
   const reveal = await Promise.race([
     mux.next("reveal"),
-    mux.next("reject").then((r) => Promise.reject(new Error(r.reason))),
+    mux.next("reject").then((r) => Promise.reject(new Error(String(r.reason).slice(0, 2000)))),
   ]);
   if (hex(await sha256(reveal.rand)) !== hello.commit) throw new Error("Your opponent's seed does not match their initial commitment");
 
@@ -186,6 +201,18 @@ export async function negotiate(mux, opts) {
   const theirSleeve = validSleeve(hello.sleeve);
   const sleeves = iAmFirst ? [opts.sleeve ?? null, theirSleeve] : [theirSleeve, opts.sleeve ?? null];
   const theirGems = validPendulumIcons(hello.pendulum);
+  // Classificata solo se lo vogliono entrambi (e con due identità diverse): start firmato da tutti e due,
+  // con l'impronta del seed comune come id della partita. Se le firme non vanno, il duello si gioca lo stesso.
+  let ranked = null;
+  if (opts.ranked && hello.ranked === true && hello.pk && hello.pk !== identity().pk) {
+    const game = new RankedGame({ match: hex(digest), me: { pk: identity().pk, name: opts.name }, opp: { pk: hello.pk, name: theirName }, send: (m) => mux.send(m) });
+    try {
+      await game.begin(() => mux.next("rank-start", 20000));
+      ranked = game;
+    } catch (e) {
+      console.warn("Ranked:", e.message);
+    }
+  }
   const pendulums = iAmFirst ? [opts.pendulum ?? null, theirGems] : [theirGems, opts.pendulum ?? null];
   return {
     me: iAmFirst ? 0 : 1,
@@ -195,6 +222,7 @@ export async function negotiate(mux, opts) {
     sameData,
     iWinToss,
     options,
+    ranked,
     // Online i mazzi si mescolano sempre (con il seed comune): nessuna opzione per pescare in ordine.
     duel: { flags: String(options.flags), seed, lp: options.lp, hand: options.hand, draw: options.draw, decks, shuffle: [true, true] },
   };

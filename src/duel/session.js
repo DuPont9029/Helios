@@ -11,6 +11,7 @@ import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
 import { h } from "../ui/dom.js";
 import { STANDALONE, loadArchive } from "../data/bundle.js";
+import { rateLimit } from "../net/guard.js";
 
 // Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
 const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).default : null;
@@ -19,6 +20,8 @@ const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).de
 const AUTO_RESPONSE_MS = 60;
 // Margine per la latenza prima di dichiarare scaduto il tempo dell'avversario remoto.
 const REMOTE_GRACE_MS = 8000;
+// Margine sul tempo dichiarato dall'avversario rispetto a quello misurato qui (ritardo della rete).
+const CLOCK_TOLERANCE_MS = 1000;
 
 const AUTOPLAY = (() => {
   try {
@@ -206,10 +209,16 @@ export class DuelSession {
     this.mux = mux;
     const opp = () => this.cfg.names[1 - this.cfg.me];
     mux.on("resp", (m) => this.inbox.push(m));
-    mux.on("chat", (m) => this.view.addChat(opp(), String(m.text).slice(0, 300)));
+    // Chat dell'avversario: al massimo 8 messaggi ogni 10 secondi (gli altri si scartano).
+    const chatOk = rateLimit(8, 10000);
+    mux.on("chat", (m) => chatOk() && this.view.addChat(opp(), String(m.text).slice(0, 300)));
     mux.on("surrender", () => this.finish({ winner: this.cfg.me, text: "Your opponent surrendered" }));
+    // "Tempo scaduto" dall'avversario: vale solo per il suo giocatore (equivale ad arrendersi). Il proprio
+    // timeout lo decide solo il proprio orologio: un messaggio che dice il contrario si ignora.
     mux.on("timeout", (m) => {
-      const p = m.player === 0 || m.player === 1 ? m.player : 1 - this.cfg.me;
+      const p = 1 - this.cfg.me;
+      if (m.player !== p) return console.warn("Ignored a timeout message for the local player from the opponent");
+      if (!this.timed(p)) return console.warn("Ignored a timeout message: this Duel has no timer");
       if (this.clock) {
         this.clock.pause(performance.now());
         this.clock.left[p] = 0;
@@ -217,6 +226,18 @@ export class DuelSession {
       }
       this.finish({ winner: 1 - p, sub: `${this.cfg.names[p]} ran out of time` });
     });
+    // Partita classificata: firma del risultato dell'avversario (vedi net/elo.js). Chiudendo la scheda a duello
+    // in corso si manda la firma della propria sconfitta: chi esce perde.
+    if (this.cfg.ranked) {
+      this.cfg.ranked.onStatus = (text, kind = "ok") => toast(text, { kind, ms: 4000 });
+      mux.on("rank-result", (m) => this.cfg.ranked.receiveResult(m));
+      this.onPageHide = () => {
+        if (this.over) return;
+        this.cfg.ranked.resign();
+        this.send({ t: "bye" });
+      };
+      addEventListener("pagehide", this.onPageHide);
+    }
     mux.on("bye", () => {
       this.opponentLeft("Your opponent left");
       this.finish({ winner: this.cfg.me, text: "Your opponent left the Duel", rematch: false });
@@ -372,11 +393,19 @@ export class DuelSession {
         const m = await this.inbox.next();
         this.view.setStatus("");
         if (this.over) return;
-        // È l'avversario a misurare il proprio tempo: si adotta il valore che comunica.
+        // È l'avversario a misurare il proprio tempo: si adotta il valore che comunica, ma non più di quello
+        // che risulta anche qui (più l'incremento dell'azione e un margine per la rete): un client modificato
+        // non può darsi tempo in più.
         if (this.timed(prompt.player)) {
           clearTimeout(this.timeout);
-          if (m.clock && Number.isFinite(m.clock.left)) this.clock.sync(prompt.player, m.clock.left, m.clock.bonus);
-          else this.clock.pause(performance.now());
+          const now = performance.now();
+          const here = this.clock.view(prompt.player, now).left;
+          if (m.clock && Number.isFinite(m.clock.left)) {
+            const max = here + this.clock.inc + CLOCK_TOLERANCE_MS;
+            if (m.clock.left > max) console.warn(`Opponent's clock adjusted: reported ${Math.round(m.clock.left)} ms, allowed ${Math.round(max)} ms`);
+            const bonus = Number.isFinite(m.clock.bonus) ? Math.min(Math.max(0, m.clock.bonus), this.clock.maxBonus) : undefined;
+            this.clock.sync(prompt.player, Math.min(m.clock.left, max), bonus);
+          } else this.clock.pause(now);
           this.renderClock();
         }
         if (m.seq !== this.seq) throw new Error(`Out-of-order sequence (${m.seq} instead of ${this.seq})`);
@@ -437,6 +466,7 @@ export class DuelSession {
   finish({ winner, reason, text, sub, rematch = true }) {
     if (this.over) return;
     this.over = true;
+    this.rankedEnd(winner, rematch);
     this.winner = winner; // indice del core del vincitore (2 o null = pareggio): serve alla rivincita
     clearTimeout(this.timeout);
     clearInterval(this.tick);
@@ -467,6 +497,24 @@ export class DuelSession {
     if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch({ nextGame });
     else if (!this.mux && nextGame && this.cfg.onNextGame) this.showNextGame();
     else if (!this.mux && this.cfg.onLocalRematch) this.showLocalRematch();
+  }
+
+  /**
+   * Partita classificata: a fine duello si firma il risultato (vincitore, o pareggio); se l'avversario se ne
+   * va (rematch = false: uscita o collegamento perso) o non firma entro 30 secondi, vale l'abbandono.
+   */
+  rankedEnd(winner, rematch) {
+    const r = this.cfg.ranked;
+    if (!r) return;
+    // Uscita o collegamento perso: se l'avversario ha già mandato la firma della sua sconfitta (è uscito lui),
+    // la si controfirma; altrimenti vale l'abbandono.
+    if (!rematch && !r.pendingOpp) return void r.abandoned();
+    const pk = !rematch ? r.me : winner === this.cfg.me ? r.me : winner === 1 - this.cfg.me ? r.opp : null;
+    r.finished(pk);
+    // Firma dell'avversario che non arriva (se n'è andato o non vuole firmare la sconfitta): vale l'abbandono,
+    // che RankedGame pubblica solo per chi ha vinto.
+    setTimeout(() => r.abandoned(), 30000);
+    this.mux?.onClose(() => r.abandoned());
   }
 
   /** Partita locale non finita: il duello successivo parte da solo (o subito con il pulsante). */
@@ -615,7 +663,8 @@ export class DuelSession {
   }
 
   async leave() {
-    if (!this.over && !(await confirmModal("Leave the Duel?", "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
+    if (!this.over && !(await confirmModal("Leave the Duel?", this.cfg.ranked ? "You will lose the current Duel (ranked: it counts as a loss)." : "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
+    if (!this.over) this.cfg.ranked?.resign(); // classificata: chi esce perde
     this.send({ t: "bye" });
     this.destroy();
     this.cfg.onExit?.();
@@ -624,6 +673,7 @@ export class DuelSession {
   /** keepLink: il collegamento resta aperto per la rivincita. */
   destroy({ keepLink = false } = {}) {
     this.over = true;
+    if (this.onPageHide) removeEventListener("pagehide", this.onPageHide);
     this.offClose?.();
     this.clearSleeves?.();
     clearTimeout(this.timeout);
