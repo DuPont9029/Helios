@@ -300,3 +300,8 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .setup-field-row.setup-hand-row .int-use { grid-column: auto; }
 .int-use.on { border-color: var(--accent); color: var(--accent-soft); }
 .sheet-head-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Trainer: combo base dei mazzi base */
+.combo-base { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.combo-base .combo-toolbar-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.combo-row.base { border-left: 3px solid var(--accent-soft); }

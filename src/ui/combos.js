@@ -15,11 +15,13 @@ import { DuelSession } from "../duel/session.js";
 import {
   ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, cleanStep, cleanSetup, cleanCards,
   loadComboStore, saveComboStore, comboToCode, comboFromCode, detectCards, comboDeck, interruptsOutsideBoard, isSheetCode,
+  loadBoards, saveBoards, boardToCode, boardFromCode,
 } from "../duel/trainer.js";
 import { canRecordVideo, startVideo } from "./video-capture.js";
 import { showComboSchema } from "./combo-view.js";
 import { renderSheets, decklistPicker } from "./combo-sheets.js";
 import { openDecklistEditor, openDeckPicker, openCardCollector } from "./editor.js";
+import { BASE_READY, baseCombos } from "../data/base-content.js";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const uniq = (codes) => [...new Set(codes)];
@@ -138,6 +140,46 @@ export function showComboTrainer(app, { review } = {}) {
     );
   }
 
+  /** Combo base (dei mazzi base): si provano e si guardano; per cambiarle se ne fa una copia tra le proprie. */
+  function baseRow(c) {
+    const copy = () => {
+      const mine = { ...structuredClone(c), id: uid() };
+      delete mine.base;
+      delete mine.deckName;
+      ctx.put(mine);
+      toast(`Copied to your combos: "${mine.name}"`);
+    };
+    return h(
+      "div.combo-row.base",
+      h("div.combo-hand", c.hand.slice(0, 6).map((code) => cardFace(code))),
+      h("div.combo-info", h("b", c.name), h("div.muted.small", `${c.deckName} · Basic level`), h("div.muted.small", comboSummary(c))),
+      h(
+        "div.combo-actions",
+        h("button.btn.primary", { onclick: () => practice(app, c) }, icon("play_arrow"), " Practice"),
+        h("button.btn", { title: "The trainer plays the combo by itself (no video)", onclick: () => practice(app, c, { autoplay: true }) }, icon("smart_display"), " Auto-play"),
+        h("button.btn", { title: "Combo sheet: steps with the cards, notes and cards needed", onclick: () => showComboSchema(c, { family: [c], onPractice: (x) => practice(app, x), onOpen: () => {} }) }, icon("view_timeline"), " View"),
+        h("button.btn", { title: "Copy it to your combos, to change it or make variants", onclick: copy }, icon("content_copy"), " Copy to my combos")
+      )
+    );
+  }
+  /** Sezione delle combo base, sotto le proprie (o nella pagina vuota). */
+  function baseSection() {
+    if (!BASE_READY) {
+      return h(
+        "section.combo-base",
+        h("div.combo-toolbar-title", h("h2", "Base combos")),
+        h("div.coming-soon", icon("schedule"), h("b", "Coming soon"), h("span.muted.small", "Combos for the Base decks of the game (Basic level), ready to practice."))
+      );
+    }
+    const list = baseCombos();
+    if (!list.length) return null;
+    return h(
+      "section.combo-base",
+      h("div.combo-toolbar-title", h("h2", "Base combos"), h("span.muted.small", "For the Base decks of the game (Basic level): practice them, watch them with Auto-play, or copy them to change them.")),
+      h("div.combo-list", list.map(baseRow))
+    );
+  }
+
   // Ricerca: nome, variante, note e carte (mano e passi). Una famiglia si mostra se una sua combo corrisponde.
   const search = h("input.input.combo-search", { type: "search", placeholder: "Search by name or card…", oninput: () => renderList() });
   const matches = (c, q) =>
@@ -190,6 +232,7 @@ export function showComboTrainer(app, { review } = {}) {
         tile("edit_note", "Write the steps", "Build the combo step by step, with the exact cards, zones and answers.", () => newCombo({ how: "write" })),
         tile("download", "Import a code", "Add a combo shared from another Helios client.", importAndSave)
       ),
+      baseSection(),
       howItWorks(true)
     );
   }
@@ -209,6 +252,7 @@ export function showComboTrainer(app, { review } = {}) {
         h("button.btn.primary", { onclick: () => newCombo() }, icon("add"), " New combo")
       ),
       list,
+      baseSection(),
       howItWorks(false)
     );
     renderList();
@@ -651,6 +695,11 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   }
 
   function renderSteps() {
+    // Il passo si ridisegna da capo: si tiene la posizione di scorrimento (senza, cancellando un sotto-passo
+    // la lista si svuota per un istante e la finestra torna in alto).
+    const scroller = stepsEl.closest(".modal-body");
+    const top = scroller?.scrollTop ?? 0;
+    if (scroller) stepsEl.style.minHeight = `${stepsEl.offsetHeight}px`;
     clear(stepsEl).append(
       ...c.steps.map((s, i) => {
         const act = h("select.select.step-kind", Object.entries(STEP_ACTIONS).map(([k, l]) => h("option", { value: k }, l)));
@@ -703,6 +752,8 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     foldAll.hidden = !c.steps.some((s) => s.details?.length);
     clear(foldAll).append(icon(anyOpen ? "unfold_less" : "unfold_more"), anyOpen ? " Collapse all choices" : " Expand all choices");
     renderInts();
+    stepsEl.style.minHeight = "";
+    if (scroller) scroller.scrollTop = top;
   }
 
   /**
@@ -963,7 +1014,14 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   function renderSetup() {
     const s = c.setup;
     clear(setupEl).append(
-      h("div.setup-tools", h("button.btn.small.primary", { onclick: () => editBoard() }, icon("style"), " Edit in the Deck Builder"), h("span.muted.small", "All the zones in one screen, with the card database search.")),
+      h(
+        "div.setup-tools",
+        h("button.btn.small.primary", { onclick: () => editBoard() }, icon("style"), " Edit in the Deck Builder"),
+        h("span.muted.small", "All the zones in one screen, with the card database search."),
+        h("span.spacer"),
+        h("button.btn.small.ghost", { title: "Save this board state to use it in other combos, or copy its code", onclick: () => saveBoard() }, icon("save"), " Save…"),
+        h("button.btn.small.ghost", { title: "Load a saved board state or paste a board state code", onclick: () => loadBoard() }, icon("download"), " Load…")
+      ),
       h(
         "div.setup-col",
         h("h4", "You"),
@@ -1006,6 +1064,86 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   }
 
 
+
+  // ---- stati di partenza salvati (da riusare in altre combo) e codici da condividere
+  /** Hand trap dell'avversario con il momento in cui le usa (solo quelle legate a una sua carta). */
+  const boardInts = () => [...interruptOf().values()].map((x) => ({ after: x.after, code: x.code }));
+  async function saveBoard() {
+    const name = await promptModal("Save board state", "Name", c.name);
+    if (name == null) return;
+    const board = { id: uid(), name: name.trim().slice(0, 60) || c.name, setup: structuredClone(c.setup), interrupts: boardInts() };
+    const list = loadBoards();
+    const same = list.findIndex((b) => b.name === board.name);
+    if (same >= 0 && !(await confirmModal("Save board state", `Replace the saved board state "${board.name}"?`, "Replace", "Cancel"))) return;
+    if (same >= 0) list[same] = { ...board, id: list[same].id };
+    else list.unshift(board);
+    saveBoards(list);
+    const code = boardToCode(board);
+    navigator.clipboard?.writeText(code).then(() => toast(`Board state saved: "${board.name}" (code copied)`), () => toast(`Board state saved: "${board.name}"`));
+    if (!navigator.clipboard?.writeText) toast(`Board state saved: "${board.name}"`);
+  }
+  /** Sostituisce lo stato di partenza della combo; gli usi delle hand trap oltre l'ultimo passo vanno all'ultimo. */
+  function applyBoard(b) {
+    c.setup = { ...emptySetup(), ...structuredClone(b.setup) };
+    c.interrupts = b.interrupts.map((x) => ({ after: Math.min(x.after, c.steps.length), code: x.code }));
+    pruneInterrupts();
+    renderSetup();
+    snap();
+    toast(`Board state loaded: "${b.name}"`);
+  }
+  async function loadBoard() {
+    let list = loadBoards();
+    const area = h("textarea.input.combo-code", { rows: 3, placeholder: "HELIOS-BOARD:..." });
+    const summary = (b) => {
+      const n = (s) => s.field.length + s.gy.length + s.banished.length + s.deckTop.length + (s.hand?.length ?? 0) + (s.extra?.length ?? 0);
+      return `You ${plural(n(b.setup.me), "card")} · Opponent ${plural(n(b.setup.opp), "card")}${b.interrupts.length ? ` · ${plural(b.interrupts.length, "hand trap")}` : ""}`;
+    };
+    const listEl = h("div.board-list");
+    let close = null;
+    const draw = () => clear(listEl).append(
+      ...(list.length
+        ? list.map((b) => h(
+            "div.board-row",
+            h("div.board-row-text", h("b", b.name), h("span.muted.small", summary(b))),
+            h("button.btn.small.ghost", { title: "Copy the code of this board state", onclick: () => navigator.clipboard?.writeText(boardToCode(b)).then(() => toast("Board state code copied")) }, icon("content_copy")),
+            h("button.btn.small.ghost", {
+              title: "Delete this saved board state",
+              onclick: async () => {
+                if (!(await confirmModal("Delete board state", `Delete the saved board state "${b.name}"?`, "Delete", "Cancel", { danger: true, top: true }))) return;
+                list = list.filter((x) => x.id !== b.id);
+                saveBoards(list);
+                draw();
+              },
+            }, icon("delete")),
+            h("button.btn.small.primary", { onclick: () => { close?.(); applyBoard(b); } }, "Load")
+          ))
+        : [h("p.muted.small", "No saved board states yet: use Save… in a combo with a board state.")])
+    );
+    draw();
+    const m = openModal({
+      title: "Load board state",
+      className: "board-load",
+      body: [h("p.muted.small", "It replaces the board state of this combo (your field, GY, banished cards and Deck top, and all of the opponent's)."), listEl, h("p.muted.small", "Or paste a board state code:"), area],
+      actions: [
+        { label: "Cancel", value: null },
+        {
+          label: "Load code",
+          primary: true,
+          onClick: (done) => {
+            try {
+              const b = boardFromCode(area.value);
+              done();
+              applyBoard(b);
+            } catch (e) {
+              toast(e.message, { kind: "error" });
+            }
+          },
+        },
+      ],
+    });
+    close = () => m.close?.();
+    await m.result;
+  }
 
   // ---- tag sulle carte della board finale
   function renderTags() {
@@ -1237,8 +1375,16 @@ function practice(app, combo, { video = null, autoplay = false } = {}) {
     strict: !!settings.comboStrict,
     onStrictChange: (on) => (settings.comboStrict = on),
     autoplay,
+    // Auto-play dal menu (o per il video): si guarda la combo fino alla fine, senza poterlo spegnere.
+    lockAuto: autoplay,
   });
   const session = startDuel(app, deck, combo, trainer, autoplay ? `Auto-play: ${combo.name}` : `Practice: ${combo.name}`);
+  // Durante l'auto-play il duello non accetta i clic del giocatore (resta solo l'interruttore dell'auto-play).
+  trainer.onAutoChange = (on) => {
+    [session.view.el, session.view.floatBar].forEach((el) => el.classList.toggle("autoplaying", on));
+    session.view.minSpeed = on ? 1 : 0;
+  };
+  trainer.onAutoChange(autoplay);
   // Combo completa: tag sulle carte, poi "Play again" (o fine del video in auto-play).
   trainer.onComplete = () => {
     if (combo.tags?.length) session.view.board.setTags(combo.tags);

@@ -11,7 +11,9 @@ import { showSettings } from "./ui/settings-page.js";
 import { loadDecks } from "./deck/deck.js";
 import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
-import { seedBookmarks } from "./data/bookmarks.js";
+import { seedBookmarks, pruneForbiddenBookmarks } from "./data/bookmarks.js";
+import { updateBanlists } from "./data/banlist-update.js";
+import { toast } from "./ui/modal.js";
 import { showComboTrainer } from "./ui/combos.js";
 import { showHdpc } from "./ui/hdpc.js";
 import { version } from "../package.json";
@@ -27,7 +29,8 @@ window.addEventListener("appinstalled", () => {
   installPrompt = null;
   document.querySelectorAll(".install-app").forEach((b) => (b.hidden = true));
 });
-if ("serviceWorker" in navigator && import.meta.env.PROD) {
+// Nel file singolo (npm run standalone) niente service worker: la pagina non ha file da mettere in cache.
+if ("serviceWorker" in navigator && import.meta.env.PROD && import.meta.env.MODE !== "standalone") {
   window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch((e) => console.warn("Service worker:", e)));
 }
 
@@ -201,6 +204,18 @@ async function boot() {
   try {
     await loadDatabase((t) => (status.textContent = t));
     seedBookmarks();
+    // Banlist aggiornate da ProjectIgnis/LFLists (senza aspettare: si gioca subito con quelle che ci sono);
+    // le carte proibite escono dai preferiti.
+    const prune = () => {
+      const out = pruneForbiddenBookmarks();
+      if (out.length) toast(`${out.length === 1 ? "1 forbidden card was" : `${out.length} forbidden cards were`} removed from your Bookmarks`);
+    };
+    prune();
+    updateBanlists().then((changed) => {
+      if (!changed) return;
+      toast("Banlists updated");
+      prune();
+    });
     if (location.hash === "#ai-vs-ai") return aiVsAi();
     home();
   } catch (e) {

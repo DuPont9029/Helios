@@ -23,12 +23,16 @@ const DEFAULTS = {
   turnPass: "",
   forceRelay: false,
   signalUrl: "", // vuoto = stesso host (server/signal.mjs)
-  // Online Rooms: "server" = server di segnalazione (codici di 6 caratteri), "nostr" = stanze decentralizzate
-  // sui relay Nostr pubblici (src/net/nostr-room.js, codici di 8 caratteri).
-  roomMode: "server",
+  // Online Rooms: "nostr" = stanze decentralizzate sui relay Nostr pubblici (src/net/nostr-room.js, codici di
+  // 8 caratteri), "server" = server di segnalazione (codici di 6 caratteri).
+  roomMode: "nostr",
+  roomModeChosen: false, // l'utente ha scelto lui dove creare le stanze (Settings)
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",
+  hiddenBaseDecks: [], // mazzi base cancellati dalla schermata Deck (nomi, vedi src/data/base-content.js)
+  gamePresets: [], // preset delle impostazioni di gioco salvati: [{ name, values }] (src/ui/play.js)
+  lastPreset: "", // ultimo preset scelto (nome di uno salvato o "b<i>" di uno già pronto)
   lastBestOf: 1, // partita: 1 (duello singolo), 3 o 5 (al meglio di) // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
   fieldsUrl: "", // cartella dei campi 3D su un sito esterno (vedi src/data/fields3d.js); vuoto = VITE_FIELDS_URL
@@ -53,6 +57,9 @@ function load() {
     const saved = JSON.parse(localStorage.getItem(KEY) || "{}");
     // Impostazioni salvate prima della scelta del TURN: chi aveva già un suo server continua a usarlo.
     if (!saved.turnMode && saved.turnUrl) saved.turnMode = "custom";
+    // I relay Nostr sono il predefinito delle stanze: vale anche per chi aveva il vecchio predefinito salvato
+    // (le impostazioni si salvano tutte), tranne se il server l'aveva scelto lui.
+    if (!saved.roomModeChosen) delete saved.roomMode;
     return { ...DEFAULTS, ...saved };
   } catch {
     return { ...DEFAULTS };

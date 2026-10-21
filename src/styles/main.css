@@ -189,7 +189,7 @@ input[type="range"] { accent-color: var(--accent); }
 .menu-item:hover, .menu-item:focus-visible { transform: translateX(10px); color: #fff; outline: none; }
 .menu-item:hover::before, .menu-item:focus-visible::before { width: 8px; box-shadow: 0 0 18px rgba(56, 198, 255, 0.9); }
 .menu-item:hover .menu-title, .menu-item:focus-visible .menu-title { color: var(--accent-soft); text-shadow: 0 0 24px rgba(56, 198, 255, 0.35); }
-.menu-item:hover .menu-sub, .menu-item:focus-visible .menu-sub { max-height: 20px; opacity: 1; }
+.menu-item:hover .menu-sub, .menu-item:focus-visible .menu-sub { max-height: 60px; opacity: 1; }
 
 /* emblema astratto al posto dell'illustrazione */
 /* raggio 2,4 volte l'originale, spostato di 75px a destra: con transform non sposta la griglia; resta dietro al menu */
@@ -561,3 +561,35 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .menu-back { margin-bottom: 6px; }
 .install-app[hidden] { display: none; }
 .modal-backdrop.top { z-index: 160; }
+
+/* Trainer → editor: stati di partenza salvati */
+.board-load .modal-body { display: flex; flex-direction: column; gap: 10px; }
+.board-list { display: flex; flex-direction: column; gap: 6px; max-height: 45vh; overflow: auto; }
+.board-row { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: rgba(255, 255, 255, 0.02); }
+.board-row-text { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.board-row-text b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Preset delle impostazioni di gioco (Vs CPU, Test Duel, stanze online) */
+.preset-row { grid-column: 1 / -1; }
+.preset-tools { display: flex; gap: 8px; align-items: center; }
+.preset-tools .select { flex: 1; max-width: 360px; }
+
+/* Mazzi base del gioco nella schermata Deck */
+.decks-section { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 12px; padding: 14px 2px 2px; border-top: 1px solid var(--line); }
+.decks-section b { font: 700 15px var(--display); letter-spacing: 0.06em; text-transform: uppercase; }
+.deck-level { display: inline-block; padding: 1px 6px; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: #06121f; background: var(--accent); }
+.deck-tile-add { position: absolute; top: 6px; left: 6px; width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(8, 10, 16, 0.85); color: var(--accent-soft); opacity: 0; transition: opacity 0.15s; }
+.deck-tile:hover .deck-tile-add, .deck-tile:focus-within .deck-tile-add { opacity: 1; }
+.deck-tile-add:hover { color: #06121f; background: var(--accent); }
+@media (hover: none) { .deck-tile-add { opacity: 1; } }
+
+/* Avviso "Coming soon" (mazzi e combo base non ancora pronti) */
+.coming-soon { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 18px 22px; border: 1px dashed var(--accent); background: linear-gradient(90deg, rgba(56, 198, 255, 0.12), transparent 70%); clip-path: polygon(12px 0, 100% 0, 100% 100%, 0 100%, 0 12px); }
+.coming-soon .icon { color: var(--accent); font-size: 26px; }
+.coming-soon b { font: 700 18px var(--display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-soft); }
+
+/* Schede della ricerca del deck builder: il lato obliquo della scheda aperta (14px) non copre il testo;
+   Filters è solo icona (vedi setFilters in editor.js). Pannello molto stretto: le schede restano icone. */
+.search-tabs .search-tab.on { padding-right: 22px; }
+.search-panel { container-type: inline-size; }
+@container (max-width: 300px) { .search-tabs .tab-label { display: none; } }

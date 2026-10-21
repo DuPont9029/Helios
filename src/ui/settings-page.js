@@ -296,11 +296,11 @@ export function showSettings(app) {
             "Online Rooms",
             h(
               "select.select",
-              { onchange: (e) => (settings.roomMode = e.target.value) },
-              h("option", { value: "server", selected: settings.roomMode !== "nostr" }, "Signaling server"),
-              h("option", { value: "nostr", selected: settings.roomMode === "nostr" }, "Nostr relays (decentralized)")
+              { onchange: (e) => { settings.roomMode = e.target.value; settings.roomModeChosen = true; } },
+              h("option", { value: "nostr", selected: settings.roomMode !== "server" }, "Nostr relays (decentralized, default)"),
+              h("option", { value: "server", selected: settings.roomMode === "server" }, "Signaling server")
             ),
-            "Where new Rooms are created. Signaling server: the server below, 6-character codes. Nostr relays: public relays via Trystero, no server needed, 8-character codes. You can always join an 8-character code."
+            "Where new Rooms are created. Nostr relays (default): public relays via Trystero, no server needed, 8-character codes. Signaling server: the server below, 6-character codes. You can always join a code of either kind."
           ),
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut

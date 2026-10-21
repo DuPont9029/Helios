@@ -513,3 +513,14 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 @keyframes tag-in { from { opacity: 0; transform: translate(-50%, 6px); } }
 /* Scelta dalla propria mano (es. costi da scartare): le carte scelte restano sollevate. */
 .hand-0 .card.field-chosen { transform: translateY(-14%); }
+
+/* Auto-play del Trainer: il duello non accetta clic (campo, mano, comandi, pannello della combo); restano
+   l'interruttore dell'auto-play, lo scorrimento dei pannelli e "Leave". */
+.duel-screen.autoplaying .duel-main,
+.duel-screen.autoplaying .duel-controls > :not(.duel-leave),
+.duel-screen.autoplaying .trainer-btns,
+.duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto),
+.duel-float.autoplaying .chain-mode { pointer-events: none; }
+.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.spacer),
+.duel-screen.autoplaying .trainer-btns,
+.duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto) { opacity: 0.45; }

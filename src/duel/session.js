@@ -10,6 +10,10 @@ import { DuelClock, TIMER_PRESETS } from "./clock.js";
 import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
 import { h } from "../ui/dom.js";
+import { STANDALONE, loadArchive } from "../data/bundle.js";
+
+// Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
+const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).default : null;
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -26,7 +30,7 @@ const AUTOPLAY = (() => {
 
 class EngineClient {
   constructor() {
-    this.worker = new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
+    this.worker = InlineWorker ? new InlineWorker() : new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
     this.pending = new Map();
     this.nextId = 1;
     this.worker.onmessage = (e) => {
@@ -237,7 +241,8 @@ export class DuelSession {
     if (this.mux?.closed) return this.finish({ winner: null, text: "Connection lost", rematch: false });
     this.view.setStatus("Starting engine...");
     try {
-      await this.engine.call("init", { dataUrl: DATA_URL });
+      // Un solo file: il worker riceve una copia dell'archivio dei dati (carte e script Lua).
+      await this.engine.call("init", { dataUrl: DATA_URL, archive: STANDALONE ? (await loadArchive()).bytes : null });
       this.view.setStatus("Loading card scripts...");
       let res = await this.engine.call("start", this.cfg.duel);
       this.view.setStatus("");
@@ -294,15 +299,21 @@ export class DuelSession {
         // Combo Trainer: il pulsante "Back" interrompe l'attesa della scelta e fa tornare indietro.
         const back = this.trainer ? new Promise((r) => (this.trainer.onBack = () => r({ trainerBack: true }))) : null;
         // Auto-play (esportazione video): il trainer sceglie da solo; undefined = tocca al giocatore.
-        const auto = this.trainer?.autoRespond?.(prompt);
-        if (auto !== undefined) {
-          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
-          response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
-        } else {
+        let auto = this.trainer?.autoRespond?.(prompt);
+        if (auto === undefined) {
           for (;;) {
-            response = await (back ? Promise.race([this.view.prompter.ask(prompt), back]) : this.view.prompter.ask(prompt));
+            // Auto-play acceso mentre si aspetta la scelta: si smette di aspettare e sceglie il trainer.
+            const autoOn = this.trainer ? new Promise((r) => (this.trainer.onAutoplay = (on) => on && r({ trainerAuto: true }))) : null;
+            response = await Promise.race([this.view.prompter.ask(prompt), back, autoOn].filter(Boolean));
+            if (this.trainer) this.trainer.onAutoplay = null;
             // Duello chiuso mentre si sceglieva (es. "Leave"): niente nuove richieste.
             if (this.over) return;
+            if (response?.trainerAuto) {
+              this.view.prompter.abort();
+              auto = this.trainer.autoRespond(prompt);
+              if (auto !== undefined) break;
+              continue;
+            }
             if (!response || response.trainerBack || response.back) break;
             // Modalità strict: azione o scelta diversa dalla combo, si richiede (senza scelte automatiche).
             const err = this.trainer?.check?.(prompt, response);
@@ -312,6 +323,10 @@ export class DuelSession {
             this.view.prompter.forceManual = true;
           }
           this.view.prompter.forceManual = false;
+        }
+        if (auto !== undefined) {
+          await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
+          response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
         }
         if (this.trainer) this.trainer.onBack = null;
         if (response?.trainerBack) {

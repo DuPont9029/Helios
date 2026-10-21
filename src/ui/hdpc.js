@@ -1,6 +1,7 @@
 // HDPC (Hypergeometric Distribution Probability Calculator): calcolatore della distribuzione ipergeometrica per sapere quanto è probabile
 // aprire certe carte nella mano iniziale (come stattrek.com e deck-probability.com).
-//  - gruppi di carte del mazzo (es. "Starter", "Extender", "Hand trap"): ogni carta sta in un solo gruppo;
+//  - gruppi di carte del mazzo (es. "Starter", "Extender", "Hand trap"): una carta può stare in più gruppi
+//    (es. una hand trap che è anche un extender) e in mano conta per tutti i suoi gruppi;
 //  - mani desiderate: per ogni gruppo un minimo e un massimo di copie in mano; più mani alternative (OR);
 //  - calcolo esatto con l'ipergeometrica multivariata (si enumerano le combinazioni di copie pescate).
 import { h, clear, icon } from "./dom.js";
@@ -50,20 +51,24 @@ export function hyperPmf(N, K, n, x) {
 
 /**
  * Probabilità di aprire almeno una delle mani desiderate.
- * @param N carte nel mazzo, @param n carte in mano, @param sizes copie di ogni gruppo
+ * @param N carte nel mazzo, @param n carte in mano
+ * @param sizes copie di ogni gruppo (gruppi separati), oppure le parti del mazzo [{ size, groups }]: le copie
+ *   che stanno esattamente in quei gruppi (gruppi che si sovrappongono: una copia pescata conta per tutti)
  * @param scenarios [[{ g, min, max }]]: ogni mano è un elenco di requisiti (tutti veri), le mani sono in OR
  * @returns { any, each: [probabilità di ogni mano] }
  */
 export function handOdds(N, n, sizes, scenarios) {
+  const atoms = sizes.map((x, i) => (typeof x === "number" ? { size: x, groups: [i] } : x));
   const total = binom(N, n);
-  const other = N - sizes.reduce((a, b) => a + b, 0);
+  const other = N - atoms.reduce((a, b) => a + b.size, 0);
   const each = scenarios.map(() => 0);
   let any = 0;
   if (other < 0 || n > N || !total) return { any: 0, each };
-  const k = new Array(sizes.length).fill(0);
+  const groups = Math.max(0, ...atoms.flatMap((a) => a.groups), ...scenarios.flat().map((r) => r.g)) + 1;
+  const k = new Array(groups).fill(0);
   const ok = (sc) => sc.every((r) => k[r.g] >= r.min && k[r.g] <= r.max);
   const walk = (i, used, ways) => {
-    if (i === sizes.length) {
+    if (i === atoms.length) {
       const rest = n - used;
       if (rest > other) return;
       const p = (ways * binom(other, rest)) / total;
@@ -77,11 +82,12 @@ export function handOdds(N, n, sizes, scenarios) {
       if (hit) any += p;
       return;
     }
-    for (let x = 0; x <= Math.min(sizes[i], n - used); x++) {
-      k[i] = x;
-      walk(i + 1, used + x, ways * binom(sizes[i], x));
+    const { size, groups: gs } = atoms[i];
+    for (let x = 0; x <= Math.min(size, n - used); x++) {
+      for (const g of gs) k[g] += x;
+      walk(i + 1, used + x, ways * binom(size, x));
+      for (const g of gs) k[g] -= x;
     }
-    k[i] = 0;
   };
   walk(0, 0, 1);
   return { any, each };
@@ -119,7 +125,26 @@ export function showHdpc(app) {
   const N = () => deck()?.main.length ?? 40;
   const copiesInDeck = (code) => deck()?.main.filter((c) => c === code).length ?? 0;
   /** Copie del gruppo: le carte scelte dal mazzo, oppure il numero scritto a mano. */
-  const size = (g) => (deck() && g.cards.length ? g.cards.reduce((a, c) => a + copiesInDeck(c), 0) : Math.max(0, g.count | 0));
+  const fromDeck = (g) => !!(deck() && g.cards.length);
+  const size = (g) => (fromDeck(g) ? g.cards.reduce((a, c) => a + copiesInDeck(c), 0) : Math.max(0, g.count | 0));
+  /** Parti del mazzo per il calcolo: le copie di ogni carta vanno con tutti i gruppi in cui sta la carta. */
+  const atoms = () => {
+    const bySig = new Map();
+    const cardGroups = new Map();
+    st.groups.forEach((g, i) => {
+      if (!fromDeck(g)) return bySig.set(`#${i}`, { size: size(g), groups: [i] });
+      for (const code of new Set(g.cards)) cardGroups.set(code, [...(cardGroups.get(code) ?? []), i]);
+    });
+    for (const [code, gs] of cardGroups) {
+      const sig = gs.join(",");
+      const a = bySig.get(sig) ?? { size: 0, groups: gs };
+      a.size += copiesInDeck(code);
+      bySig.set(sig, a);
+    }
+    return [...bySig.values()].filter((a) => a.size > 0);
+  };
+  /** Altri gruppi in cui sta una carta (per la sua etichetta). */
+  const alsoIn = (code, g) => st.groups.filter((x) => x !== g && fromDeck(x) && x.cards.includes(code)).map((x) => x.name || "group");
 
   function renderGroups() {
     clear(groupsEl).append(
@@ -129,23 +154,23 @@ export function showHdpc(app) {
         const cards = h(
           "div.hdpc-cards",
           g.cards.map((code, j) =>
-            h("button.hdpc-card", { title: `${cardName(code)} (${copiesInDeck(code)} in the Deck) — click to remove`, onclick: () => { g.cards.splice(j, 1); renderGroups(); compute(); } }, cardFace(code), h("b", `×${copiesInDeck(code)}`))
+            h("button.hdpc-card", { title: `${cardName(code)} (${copiesInDeck(code)} in the Deck)${alsoIn(code, g).length ? ` · also in ${alsoIn(code, g).join(", ")}` : ""} — click to remove`, onclick: () => { g.cards.splice(j, 1); renderGroups(); compute(); } }, cardFace(code), h("b", `×${copiesInDeck(code)}`))
           ),
           deck() &&
             h("button.btn.small.ghost", {
               onclick: async () => {
-                // Le carte del gruppo si scelgono nella schermata del deck builder: una copia per carta
-                // (il gruppo conta tutte le copie nel mazzo), senza quelle già in altri gruppi.
-                const others = new Set(st.groups.filter((x) => x !== g).flatMap((x) => x.cards));
+                // Le carte del gruppo si scelgono nella schermata del deck builder: si vedono tutte le copie ma
+                // si spostano insieme (il gruppo conta tutte le copie nel mazzo). Una carta può stare in più gruppi.
                 const v = await openDeckPicker({
-                  main: [...new Set(deck().main)].filter((code) => !others.has(code)),
-                  extra: [...new Set(deck().extra)],
-                  side: [...new Set(deck().side)],
-                  picked: [...g.cards],
+                  main: deck().main,
+                  extra: deck().extra,
+                  side: deck().side,
+                  picked: deck().main.filter((code) => g.cards.includes(code)),
                   title: deck().name,
                   label: g.name || "Group",
                   max: 60,
-                  hint: "Each card counts with all its copies in the Deck. Cards already in other groups are not shown.",
+                  block: true,
+                  hint: "A card can be in more than one group: in the hand it counts for all of them.",
                 });
                 if (!v) return;
                 g.cards = [...new Set(v)];
@@ -199,14 +224,14 @@ export function showHdpc(app) {
   function compute() {
     st.hand = Math.max(1, +handIn.value || 5);
     store();
-    const sizes = st.groups.map(size);
+    const parts = atoms();
     const total = N();
-    const used = sizes.reduce((a, b) => a + b, 0);
+    const used = parts.reduce((a, b) => a + b.size, 0);
     if (used > total) {
-      clear(result).append(h("div.hdpc-big.bad", "—"), h("p.muted", `The groups have ${used} cards but the Deck has only ${total}.`));
+      clear(result).append(h("div.hdpc-big.bad", "—"), h("p.muted", `The groups have ${used} different cards but the Deck has only ${total}.`));
       return;
     }
-    const { any, each } = handOdds(total, st.hand, sizes, st.scenarios);
+    const { any, each } = handOdds(total, st.hand, parts, st.scenarios);
     clear(result).append(
       h("div.hdpc-big", pct(any)),
       h("div.muted", `chance to open ${st.scenarios.length > 1 ? "at least one of these hands" : "this hand"} · ${oneIn(any)}`),
@@ -243,7 +268,7 @@ export function showHdpc(app) {
             h("label.hdpc-copies.hdpc-hand", handIn, " cards in hand"),
             h("div.hdpc-quick-hand", h("button.btn.small.ghost", { onclick: () => { handIn.value = 5; compute(); } }, "Going first (5)"), h("button.btn.small.ghost", { onclick: () => { handIn.value = 6; compute(); } }, "Going second (6)"))
           ),
-          h("section.card-box", h("h3", "Card groups"), h("p.muted.small", "Put the cards of the Deck in groups (each card in one group): e.g. your starters, extenders, hand traps. A group without cards counts the copies you write next to its name."), groupsEl),
+          h("section.card-box", h("h3", "Card groups"), h("p.muted.small", "Put the cards of the Deck in groups: e.g. your starters, extenders, hand traps. A card can be in more than one group (a starter that is also a hand trap) and in the hand it counts for each of them. A group without cards counts the copies you write next to its name."), groupsEl),
           h("section.card-box", h("h3", "Hands you want to open"), h("p.muted.small", "A hand is a list of requirements that must all be true. With more hands, the result is the chance of opening at least one of them."), scenEl)
         ),
         h("aside.hdpc-side", h("section.card-box.hdpc-result-box", h("h3", "Result"), result), quickCalculator())
