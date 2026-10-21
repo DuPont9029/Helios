@@ -305,3 +305,11 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .combo-base { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
 .combo-base .combo-toolbar-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
 .combo-row.base { border-left: 3px solid var(--accent-soft); }
+
+/* Classifica ELO (Online Duel → Ranking) */
+.ranking { display: flex; flex-direction: column; gap: 10px; }
+.rank-me { font-size: 15px; }
+.rank-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.rank-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.rank-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.rank-table tr.me td { background: rgba(56, 198, 255, 0.1); }

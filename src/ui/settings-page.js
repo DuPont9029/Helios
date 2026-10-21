@@ -5,6 +5,8 @@ import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
+import { identity, importIdentity, shortKey } from "../net/identity.js";
+import { eloRelays } from "../net/elo.js";
 import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
 
 /** Raccoglie i candidati ICE per verificare che STUN/TURN funzionino. */
@@ -304,6 +306,32 @@ export function showSettings(app) {
           ),
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut
+        ),
+        h(
+          "section.card-box",
+          h("h3", "Ranked (ELO)"),
+          h("p.muted.small", "Your player key identifies you in the ELO ranking (no account): ranked results are signed with it. Export it to keep your rating on another browser; whoever has it can play as you."),
+          (() => {
+            const pk = h("code.mono", shortKey(identity().pk));
+            return h("div.row", h("span", "Player key "), pk,
+              h("button.btn.small", { onclick: () => navigator.clipboard?.writeText(identity().pk).then(() => toast("Public key copied")) }, "Copy public key"),
+              h("button.btn.small", { onclick: async () => { if (await confirmModal("Export secret key", "Anyone with this key can play ranked Duels as you. Keep it private.", "Copy", "Cancel")) navigator.clipboard?.writeText(identity().sk).then(() => toast("Secret key copied")); } }, "Export secret key"),
+              h("button.btn.small", {
+                onclick: async () => {
+                  const input = h("input.input.mono", { placeholder: "64 hexadecimal characters" });
+                  const v = await openModal({ title: "Import secret key", body: [h("p.muted.small", "It replaces your current player key (export it first if you want to keep it)."), input], actions: [{ label: "Cancel", value: null }, { label: "Import", primary: true, onClick: (close) => close(input.value) }] }).result;
+                  if (!v) return;
+                  try {
+                    importIdentity(v);
+                    pk.textContent = shortKey(identity().pk);
+                    toast("Player key imported");
+                  } catch (e) {
+                    toast(e.message, { kind: "error" });
+                  }
+                },
+              }, "Import secret key"));
+          })(),
+          field("Ranking relays (one per line)", area("eloRelays"), `Nostr relays where ranked results are published and read. Empty = ${eloRelays().length} public relays.`)
         ),
         h(
           "section.card-box",
