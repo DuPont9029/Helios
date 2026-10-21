@@ -1,6 +1,6 @@
 // Schermate di avvio partita: contro CPU, prova in solitario, online P2P.
 import { h, clear, icon } from "./dom.js";
-import { openModal, toast, alertModal, confirmModal } from "./modal.js";
+import { openModal, toast, alertModal, confirmModal, promptModal } from "./modal.js";
 import { db } from "../data/db.js";
 import { settings } from "../data/settings.js";
 import { loadDecks, validateDeck, banlistByName } from "../deck/deck.js";
@@ -29,6 +29,19 @@ function deckSelect(decks, selectedId) {
   return sel;
 }
 
+// Preset delle impostazioni di gioco: quelli già pronti (formati comuni) e quelli salvati dal giocatore
+// (settings.gamePresets). La banlist si cerca per nome, così il preset vale anche con le liste nuove.
+const banlistLike = (re) => db.banlists.find((b) => re.test(b.name))?.name ?? "";
+const BUILTIN_PRESETS = [
+  ["Standard TCG", () => ({ mode: "MR5", banlist: banlistLike(/TCG/), lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+  ["TCG match (best of 3)", () => ({ mode: "MR5", banlist: banlistLike(/TCG/), lp: 8000, hand: 5, draw: 1, bestOf: 3, timer: "omega" })],
+  ["Standard OCG", () => ({ mode: "MR5", banlist: banlistLike(/OCG/), lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+  ["GOAT format", () => ({ mode: "GOAT", banlist: banlistLike(/GOAT/), lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+  ["Speed Duel", () => ({ mode: "SPEED", banlist: banlistLike(/Speed/), lp: 4000, hand: 4, draw: 1, bestOf: 1 })],
+  ["No banlist", () => ({ mode: "MR5", banlist: "", lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+];
+const userPresets = () => (Array.isArray(settings.gamePresets) ? settings.gamePresets.filter((p) => p?.name && p.values) : []);
+
 function optionsForm({ host = true } = {}) {
   const mode = h("select.select", Object.entries(DUEL_MODES).map(([k, m]) => h("option", { value: k }, m.label)));
   const banlist = h("select.select", h("option", { value: "" }, "No banlist"), db.banlists.map((b) => h("option", { value: b.name }, b.name)));
@@ -44,8 +57,68 @@ function optionsForm({ host = true } = {}) {
   // Solo numeri dispari: un valore pari scritto a mano diventa il dispari successivo.
   bestOf.addEventListener("change", () => (bestOf.value = clampBestOf(bestOf.value)));
   timer.value = settings.lastTimer in TIMER_PRESETS ? settings.lastTimer : "omega";
+
+  const values = () => ({ mode: mode.value, banlist: banlist.value, lp: +lp.value, hand: +hand.value, draw: +draw.value, timer: timer.value, bestOf: clampBestOf(bestOf.value), unofficial: unofficial.checked });
+  const apply = (v) => {
+    if (v.mode in DUEL_MODES) mode.value = v.mode;
+    if (v.banlist === "" || db.banlists.some((b) => b.name === v.banlist)) banlist.value = v.banlist;
+    if (v.lp) lp.value = v.lp;
+    if (v.hand != null) hand.value = v.hand;
+    if (v.draw != null) draw.value = v.draw;
+    if (v.timer in TIMER_PRESETS) timer.value = v.timer;
+    if (v.bestOf) bestOf.value = clampBestOf(v.bestOf);
+    unofficial.checked = !!v.unofficial;
+  };
+  const preset = h("select.select");
+  const delPreset = h("button.btn.small.ghost", { title: "Delete this saved preset" }, icon("delete"));
+  const drawPresets = (value = "") => {
+    clear(preset).append(
+      h("option", { value: "" }, "Custom"),
+      h("optgroup", { label: "Formats" }, BUILTIN_PRESETS.map(([name], i) => h("option", { value: `b${i}` }, name))),
+      userPresets().length ? h("optgroup", { label: "Your presets" }, userPresets().map((p, i) => h("option", { value: `u${i}` }, p.name))) : null
+    );
+    preset.value = value;
+    delPreset.hidden = !preset.value.startsWith("u");
+  };
+  preset.addEventListener("change", () => {
+    const k = preset.value;
+    if (k.startsWith("b")) apply(BUILTIN_PRESETS[+k.slice(1)][1]());
+    if (k.startsWith("u")) apply(userPresets()[+k.slice(1)].values);
+    delPreset.hidden = !k.startsWith("u");
+    settings.lastPreset = k.startsWith("u") ? userPresets()[+k.slice(1)].name : k;
+  });
+  // Un campo cambiato a mano: non è più il preset scelto.
+  for (const x of [mode, banlist, lp, hand, draw, timer, bestOf, unofficial]) x.addEventListener("change", () => { drawPresets(""); settings.lastPreset = ""; });
+  const savePreset = h("button.btn.small.ghost", {
+    title: "Save these settings as a preset",
+    onclick: async () => {
+      const name = (await promptModal("Save preset", "Preset name", ""))?.trim().slice(0, 40);
+      if (!name) return;
+      const list = userPresets().filter((p) => p.name !== name);
+      settings.gamePresets = [...list, { name, values: values() }];
+      settings.lastPreset = name;
+      drawPresets(`u${settings.gamePresets.length - 1}`);
+      toast(`Preset saved: "${name}"`);
+    },
+  }, icon("save"), " Save preset");
+  delPreset.addEventListener("click", async () => {
+    const p = userPresets()[+preset.value.slice(1)];
+    if (!p || !(await confirmModal("Delete preset", `Delete the preset "${p.name}"?`, "Delete", "Cancel", { danger: true }))) return;
+    settings.gamePresets = userPresets().filter((x) => x !== p);
+    settings.lastPreset = "";
+    drawPresets("");
+  });
+  // Si riparte dall'ultimo preset scelto (se esiste ancora).
+  const last = settings.lastPreset ?? "";
+  const lastUser = userPresets().findIndex((p) => p.name === last);
+  const start = lastUser >= 0 ? `u${lastUser}` : /^b\d+$/.test(last) && BUILTIN_PRESETS[+last.slice(1)] ? last : "";
+  drawPresets(start);
+  if (start.startsWith("u")) apply(userPresets()[lastUser].values);
+  else if (start) apply(BUILTIN_PRESETS[+start.slice(1)][1]());
+
   const el = h(
     "div.form-grid",
+    h("div.field.preset-row", h("span", "Preset"), h("div.preset-tools", preset, savePreset, delPreset)),
     h("label.field", h("span", "Rules"), mode),
     h("label.field", h("span", "Banlist"), banlist),
     h("label.field", h("span", "Life Points"), lp),

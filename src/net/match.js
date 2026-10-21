@@ -180,7 +180,9 @@ export async function negotiate(mux, opts) {
   const iAmFirst = hostFirst === opts.host;
   const myDeck = { main: opts.deck.main, extra: opts.deck.extra };
   const decks = iAmFirst ? [myDeck, hello.deck] : [hello.deck, myDeck];
-  const names = iAmFirst ? [opts.name, hello.name] : [hello.name, opts.name];
+  // Il nome dell'avversario arriva dalla rete: sempre testo, corto.
+  const theirName = String(hello.name ?? "Opponent").slice(0, 40) || "Opponent";
+  const names = iAmFirst ? [opts.name, theirName] : [theirName, opts.name];
   const theirSleeve = validSleeve(hello.sleeve);
   const sleeves = iAmFirst ? [opts.sleeve ?? null, theirSleeve] : [theirSleeve, opts.sleeve ?? null];
   const theirGems = validPendulumIcons(hello.pendulum);

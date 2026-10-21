@@ -1,6 +1,7 @@
 // Database carte, stringhe e banlist caricati da public/data (vedi scripts/build-data.mjs).
 import { parseCard } from "../core/carddata.js";
 import { ATTRIBUTES, RACES, TYPE, TYPE_EXTRA } from "../core/constants.js";
+import { STANDALONE, loadArchive, archiveText } from "./bundle.js";
 
 export const DATA_URL = new URL("data/", document.baseURI).href;
 
@@ -14,7 +15,10 @@ export const db = {
 };
 
 export async function loadDatabase(onProgress = () => {}) {
+  // Helios in un solo file: i dati sono nell'archivio incorporato nella pagina.
+  const pack = STANDALONE ? await loadArchive() : null;
   const get = async (name) => {
+    if (pack) return JSON.parse(archiveText(pack, name));
     const res = await fetch(DATA_URL + name);
     if (!res.ok) throw new Error(`Could not load ${name} (HTTP ${res.status}). Did you run "npm run data"?`);
     return res.json();

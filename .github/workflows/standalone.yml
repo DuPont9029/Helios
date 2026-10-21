@@ -1,0 +1,43 @@
+# Helios in un solo file HTML (npm run standalone) allegato alla release del tag: si scarica, si apre e si gioca.
+name: Standalone release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag of the release to attach Helios.html to"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          # build-data.mjs usa node:sqlite (Node 22.13+).
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run data
+
+      - run: npm run standalone
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          prerelease: ${{ contains(inputs.tag || github.ref_name, 'beta') }}
+          files: standalone/Helios.html
+          body: |
+            **Helios.html**: the whole client in a single file (app, EDOPro engine, cards and scripts). Download it, open it in a recent browser (tested in Chrome) and play; send it to a friend to duel online (Nostr rooms, peer-to-peer).
+            Internet is still used for online duels, card images and fonts; Vs CPU, Test Duel and the Trainer work offline. Both players need a Helios.html from the same release.
