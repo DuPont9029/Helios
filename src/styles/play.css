@@ -72,6 +72,8 @@
 .detail-text:hover { border-color: var(--accent); color: #fff; }
 .detail-text .icon { font-size: 16px; color: var(--accent); }
 .detail-text span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.detail-text .scroll-text { min-width: 0; }
+.setup-field-name { display: flex; align-items: center; }
 .detail-row .step-drag { height: 28px; }
 .step-fold { flex: none; white-space: nowrap; }
 .combo-sec-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -368,3 +370,12 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .cv-box b { font-size: 16px; }
 .cv-statline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .cv-note { font-style: italic; }
+/* Menu degli effetti dei passi (testi lunghi che scorrono) */
+.text-select-wrap { position: relative; flex: 0 1 300px; min-width: 120px; display: flex; }
+.text-select { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; text-align: left; cursor: pointer; font-size: 12px; }
+.text-select .icon { flex: none; font-size: 18px; }
+.text-select-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; width: max(100%, 420px); max-width: 70vw; max-height: 280px; overflow: auto; background: rgba(8, 10, 16, 0.98); border: 1px solid var(--line-strong); box-shadow: var(--shadow); display: flex; flex-direction: column; }
+.text-select-list[hidden] { display: none; }
+.text-select-item { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border: 0; border-bottom: 1px solid var(--line); background: none; color: inherit; text-align: left; font-size: 12px; cursor: pointer; min-width: 0; }
+.text-select-item:hover, .text-select-item.on { background: rgba(56, 198, 255, 0.12); color: var(--accent-soft); }
+.step-line .text-select-wrap .step-effect { max-width: none; }

@@ -609,3 +609,12 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .mini-card .card { width: 28px; }
 .chip .mini-cards, .card-pick-btn .mini-cards { margin-right: 6px; }
 .card-pick-btn { display: inline-flex; align-items: center; }
+
+/* Testo lungo che scorre al passaggio del mouse (invece dei "…"): vedi scrollText in ui/dom.js */
+.scroll-text { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; }
+.scroll-inner { display: inline-block; white-space: nowrap; }
+.scroll-text:not(.scrolling) { text-overflow: ellipsis; }
+.scroll-text:not(.scrolling) .scroll-inner { max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.scroll-text.scrolling .scroll-inner { animation: scroll-text var(--scroll-time, 4s) ease-in-out infinite alternate; }
+@keyframes scroll-text { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(var(--scroll-dist, 0)); } }
+@media (prefers-reduced-motion: reduce) { .scroll-text.scrolling .scroll-inner { animation-duration: 0.01s; animation-iteration-count: 1; animation-fill-mode: forwards; } }
