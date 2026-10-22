@@ -530,6 +530,12 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .duel-float-detail { display: none; position: fixed; left: 10px; top: 10px; z-index: 120; width: min(300px, 26vw); max-height: calc(100vh - 20px); overflow: auto; background: rgba(6, 7, 11, 0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
 body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float-detail { display: block; }
 body:has(.modal-backdrop.top:not(.closing)) .duel-float-detail { display: none; }
+/* La finestra del duello si centra nello spazio a destra del pannello, così non si sovrappongono. */
+body:has(.duel-float-detail) .modal-backdrop:not(.top):not(.minimized) { padding-left: calc(min(300px, 26vw) + 30px); }
+@media (max-width: 760px) {
+  .duel-float-detail { display: none !important; }
+  body:has(.duel-float-detail) .modal-backdrop:not(.top):not(.minimized) { padding-left: 20px; }
+}
 
 /* Legami tra carte (equipaggiamenti, bersagli persistenti) mostrati passando sopra una carta del campo */
 .board { position: relative; }
