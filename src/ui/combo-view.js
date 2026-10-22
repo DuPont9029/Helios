@@ -1,10 +1,10 @@
 // Scheda di una combo (come la sezione combo di masterduelmeta): mano iniziale, passi illustrati con le
 // scelte e le note, hand trap, tag della board finale, carte necessarie e varianti con le differenze.
 import { h, icon } from "./dom.js";
-import { cardFace } from "./card.js";
+import { cardFace, miniCards } from "./card.js";
 import { openModal } from "./modal.js";
 import { cardName } from "../data/db.js";
-import { STEP_ACTIONS, NO_CARD, detailText, usedCards } from "../duel/trainer.js";
+import { STEP_ACTIONS, NO_CARD, detailText, detailCodes, usedCards } from "../duel/trainer.js";
 import { openDeckViewer } from "./editor.js";
 import { comboStats, endBoard } from "./combo-meta.js";
 
@@ -57,7 +57,7 @@ export function showComboSchema(combo, { family = [combo], onPractice, onOpen } 
         h(
           "div.schema-text",
           h("b", STEP_ACTIONS[s.kind] ?? s.kind, NO_CARD.has(s.kind) ? "" : ` "${cardName(s.code)}"`),
-          s.details?.length ? h("ul.schema-details", s.details.map((d) => h("li", detailText(d)))) : null,
+          s.details?.length ? h("ul.schema-details", s.details.map((d) => h("li", miniCards(detailCodes(d)), detailText(d)))) : null,
           s.note ? h("p.schema-note", icon("sticky_note_2"), " ", s.note) : null
         )
       )

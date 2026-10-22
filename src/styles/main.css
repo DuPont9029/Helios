@@ -602,3 +602,10 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .search-filters .filter-reset { align-self: flex-end; }
 /* Parte del mazzo oltre il massimo di carte (si può, ma è un errore: il mazzo non vale nei duelli con regole) */
 .deck-head .count.over { background: var(--danger, #ff3b4e); color: #fff; }
+
+/* Miniature delle carte accanto ai nomi (regola del progetto: una carta si mostra con la sua immagine) */
+.mini-cards { display: inline-flex; gap: 2px; vertical-align: middle; margin-right: 6px; flex: none; }
+.mini-card { display: inline-block; width: 28px; line-height: 0; vertical-align: middle; }
+.mini-card .card { width: 28px; }
+.chip .mini-cards, .card-pick-btn .mini-cards { margin-right: 6px; }
+.card-pick-btn { display: inline-flex; align-items: center; }

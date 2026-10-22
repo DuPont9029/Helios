@@ -3,6 +3,7 @@
 // Ogni passo può avere dei dettagli (carte da scegliere, zona, posizione, sì/no, opzione): il trainer li
 // suggerisce, li controlla (in modalità strict blocca le scelte sbagliate) e l'auto-play li usa per giocare da solo.
 import { h, clear } from "../ui/dom.js";
+import { miniCards } from "../ui/card.js";
 import { cardName, descString, getCard, isExtraDeckCard } from "../data/db.js";
 import { sortDeckPart, loadDecks } from "../deck/deck.js";
 import { MSG, RESP, IDLE, BATTLE, PHASE, LOC, POS } from "../core/constants.js";
@@ -394,8 +395,9 @@ export class ComboTrainer {
           h("span.trainer-mark", state === "ok" ? "✓" : state === "current" ? "▶" : ""),
           h(
             "span",
+            NO_CARD.has(s.kind) ? null : miniCards([s.code]),
             stepText(s),
-            s.details?.length ? h("ul.trainer-details", s.details.map((d, j) => h(`li${this.active?.step === i && this.active.pos === j ? ".now" : ""}`, detailText(d)))) : null,
+            s.details?.length ? h("ul.trainer-details", s.details.map((d, j) => h(`li${this.active?.step === i && this.active.pos === j ? ".now" : ""}`, miniCards(detailCodes(d)), detailText(d)))) : null,
             s.note && state !== "ok" ? h("div.trainer-note", s.note) : null
           )
         )
@@ -716,7 +718,7 @@ export class ComboRecorder {
     this.undoBtn.disabled = !this.steps.length;
     clear(this.list).append(
       ...(this.steps.length
-        ? this.steps.map((s) => h("li.trainer-step.ok", h("span.trainer-mark", "●"), h("span", stepText(s), s.details?.length ? h("ul.trainer-details", s.details.map((d) => h("li", detailText(d)))) : null)))
+        ? this.steps.map((s) => h("li.trainer-step.ok", h("span.trainer-mark", "●"), h("span", NO_CARD.has(s.kind) ? null : miniCards([s.code]), stepText(s), s.details?.length ? h("ul.trainer-details", s.details.map((d) => h("li", miniCards(detailCodes(d)), detailText(d)))) : null)))
         : [h("li.muted.small", "No steps yet.")])
     );
   }
@@ -1000,7 +1002,7 @@ const repeat = (m) => [...m].flatMap(([code, n]) => Array(n).fill(code));
 const sideCodes = (x = {}) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.hand ?? []), ...(x.extra ?? []), ...(x.deckTop ?? [])];
 
 /** Carte indicate da una scelta precisa. */
-function detailCodes(d) {
+export function detailCodes(d) {
   switch (d.t) {
     case "cards": return d.codes;
     case "pick": case "yesno": return d.code ? [d.code] : [];
