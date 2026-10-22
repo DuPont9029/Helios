@@ -591,5 +591,14 @@ html:has(.home) body::before, html:has(.boot) body::before {
 /* Schede della ricerca del deck builder: il lato obliquo della scheda aperta (14px) non copre il testo;
    Filters è solo icona (vedi setFilters in editor.js). Pannello molto stretto: le schede restano icone. */
 .search-tabs .search-tab.on { padding-right: 22px; }
+/* Tre schede (Cards, Bookmarks, History): la scheda aperta si allarga con il suo nome, le altre restano
+   icona e contatore (il nome nel suggerimento). */
+.search-tabs .search-tab:not(.filter-toggle) { flex: 0 0 auto; padding-left: 12px; padding-right: 12px; }
+.search-tabs .search-tab.on:not(.filter-toggle) { flex: 1 1 auto; padding-right: 22px; }
+.search-tabs .search-tab:not(.on) .tab-label { display: none; }
+.search-tabs .filter-toggle { margin-left: auto; }
 .search-panel { container-type: inline-size; }
 @container (max-width: 300px) { .search-tabs .tab-label { display: none; } }
+.search-filters .filter-reset { align-self: flex-end; }
+/* Parte del mazzo oltre il massimo di carte (si può, ma è un errore: il mazzo non vale nei duelli con regole) */
+.deck-head .count.over { background: var(--danger, #ff3b4e); color: #fff; }

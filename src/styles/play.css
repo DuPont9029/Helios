@@ -313,3 +313,58 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .rank-table th { text-align: left; color: var(--muted); font-weight: 600; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .rank-table td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .rank-table tr.me td { background: rgba(56, 198, 255, 0.1); }
+.step-line .step-effect { max-width: 260px; font-size: 12px; }
+
+/* Trainer: schede delle combo (come ygopocket.com/combos) */
+.combo-list:has(.cc-card) { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); gap: 14px; }
+.cc-card { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); min-width: 0; }
+.cc-card:hover { border-color: var(--line-strong); }
+.cc-card.variant { border-left: 3px solid var(--accent); }
+.cc-banner { position: relative; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; padding: 10px 12px; min-height: 128px; background: linear-gradient(120deg, rgba(56, 198, 255, 0.12), rgba(10, 12, 20, 0.6) 45%, rgba(255, 210, 58, 0.1)); border-bottom: 1px solid var(--line); }
+.cc-side { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.cc-side.end { align-items: flex-end; text-align: right; }
+.cc-label { display: flex; align-items: center; gap: 6px; font: 700 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.cc-label b { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: rgba(56, 198, 255, 0.2); color: var(--accent-soft); font-size: 11px; }
+.cc-side.end .cc-label b { background: rgba(255, 210, 58, 0.2); color: #ffe08a; }
+.cc-faces { display: flex; gap: 4px; align-items: center; min-height: 78px; }
+.cc-face .card { width: 54px; }
+.cc-more { display: grid; place-items: center; width: 54px; height: 78px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); font: 700 14px var(--mono); color: var(--muted); }
+.cc-mid .cc-pill { display: inline-block; padding: 5px 12px; border-radius: 999px; background: rgba(6, 7, 11, 0.85); border: 1px solid var(--line-strong); font: 700 12px var(--mono); white-space: nowrap; }
+.cc-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
+.cc-title { display: flex; align-items: center; gap: 8px; font-size: 15px; min-width: 0; }
+.cc-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold, #ffd23a); flex: none; }
+.cc-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-chip { padding: 1px 9px; border-radius: 999px; border: 1px solid var(--line); font-size: 11px; color: var(--muted); background: none; }
+.cc-chip.arch { color: #ffd23a; border-color: rgba(255, 210, 58, 0.4); background: rgba(255, 210, 58, 0.08); }
+.cc-chip.otk { color: #ff8a8a; border-color: rgba(255, 107, 107, 0.5); }
+.cc-chip.diff-beginner { color: #8affb5; border-color: rgba(80, 220, 140, 0.45); }
+.cc-chip.diff-intermediate { color: #ffd23a; border-color: rgba(255, 210, 58, 0.45); }
+.cc-chip.diff-advanced { color: #ffa657; border-color: rgba(255, 166, 87, 0.45); }
+.cc-chip.diff-expert { color: #ff7b72; border-color: rgba(255, 123, 114, 0.45); }
+.cc-chip.active { cursor: pointer; color: var(--accent-soft); border-color: var(--accent); }
+.cc-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cc-stats span { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 4px; border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.cc-stats span .icon { font-size: 15px; }
+.cc-stats b { color: var(--text, #fff); }
+.cc-card .cc-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.cc-card .cc-actions .btn { padding-left: 10px; padding-right: 10px; }
+.combo-active-filters { display: flex; flex-wrap: wrap; gap: 6px; }
+.combo-active-filters:empty { display: none; }
+.combo-starters { display: flex; flex-direction: column; gap: 6px; }
+.combo-starters[hidden] { display: none; }
+.combo-starters-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.combo-starter { flex: none; padding: 0; border: 2px solid transparent; background: none; cursor: pointer; }
+.combo-starter .card { width: 52px; }
+.combo-starter.on { border-color: var(--accent); }
+.combo-sort { width: auto; }
+@media (max-width: 560px) { .combo-list { grid-template-columns: 1fr; } }
+/* Scheda della combo: riquadri e statistiche (come ygopocket) */
+.cv-banner { margin-bottom: 4px; }
+.cv-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.cv-box { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.02); }
+.cv-box-label { font: 600 10px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.cv-box-label .icon { font-size: 14px; }
+.cv-box b { font-size: 16px; }
+.cv-statline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.cv-note { font-style: italic; }

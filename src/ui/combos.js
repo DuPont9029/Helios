@@ -13,7 +13,7 @@ import { loadDecks, saveDecks, sortDeckPart } from "../deck/deck.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import {
-  ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, cleanStep, cleanSetup, cleanCards,
+  ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, cleanStep, cleanSetup, cleanCards, cardEffects,
   loadComboStore, saveComboStore, comboToCode, comboFromCode, detectCards, comboDeck, interruptsOutsideBoard, isSheetCode,
   loadBoards, saveBoards, boardToCode, boardFromCode,
 } from "../duel/trainer.js";
@@ -22,6 +22,7 @@ import { showComboSchema } from "./combo-view.js";
 import { renderSheets, decklistPicker } from "./combo-sheets.js";
 import { openDecklistEditor, openDeckPicker, openCardCollector } from "./editor.js";
 import { BASE_READY, baseCombos } from "../data/base-content.js";
+import { DIFFICULTIES, FORMATS, comboStats, endBoard, comboCodes, popularStarters, boardFromSnapshot } from "./combo-meta.js";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const uniq = (codes) => [...new Set(codes)];
@@ -63,6 +64,7 @@ export function showComboTrainer(app, { review } = {}) {
     app, store, decks, save,
     /** Aggiunge (o sostituisce) una combo nell'archivio. */
     put: (c) => {
+      c.updated = Date.now(); // per l'ordine "Most recent"
       const i = store.combos.findIndex((x) => x.id === c.id);
       if (i >= 0) store.combos[i] = c;
       else store.combos.push(c);
@@ -117,25 +119,44 @@ export function showComboTrainer(app, { review } = {}) {
     });
   }
 
+  /**
+   * Scheda di una combo (come ygopocket.com/combos): in alto mano iniziale → passi → board finale, poi titolo,
+   * etichette (formato, archetipi, difficoltà, turno, OTK), numeri e i pulsanti del Trainer.
+   */
   function row(c, variant) {
+    const st = comboStats(c);
+    const board = endBoard(c);
+    const faces = (codes, max) => [...codes.slice(0, max).map((code) => h("div.cc-face", { title: cardName(code) }, cardFace(code))), codes.length > max ? h("div.cc-more", `+${codes.length - max}`) : null];
+    const chips = [
+      c.format ? h("span.cc-chip", c.format) : null,
+      ...(c.archetypes ?? []).map((a) => h("span.cc-chip.arch", a)),
+      c.difficulty ? h(`span.cc-chip.diff-${c.difficulty.toLowerCase()}`, c.difficulty) : null,
+      h("span.cc-chip", c.first ? "1st" : "2nd"),
+      c.otk ? h("span.cc-chip.otk", "OTK") : null,
+    ];
     return h(
-      `div.combo-row${variant ? ".variant" : ""}`,
-      h("div.combo-hand", c.hand.slice(0, 6).map((code) => cardFace(code))),
+      `div.cc-card${variant ? ".variant" : ""}`,
       h(
-        "div.combo-info",
-        h("b", variant ? h("span.combo-branch", "↳ ", c.branch || "Variant") : c.name),
-        variant ? h("div.muted.small", `Variant of "${store.combos.find((x) => x.id === c.parent)?.name ?? c.name}"`) : null,
-        h("div.muted.small", comboSummary(c))
+        "div.cc-banner",
+        h("div.cc-side", h("div.cc-label", "Starter", h("b", st.starters)), h("div.cc-faces", faces(c.hand, 3))),
+        h("div.cc-mid", h("span.cc-pill", plural(st.steps, "step"))),
+        h("div.cc-side.end", h("div.cc-label", "Final board", h("b", st.board || "?")), h("div.cc-faces", board.length ? faces(board, 3) : h("span.muted.small", "Play it once to save the final board")))
       ),
       h(
-        "div.combo-actions",
-        h("button.btn.primary", { onclick: () => practice(app, c) }, icon("play_arrow"), " Practice"),
-        h("button.btn", { title: "The trainer plays the combo by itself (no video)", onclick: () => practice(app, c, { autoplay: true }) }, icon("smart_display"), " Auto-play"),
-        h("button.btn", { title: "Combo sheet: steps with the cards, notes, cards needed and variants", onclick: () => schema(c) }, icon("view_timeline"), " View"),
-        h("button.btn", { title: "New variant of this combo (a copy to change: other cards, other line…)", onclick: () => fork(c) }, icon("fork_right"), " Fork"),
-        h("button.btn", { title: "Share the combo or record a video of it", onclick: () => exportCombo(app, c) }, icon("ios_share"), " Export"),
-        h("button.btn", { onclick: () => editCombo(c, { decks }).then((v) => v && ctx.put(v)) }, icon("edit"), " Edit"),
-        h("button.btn.danger", { title: "Delete", onclick: () => removeCombo(c) }, icon("delete"))
+        "div.cc-body",
+        h("div.cc-title", h("span.cc-dot"), variant ? h("span.combo-branch", "↳ ", c.branch || "Variant", " ") : null, h("b", variant ? (store.combos.find((x) => x.id === c.parent)?.name ?? c.name) : c.name)),
+        h("div.cc-chips", chips),
+        h("div.cc-stats", h("span", icon("flag"), h("b", st.starters), " Start"), h("span", icon("format_list_numbered"), h("b", st.steps), " Steps"), h("span", icon("emoji_events"), h("b", st.board || "?"), " Final")),
+        h(
+          "div.cc-actions",
+          h("button.btn.primary", { onclick: () => practice(app, c) }, icon("play_arrow"), " Practice"),
+          h("button.btn", { title: "The trainer plays the combo by itself (no video)", onclick: () => practice(app, c, { autoplay: true }) }, icon("smart_display"), " Auto-play"),
+          h("button.btn", { title: "Combo sheet: steps with the cards, notes, cards needed and variants", onclick: () => schema(c) }, icon("view_timeline")),
+          h("button.btn", { title: "New variant of this combo (a copy to change: other cards, other line…)", onclick: () => fork(c) }, icon("fork_right")),
+          h("button.btn", { title: "Share the combo or record a video of it", onclick: () => exportCombo(app, c) }, icon("ios_share")),
+          h("button.btn", { title: "Edit", onclick: () => editCombo(c, { decks }).then((v) => v && ctx.put(v)) }, icon("edit")),
+          h("button.btn.danger", { title: "Delete", onclick: () => removeCombo(c) }, icon("delete"))
+        )
       )
     );
   }
@@ -185,18 +206,87 @@ export function showComboTrainer(app, { review } = {}) {
   const matches = (c, q) =>
     [c.name, c.branch, c.notes, ...c.hand.map(cardName), ...c.steps.map((s) => (NO_CARD.has(s.kind) ? "" : cardName(s.code)))].some((t) => t?.toLowerCase().includes(q));
 
+  // Filtri (come ygopocket): difficoltà, turno, formato, archetipo, carte di partenza / usate / del board
+  // finale, solo OTK; ordinamento.
+  let filter = {};
+  const sort = h("select.select.combo-sort", { title: "Sort", onchange: () => renderList() },
+    h("option", { value: "recent" }, "Most recent"), h("option", { value: "name" }, "Name"), h("option", { value: "most" }, "Most steps"), h("option", { value: "fewest" }, "Fewest steps"));
+  const filterBtn = h("button.btn", { title: "Filter the combos", onclick: () => openFilters() });
+  const activeChips = h("div.combo-active-filters");
+  const starters = h("div.combo-starters");
+  const passes = (c) => {
+    if (filter.difficulty && c.difficulty !== filter.difficulty) return false;
+    if (filter.turn && (filter.turn === "1st") !== !!c.first) return false;
+    if (filter.format && c.format !== filter.format) return false;
+    if (filter.archetype && !(c.archetypes ?? []).some((a) => a.toLowerCase() === filter.archetype.toLowerCase())) return false;
+    if (filter.otk && !c.otk) return false;
+    const k = comboCodes(c);
+    if (filter.start && !k.start.has(filter.start)) return false;
+    if (filter.uses && !k.uses.has(filter.uses)) return false;
+    if (filter.end && !k.end.has(filter.end)) return false;
+    return true;
+  };
+  const FILTER_LABELS = { difficulty: "Difficulty", turn: "Turn", format: "Format", archetype: "Archetype", start: "Starts with", uses: "Uses", end: "Ends on", otk: "OTK" };
+  function openFilters() {
+    const all = store.combos;
+    const sel = (key, values) => {
+      const el = h("select.select", h("option", { value: "" }, "Any"), values.map((v) => h("option", { value: v }, v)));
+      el.value = filter[key] ?? "";
+      return el;
+    };
+    const diff = sel("difficulty", DIFFICULTIES);
+    const turn = sel("turn", ["1st", "2nd"]);
+    const fmt = sel("format", FORMATS);
+    const arch = sel("archetype", [...new Set(all.flatMap((c) => c.archetypes ?? []))].sort());
+    const pool = [...new Set(all.flatMap((c) => [...comboCodes(c).uses, ...comboCodes(c).end]))];
+    const picked = { start: filter.start, uses: filter.uses, end: filter.end };
+    const cardSel = (key, label) => {
+      const btn = h("button.btn.card-pick-btn", { onclick: async () => { const v = await pickCard({ title: label, pool }); if (v) { picked[key] = v; btn.textContent = cardName(v); } } }, picked[key] ? cardName(picked[key]) : "Any card…");
+      const clearBtn = h("button.btn.small.ghost", { title: "Any card", onclick: () => { picked[key] = undefined; btn.textContent = "Any card…"; } }, icon("close"));
+      return h("div.row", btn, clearBtn);
+    };
+    const otkBox = h("input", { type: "checkbox", checked: !!filter.otk });
+    return openModal({
+      title: "Filter combos",
+      className: "combo-filters",
+      body: [h("div.form-grid",
+        h("label.field", h("span", "Difficulty"), diff), h("label.field", h("span", "Turn"), turn),
+        h("label.field", h("span", "Format"), fmt), h("label.field", h("span", "Archetype"), arch),
+        h("div.field", h("span", "Starts with"), cardSel("start", "Starts with the card")), h("div.field", h("span", "Uses the card anywhere"), cardSel("uses", "Uses the card")),
+        h("div.field", h("span", "Ends on"), cardSel("end", "Card of the final board")), h("label.check", otkBox, "OTK only"))],
+      actions: [
+        { label: "Clear", onClick: (close) => { filter = {}; close(); renderList(); } },
+        { label: "Cancel", value: null },
+        { label: "Show combos", primary: true, onClick: (close) => {
+          filter = Object.fromEntries(Object.entries({ difficulty: diff.value, turn: turn.value, format: fmt.value, archetype: arch.value, ...picked, otk: otkBox.checked }).filter(([, v]) => v));
+          close();
+          renderList();
+        } },
+      ],
+    }).result;
+  }
+
   function renderList() {
     const q = search.value.trim().toLowerCase();
     const all = store.combos;
     const ids = new Set(all.map((c) => c.id));
     // Combo originali (o varianti la cui originale non c'è più), ognuna seguita dalle sue varianti.
-    const roots = all.filter((c) => !c.parent || !ids.has(c.parent));
+    const order = { recent: (a, b) => (b.updated ?? 0) - (a.updated ?? 0) || all.indexOf(b) - all.indexOf(a), name: (a, b) => a.name.localeCompare(b.name), most: (a, b) => b.steps.length - a.steps.length, fewest: (a, b) => a.steps.length - b.steps.length };
+    const roots = all.filter((c) => !c.parent || !ids.has(c.parent)).sort(order[sort.value] ?? order.recent);
     const rows = roots.flatMap((r) => {
       const family = [r, ...all.filter((x) => x.parent === r.id)];
-      if (q && !family.some((x) => matches(x, q))) return [];
-      return [row(r, false), ...family.slice(1).map((x) => row(x, true))];
+      return family.filter((x) => passes(x) && (!q || matches(x, q))).map((x) => row(x, x !== r));
     });
-    clear(list).append(...(rows.length ? rows : [h("p.muted.combo-noresult", `No combos match "${search.value.trim()}".`)]));
+    // Filtri attivi come etichette (clic = tolto).
+    const n = Object.keys(filter).length;
+    clear(filterBtn).append(icon("filter_alt"), n ? ` Filters (${n})` : " Filters");
+    clear(activeChips).append(...Object.entries(filter).map(([k, v]) => h("button.cc-chip.active", { title: "Remove this filter", onclick: () => { delete filter[k]; renderList(); } }, `${FILTER_LABELS[k]}: ${typeof v === "number" ? cardName(v) : v === true ? "yes" : v}`, " ×")));
+    // Starter più usati: clic = solo le combo che partono da quella carta.
+    const pop = popularStarters(all);
+    starters.hidden = pop.length < 2;
+    clear(starters).append(h("span.muted.small", "Popular starters"), h("div.combo-starters-row", pop.map(({ code, count }) =>
+      h(`button.combo-starter${filter.start === code ? ".on" : ""}`, { title: `${cardName(code)} · ${count} combos`, onclick: () => { if (filter.start === code) delete filter.start; else filter.start = code; renderList(); } }, cardFace(code)))));
+    clear(list).append(...(rows.length ? rows : [h("p.muted.combo-noresult", q || n ? "No combos match the search or the filters." : "No combos.")]));
   }
 
   const importAndSave = () => importCombo().then((v) => v && ctx.put(v));
@@ -248,9 +338,13 @@ export function showComboTrainer(app, { review } = {}) {
         "div.combo-toolbar",
         h("div.combo-toolbar-title", h("h2", "Your combos"), h("span.muted.small", [plural(store.combos.length - variants, "combo"), variants ? plural(variants, "variant") : ""].filter(Boolean).join(" · "))),
         search,
+        filterBtn,
+        sort,
         h("button.btn", { title: "Import a combo code (from the clipboard or pasted)", onclick: importAndSave }, icon("download"), " Import"),
         h("button.btn.primary", { onclick: () => newCombo() }, icon("add"), " New combo")
       ),
+      activeChips,
+      starters,
       list,
       baseSection(),
       howItWorks(false)
@@ -499,6 +593,21 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   const name = h("input.input", { value: c.name, maxLength: 60 });
   const first = h("select.select", h("option", { value: "1" }, "Going first"), h("option", { value: "0" }, "Going second"));
   first.value = c.first ? "1" : "0";
+  // Scheda della combo (come ygopocket): difficoltà, formato, archetipi, OTK.
+  const difficulty = h("select.select", h("option", { value: "" }, "—"), DIFFICULTIES.map((d) => h("option", { value: d }, d)));
+  difficulty.value = c.difficulty ?? "";
+  difficulty.addEventListener("change", () => { if (difficulty.value) c.difficulty = difficulty.value; else delete c.difficulty; snap(); });
+  const format = h("select.select", h("option", { value: "" }, "—"), FORMATS.map((f) => h("option", { value: f }, f)));
+  format.value = c.format ?? "";
+  format.addEventListener("change", () => { if (format.value) c.format = format.value; else delete c.format; snap(); });
+  const archetypesIn = h("input.input", { value: (c.archetypes ?? []).join(", "), maxLength: 150, placeholder: "e.g. Branded, Dracotail" });
+  archetypesIn.addEventListener("change", () => {
+    const a = archetypesIn.value.split(",").map((x) => x.trim()).filter(Boolean).slice(0, 6);
+    if (a.length) c.archetypes = a;
+    else delete c.archetypes;
+    snap();
+  });
+  const otk = h("input", { type: "checkbox", checked: !!c.otk, onchange: (e) => { if (e.target.checked) c.otk = true; else delete c.otk; snap(); } });
   const notes = h("textarea.input.combo-notes", { value: c.notes, rows: 3, maxLength: NOTES_MAX, placeholder: "Notes for the player: what the combo does, what to watch out for, choke points, alternatives…" });
   const branch = h("input.input", { value: c.branch ?? "", maxLength: 40, placeholder: "e.g. No Ash Blossom" });
   // Carte della decklist della combo, nell'ordine del deck builder (mostri, magie, trappole...).
@@ -524,7 +633,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   // ---- annulla / ripeti (Ctrl+Z, Ctrl+Y o Ctrl+Shift+Z)
   const history = [];
   let at = -1;
-  const state = () => JSON.stringify({ name: c.name, first: c.first, hand: c.hand, steps: c.steps, interrupts: c.interrupts, setup: c.setup, tags: c.tags, cards: c.cards, notes: c.notes, branch: c.branch ?? "" });
+  const state = () => JSON.stringify({ name: c.name, first: c.first, hand: c.hand, steps: c.steps, interrupts: c.interrupts, setup: c.setup, tags: c.tags, cards: c.cards, notes: c.notes, branch: c.branch ?? "", difficulty: c.difficulty ?? "", format: c.format ?? "", archetypes: c.archetypes ?? [], otk: !!c.otk });
   const undoBtn = h("button.btn.small.ghost", { title: "Undo (Ctrl+Z)", onclick: () => undo() }, icon("undo"));
   const redoBtn = h("button.btn.small.ghost", { title: "Redo (Ctrl+Y)", onclick: () => redo() }, icon("redo"));
   const paintHistory = () => {
@@ -548,6 +657,10 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     first.value = c.first ? "1" : "0";
     notes.value = c.notes;
     branch.value = c.branch ?? "";
+    difficulty.value = c.difficulty ?? "";
+    format.value = c.format ?? "";
+    archetypesIn.value = (c.archetypes ?? []).join(", ");
+    otk.checked = !!c.otk;
     renderAll();
     paintHistory();
   };
@@ -707,7 +820,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         // Stessa finestra di ricerca di tutto l'editor, limitata alla decklist.
         const card = h("button.btn.card-pick-btn.step-card", {
           title: "Choose the card of this step",
-          onclick: () => pickCard({ title: `Card for step ${i + 1}: ${STEP_ACTIONS[s.kind]}`, pool: pool() }).then((v) => { if (v) { s.code = v; renderSteps(); snap(); } }),
+          onclick: () => pickCard({ title: `Card for step ${i + 1}: ${STEP_ACTIONS[s.kind]}`, pool: pool() }).then((v) => { if (v) { s.code = v; delete s.desc; delete s.way; renderSteps(); snap(); } }),
         }, s.code ? cardName(s.code) : "Choose a card…");
         // End Phase: nessuna carta da scegliere.
         const syncCard = () => (card.style.visibility = NO_CARD.has(s.kind) ? "hidden" : "");
@@ -743,7 +856,24 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
           : null;
         const details = n && !folded ? h("ol.step-details", s.details.map((d, j) => detailRow(s, i, d, j))) : null;
         const note = s.note ? h("div.step-note", { title: "Note (⋮ → Edit the note)" }, icon("sticky_note_2"), " ", s.note) : null;
-        const row = h("li.combo-step-row", h("div.step-line", more, h("span.step-num", `${i + 1}.`), act, card, fold, handle), menu, details, note);
+        // Carta con più effetti attivabili: quale effetto attiva il passo (l'auto-play e la strict mode lo seguono).
+        let effect = null;
+        const effects = s.kind === "activate" ? cardEffects(s.code, [...c.cards.main, ...c.cards.extra]) : [];
+        if (effects.length > 1 || s.desc) {
+          const label = (e) => { const t = e.from ? `From "${cardName(e.from)}": ${e.text}` : e.text; return t.length > 70 ? `${t.slice(0, 68)}…` : t; };
+          effect = h("select.select.step-effect", { title: "Which effect of the card this step activates (also the effects other cards give it)" },
+            h("option", { value: "" }, "Any effect"),
+            effects.map((e) => h("option", { value: e.desc }, label(e))));
+          if (s.desc && !effects.some((e) => e.desc === s.desc)) effect.append(h("option", { value: s.desc }, "Recorded effect"));
+          effect.value = s.desc ?? "";
+          effect.addEventListener("change", () => { if (effect.value) s.desc = effect.value; else delete s.desc; snap(); });
+        }
+        // Evocazione con più procedure (registrata): quale modo.
+        const way = s.kind === "spsummon" && s.way
+          ? h("select.select.step-effect", { title: "Which way to Summon this card (it has more than one)", onchange: (e) => { if (+e.target.value) s.way = +e.target.value; else delete s.way; snap(); } },
+              h("option", { value: "" }, "Any way"), [1, 2, 3].map((n) => h("option", { value: n, selected: s.way === n }, `Way ${n}`)))
+          : null;
+        const row = h("li.combo-step-row", h("div.step-line", more, h("span.step-num", `${i + 1}.`), act, card, effect, way, fold, handle), menu, details, note);
         draggable(row, handle, i, { get: () => dragFrom, set: (v) => (dragFrom = v) }, moveStep);
         return row;
       })
@@ -1277,6 +1407,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     body: [
       h("div.combo-editor-tools", undoBtn, redoBtn, h("span.muted.small", "Ctrl+Z / Ctrl+Y")),
       h("div.form-grid", h("label.field", h("span", "Name"), name), h("label.field", h("span", "Turn"), first), c.parent ? h("label.field", h("span", "Variant"), branch) : null),
+      h("div.form-grid", h("label.field", h("span", "Difficulty"), difficulty), h("label.field", h("span", "Format"), format), h("label.field", h("span", "Archetypes"), archetypesIn), h("label.check", otk, "OTK")),
       h("label.field", h("span", "Notes"), notes),
       h("h3.combo-sec", "Starting hand"),
       handEl,
@@ -1388,6 +1519,19 @@ function practice(app, combo, { video = null, autoplay = false } = {}) {
   // Combo completa: tag sulle carte, poi "Play again" (o fine del video in auto-play).
   trainer.onComplete = () => {
     if (combo.tags?.length) session.view.board.setTags(combo.tags);
+    // Board finale e carte in mano a fine combo: si salvano nella combo (si vedono nella sua scheda).
+    const me = session.cfg.me;
+    const board = boardFromSnapshot(session.view.board.snapshot, me);
+    const hand = session.view.board.snapshot?.players?.[me]?.hand?.length;
+    const store = loadComboStore();
+    const saved = store.combos.find((x) => x.id === combo.id);
+    if (saved && board.length && (JSON.stringify(saved.endBoard) !== JSON.stringify(board) || saved.endHand !== hand)) {
+      saved.endBoard = board;
+      if (Number.isInteger(hand)) saved.endHand = hand;
+      saveComboStore(store);
+      combo.endBoard = board;
+      combo.endHand = hand;
+    }
     if (video && autoplay) setTimeout(() => recording?.stop(), 3500);
     else setTimeout(() => !session.over && session.showLocalRematch({ text: "Combo complete! Practice it again?", label: "Play again", keepPlaying: true }), 1200);
   };

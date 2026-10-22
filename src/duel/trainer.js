@@ -20,7 +20,36 @@ const EVENT_KIND = { [MSG.SUMMONING]: "summon", [MSG.SPSUMMONING]: "spsummon", [
 const IDLE_LIST = { [IDLE.SUMMON]: "summons", [IDLE.SPSUMMON]: "special_summons", [IDLE.MSET]: "monster_sets", [IDLE.SSET]: "spell_sets", [IDLE.ACTIVATE]: "activates" };
 const IDLE_KIND = { [IDLE.SUMMON]: "summon", [IDLE.SPSUMMON]: "spsummon", [IDLE.MSET]: "set", [IDLE.SSET]: "set", [IDLE.ACTIVATE]: "activate" };
 
-export const stepText = (s) => (NO_CARD.has(s.kind) ? STEP_ACTIONS[s.kind] : `${STEP_ACTIONS[s.kind] ?? s.kind} "${cardName(s.code)}"`);
+// Effetto preciso di un passo "Activate" (carte con più effetti attivabili): descrizione dell'effetto (stringa
+// del core: codice << 20 | indice). "way": quale modo di evocazione per le carte con più procedure (1, 2...).
+export const effectText = (desc) => {
+  try {
+    return descString(BigInt(desc)) || "";
+  } catch {
+    return "";
+  }
+};
+export const stepText = (s) =>
+  NO_CARD.has(s.kind)
+    ? STEP_ACTIONS[s.kind]
+    : `${STEP_ACTIONS[s.kind] ?? s.kind} "${cardName(s.code)}"${s.desc ? ` · ${effectText(s.desc) || "effect"}` : ""}${s.way ? ` · way ${s.way}` : ""}`;
+
+/** Effetti attivabili di una carta (per scegliere quello del passo): [{ desc, text, from? }]. */
+export function cardEffects(code, decklist = []) {
+  const of = (k) => (getCard(k)?.strings ?? []).map((text, i) => ({ desc: String((BigInt(k) << 20n) | BigInt(i)), text })).filter((e) => e.text);
+  // Effetti che altre carte della decklist danno al mostro (es. un Equip "...gains the following effects").
+  const granted = [...new Set(decklist)].filter((k) => k !== code && /gains? the following effects?/i.test(getCard(k)?.desc ?? ""))
+    .flatMap((k) => of(k).map((e) => ({ ...e, from: k })));
+  return [...of(code), ...granted];
+}
+
+/** Posizione (1, 2...) della carta tra quelle con lo stesso codice nell'elenco (le procedure di evocazione). */
+const wayOf = (list, index) => {
+  const c = list?.[index];
+  if (!c) return 0;
+  return list.slice(0, index + 1).filter((x) => x.code === c.code && x.location === c.location && x.sequence === c.sequence).length;
+};
+const descOf = (c) => (c?.description != null ? String(c.description) : undefined);
 
 // ------------------------------------------------------------- azioni e dettagli
 
@@ -36,14 +65,19 @@ export function actionOf(prompt, response) {
     if (response.action === IDLE.SPSUMMON && prompt.special_summons?.[response.index]?.location & LOC.SZONE) return { kind: "pendulum", code: PEND };
     const kind = IDLE_KIND[response.action];
     if (!kind) return { kind: "other", code: 0 };
-    return { kind, code: prompt[IDLE_LIST[response.action]]?.[response.index]?.code ?? 0 };
+    const list = prompt[IDLE_LIST[response.action]];
+    const card = list?.[response.index];
+    const act = { kind, code: card?.code ?? 0 };
+    if (kind === "activate") act.desc = descOf(card);
+    if (kind === "spsummon" && list.filter((x) => x.code === card?.code).length > 1) act.way = wayOf(list, response.index);
+    return act;
   }
   if (prompt.type === MSG.SELECT_BATTLECMD) {
     if (response.action === BATTLE.TO_EP) return { kind: "endphase", code: EP };
-    if (response.action === BATTLE.ACTIVATE) return { kind: "activate", code: prompt.chains?.[response.index]?.code ?? 0 };
+    if (response.action === BATTLE.ACTIVATE) return { kind: "activate", code: prompt.chains?.[response.index]?.code ?? 0, desc: descOf(prompt.chains?.[response.index]) };
     return { kind: "other", code: 0 };
   }
-  if (prompt.type === MSG.SELECT_CHAIN && response.index != null) return { kind: "activate", code: prompt.selects?.[response.index]?.code ?? 0 };
+  if (prompt.type === MSG.SELECT_CHAIN && response.index != null) return { kind: "activate", code: prompt.selects?.[response.index]?.code ?? 0, desc: descOf(prompt.selects?.[response.index]) };
   return null;
 }
 
@@ -193,8 +227,29 @@ export function detailResponse(d, prompt, me) {
   return null;
 }
 
+/**
+ * Indice della carta del passo nell'elenco: con l'effetto indicato (desc) se il passo lo specifica, con il
+ * modo di evocazione (way) se la carta ne ha più d'uno; altrimenti la prima con quel codice. -1 se non c'è.
+ */
+function pick(list = [], step, used = null) {
+  const same = list.map((c, i) => [c, i]).filter(([c]) => c.code === step.code);
+  if (!same.length) return -1;
+  if (step.desc) {
+    const exact = same.find(([c]) => descOf(c) === step.desc);
+    if (exact) return exact[1];
+  }
+  // Passo senza l'effetto indicato (combo registrate prima): tra gli effetti della carta, uno non ancora usato
+  // nella combo (di solito ogni effetto si usa una volta per turno).
+  if (!step.desc && used && same.length > 1) {
+    const fresh = same.find(([c]) => !used.has(`${c.code}:${descOf(c)}`));
+    if (fresh) return fresh[1];
+  }
+  if (step.way && same[step.way - 1]) return same[step.way - 1][1];
+  return same[0][1];
+}
+
 /** Risposta che esegue il passo `step` (auto-play); null se ora non si può. */
-function stepResponse(step, prompt) {
+function stepResponse(step, prompt, used = null) {
   if (prompt.type === MSG.SELECT_IDLECMD) {
     if (step.kind === "endphase") return prompt.to_ep ? { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 } : null;
     if (step.kind === "pendulum") {
@@ -203,7 +258,7 @@ function stepResponse(step, prompt) {
     }
     const lists = step.kind === "set" ? [IDLE.MSET, IDLE.SSET] : Object.keys(IDLE_KIND).map(Number).filter((a) => IDLE_KIND[a] === step.kind);
     for (const action of lists) {
-      const index = (prompt[IDLE_LIST[action]] ?? []).findIndex((c) => c.code === step.code);
+      const index = pick(prompt[IDLE_LIST[action]], step, used);
       if (index >= 0) return { type: RESP.SELECT_IDLECMD, action, index };
     }
     return null;
@@ -211,24 +266,29 @@ function stepResponse(step, prompt) {
   if (prompt.type === MSG.SELECT_BATTLECMD) {
     if (step.kind === "endphase") return prompt.to_ep ? { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_EP, index: 0 } : null;
     if (step.kind !== "activate") return null;
-    const index = (prompt.chains ?? []).findIndex((c) => c.code === step.code);
+    const index = pick(prompt.chains, step, used);
     return index >= 0 ? { type: RESP.SELECT_BATTLECMD, action: BATTLE.ACTIVATE, index } : null;
   }
   if (prompt.type === MSG.SELECT_CHAIN) {
-    const index = step.kind === "activate" ? (prompt.selects ?? []).findIndex((c) => c.code === step.code) : -1;
+    const index = step.kind === "activate" ? pick(prompt.selects, step, used) : -1;
     return index >= 0 ? { type: RESP.SELECT_CHAIN, index } : null;
   }
   return null;
 }
 
 /** L'azione scelta è il passo atteso? (una Pendulum Summon può realizzare anche un passo "Special Summon"). */
+// Con l'effetto (desc) o il modo di evocazione (way) indicati nel passo, devono essere quelli.
 const sameAction = (act, want) =>
-  !!want && (act.kind === want.kind ? NO_CARD.has(want.kind) || act.code === want.code : act.kind === "pendulum" && want.kind === "spsummon");
+  !!want && (act.kind === want.kind
+    ? NO_CARD.has(want.kind) || (act.code === want.code && (!want.desc || !act.desc || act.desc === want.desc) && (!want.way || !act.way || act.way === want.way))
+    : act.kind === "pendulum" && want.kind === "spsummon");
 
 /** Copia di un passo senza dettagli e note vuoti (per salvare e condividere). */
 export const cleanStep = (s) => ({
   kind: s.kind,
   code: s.code,
+  ...(typeof s.desc === "string" && /^\d{1,20}$/.test(s.desc) ? { desc: s.desc } : {}),
+  ...(Number.isInteger(s.way) && s.way > 0 && s.way < 10 ? { way: s.way } : {}),
   ...(s.details?.length ? { details: s.details.map((d) => ({ ...d })) } : {}),
   ...(s.note?.trim() ? { note: s.note.trim().slice(0, 300) } : {}),
 });
@@ -259,18 +319,22 @@ export class ComboTrainer {
     this.status = h("div.trainer-status");
     // Dopo un passo sbagliato: torna a prima del passo precedente (lo si rifà), quando lo decide il giocatore.
     this.backBtn = h("button.btn.small.primary.trainer-back", { hidden: true, title: "Undo the wrong action and the step before it", onclick: () => this.goBack() }, "↶ Back");
+    // Dopo un errore: oltre a tornare indietro di un passo, si può ricominciare la combo da capo (stessa mano).
+    this.restartBtn = h("button.btn.small.trainer-back", { hidden: true, title: "Start the combo again from the beginning, with the same hand", onclick: () => onRestart?.() }, "↺ Restart from the beginning");
     const strictBox = h("input", { type: "checkbox", checked: strict, onchange: (e) => { this.strict = e.target.checked; onStrictChange?.(this.strict); this.render(); } });
     // Auto-play: il trainer gioca la combo da solo da questo punto (anche senza registrare un video).
-    this.autoBox = h("input", { type: "checkbox", checked: autoplay, disabled: autoplay && lockAuto, onchange: (e) => { this.autoplay = e.target.checked; this.render(); this.onAutoplay?.(this.autoplay); this.onAutoChange?.(this.autoplay); } });
+    this.autoBox = h("input", { type: "checkbox", checked: autoplay, disabled: autoplay && lockAuto, onchange: (e) => { this.autoplay = e.target.checked; if (!this.autoplay) this.togglePause(false); this.pauseBtn.hidden = !this.autoplay; this.render(); this.onAutoplay?.(this.autoplay); this.onAutoChange?.(this.autoplay); } });
     this.el = h(
       "div.trainer-panel",
       h(
         "div.trainer-top",
-        h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
+        h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, this.restartBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
         h(
           "div.trainer-toggles",
           h("label.check.trainer-strict", { title: "Strict mode: actions and choices that differ from the combo are blocked, and the trainer tells you what to do instead" }, strictBox, "Strict mode"),
-          h("label.check.trainer-strict.trainer-auto", { title: autoplay && lockAuto ? "Auto-play started from the menu: it plays the whole combo" : "The trainer plays the combo by itself from here, with the choices saved in each step. While it plays, the duel does not take your clicks" }, this.autoBox, "Auto-play")
+          h("label.check.trainer-strict.trainer-auto", { title: autoplay && lockAuto ? "Auto-play started from the menu: it plays the whole combo" : "The trainer plays the combo by itself from here, with the choices saved in each step. While it plays, the duel does not take your clicks" }, this.autoBox, "Auto-play"),
+          // Pausa dell'auto-play: la combo si ferma prima dell'azione o scelta successiva.
+          (this.pauseBtn = h("button.btn.small.ghost.trainer-auto.trainer-pause", { hidden: !autoplay, title: "Pause the auto-play before the next action", onclick: () => this.togglePause() }, "❚❚ Pause"))
         ),
         this.status
       ),
@@ -291,11 +355,12 @@ export class ComboTrainer {
       used: [...this.used], stepMarks: [...this.stepMarks], completePending: !!this.completePending, pendulum: !!this.pendulum,
       lastPick: this.lastPick ? { ...this.lastPick } : null,
       lastDone: this.lastDone ? { ...this.lastDone } : null,
+      usedEffects: [...(this.usedEffects ?? [])],
     };
   }
 
   restore(st) {
-    Object.assign(this, { ...st, active: st.active ? { ...st.active } : null, used: new Set(st.used), stepMarks: [...st.stepMarks] });
+    Object.assign(this, { ...st, active: st.active ? { ...st.active } : null, used: new Set(st.used), stepMarks: [...st.stepMarks], usedEffects: new Set(st.usedEffects ?? []) });
     this.render();
   }
 
@@ -315,6 +380,7 @@ export class ComboTrainer {
 
   render() {
     this.backBtn.hidden = !this.backTarget;
+    this.restartBtn.hidden = !this.backTarget;
     if (this.backTarget) this.backBtn.textContent = `↶ Back to step ${this.backTarget.next + 1}`;
     const { steps, interrupts = [] } = this.combo;
     const rows = [];
@@ -421,6 +487,7 @@ export class ComboTrainer {
       }
     }
     const act = actionOf(prompt, response);
+    if (act?.kind === "activate") (this.usedEffects ??= new Set()).add(`${act.code}:${act.desc}`);
     if (act) {
       const want = !this.interrupted && this.combo.steps[this.next];
       const match = sameAction(act, want);
@@ -535,7 +602,7 @@ export class ComboTrainer {
         this.active = null;
         const prev = this.next > 0 ? this.stepMarks[this.next - 1] : null;
         this.backTarget = prev ? { mark: prev, next: this.next - 1 } : this.chosenMark ? { mark: this.chosenMark, next: this.next } : this.backTarget;
-        this.notify(`✗ Wrong step: you did ${stepText({ kind, code: m.code })}. Expected: ${stepText(want)}. Press "Back" to go back.`, "error");
+        this.notify(`✗ Wrong step: you did ${stepText({ kind, code: m.code })}. Expected: ${stepText(want)}. Press "Back" to go back, or restart from the beginning.`, "error");
         this.caption?.(`✗ ${stepText({ kind, code: m.code })}`, "wrong");
         this.chosenMark = null;
         this.render();
@@ -547,8 +614,24 @@ export class ComboTrainer {
    * Auto-play: risposta per il giocatore (passo o dettaglio della combo). undefined = il trainer non sa
    * cosa fare (la sessione usa l'IA per le scelte, o lascia giocare il giocatore se manca l'azione).
    */
+  /** Pausa / ripresa dell'auto-play. */
+  togglePause(force) {
+    this.paused = force ?? !this.paused;
+    this.pauseBtn.textContent = this.paused ? "▶ Resume" : "❚❚ Pause";
+    this.pauseBtn.classList.toggle("on", this.paused);
+    if (!this.paused) for (const r of this.resumeWaiters?.splice(0) ?? []) r();
+  }
+
+  /** Attesa finché l'auto-play è in pausa (subito se non lo è). */
+  waitResume() {
+    if (!this.paused || !this.autoplay) return Promise.resolve();
+    return new Promise((r) => (this.resumeWaiters ??= []).push(r));
+  }
+
   stopAuto() {
     this.autoplay = false;
+    this.togglePause(false);
+    if (this.pauseBtn) this.pauseBtn.hidden = true;
     if (this.autoBox) Object.assign(this.autoBox, { checked: false, disabled: false });
     this.onAutoChange?.(false);
   }
@@ -568,7 +651,7 @@ export class ComboTrainer {
         this.stopAuto();
         return undefined;
       }
-      const r = stepResponse(this.combo.steps[this.next], prompt);
+      const r = stepResponse(this.combo.steps[this.next], prompt, this.usedEffects);
       if (r) return r;
       // In catena e nelle finestre di battaglia si passa finché non si può fare il passo.
       if (prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
@@ -672,6 +755,7 @@ export class ComboRecorder {
     const act = actionOf(prompt, response);
     if (act) {
       this.chosen = act.kind === "endphase" ? EP : act.code;
+      this.chosenAct = act; // effetto preciso (desc) e modo di evocazione (way), salvati nel passo
       this.chosenMark = mark;
       this.pending = []; // nuova azione: i dettagli successivi sono suoi
       return;
@@ -707,7 +791,8 @@ export class ComboRecorder {
       if (kind === "spsummon" && this.chosen === PEND && m.controller === this.me) kind = "pendulum";
       else if (!kind || m.controller !== this.me || !m.code || m.code !== this.chosen) continue;
       // Lo stesso array: le scelte fatte durante la risoluzione si aggiungono ancora a questo passo.
-      this.steps.push({ kind, code: NO_CARD.has(kind) ? 0 : m.code, details: this.pending });
+      const extra = this.chosenAct?.code === m.code ? { ...(this.chosenAct.desc && kind === "activate" ? { desc: this.chosenAct.desc } : {}), ...(this.chosenAct.way ? { way: this.chosenAct.way } : {}) } : {};
+      this.steps.push({ kind, code: NO_CARD.has(kind) ? 0 : m.code, ...extra, details: this.pending });
       this.marks.push(this.chosenMark);
       this.chosen = 0;
       this.notify(`● Recorded: ${stepText(this.steps.at(-1))}`, "ok");
@@ -736,6 +821,7 @@ const fromBase64 = (t) => Uint8Array.from(atob(t), (ch) => ch.charCodeAt(0));
 const comboData = (c) => ({
   v: 3, name: c.name, first: c.first, hand: c.hand, steps: c.steps.map(cleanStep), interrupts: c.interrupts, setup: c.setup, tags: c.tags,
   notes: c.notes || undefined, cards: c.cards, branch: c.branch || undefined,
+  ...comboMeta(c),
 });
 
 /** Codice da condividere: prefisso + JSON in base64 (solo i dati della combo, niente id locale). */
@@ -781,7 +867,26 @@ function comboFromData(data) {
     notes: typeof data.notes === "string" ? data.notes.slice(0, NOTES_MAX) : "",
     cards: cleanCards(data.cards),
     branch: typeof data.branch === "string" ? data.branch.slice(0, 40) : "",
+    ...comboMeta(data),
   };
+}
+
+// Informazioni della scheda (come ygopocket): difficoltà, formato, archetipi, OTK, board finale e carte in mano
+// alla fine (salvati a "Combo complete"). Si puliscono sempre (codici condivisi da altri).
+const META_DIFFICULTY = ["Beginner", "Intermediate", "Advanced", "Expert"];
+const META_FORMAT = ["TCG", "OCG", "Master Duel", "Genesys", "Other"];
+export function comboMeta(d) {
+  const out = {};
+  if (META_DIFFICULTY.includes(d?.difficulty)) out.difficulty = d.difficulty;
+  if (META_FORMAT.includes(d?.format)) out.format = d.format;
+  if (Array.isArray(d?.archetypes)) {
+    const a = d.archetypes.filter((x) => typeof x === "string" && x.trim()).map((x) => x.trim().slice(0, 30)).slice(0, 6);
+    if (a.length) out.archetypes = a;
+  }
+  if (d?.otk === true) out.otk = true;
+  if (Array.isArray(d?.endBoard) && d.endBoard.every((x) => Number.isInteger(x))) out.endBoard = d.endBoard.slice(0, 13);
+  if (Number.isInteger(d?.endHand) && d.endHand >= 0 && d.endHand < 60) out.endHand = d.endHand;
+  return out;
 }
 
 export const NOTES_MAX = 2000;

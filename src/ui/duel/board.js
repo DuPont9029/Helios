@@ -1,6 +1,6 @@
 // Campo di gioco: disegna lo snapshot del core dal punto di vista di `me`.
 // Il giocatore locale sta in basso, l'avversario in alto (zone specchiate).
-import { h, clear } from "../dom.js";
+import { h, clear, rect } from "../dom.js";
 import { cardFace } from "../card.js";
 import { getCard, counterName } from "../../data/db.js";
 import { pendulumIcons, validPendulumIcons, mirrorFor } from "../../data/pendulum.js";
@@ -267,6 +267,11 @@ export class Board {
 
   bindCard(el, p, loc, seq, code, info) {
     el.addEventListener("mouseenter", () => code && this.opts.onHover?.(code, info));
+    // Carte sul campo: passando sopra si vedono i legami (carte equipaggiate e bersagli persistenti).
+    if (loc === LOC.MZONE || loc === LOC.SZONE) {
+      el.addEventListener("mouseenter", () => this.showLinks(p, loc, seq));
+      el.addEventListener("mouseleave", () => this.clearLinks());
+    }
     el.addEventListener("click", (e) => {
       const fn = this.clickHandlers.get(key(p, loc, seq));
       if (fn) {
@@ -278,6 +283,67 @@ export class Board {
         this.opts.onCardMenu?.(el, []);
       }
     });
+  }
+
+  /**
+   * Legami della carta in (p, loc, seq): a chi è equipaggiata e chi le è equipaggiato, i bersagli persistenti
+   * (es. Call of the Haunted) in entrambe le direzioni. Le carte legate si illuminano, con una linea.
+   */
+  linksOf(p, loc, seq) {
+    const players = this.snapshot?.players;
+    if (!players) return [];
+    const ref = (c) => (c && (c.location === LOC.MZONE || c.location === LOC.SZONE) ? key(c.controller, c.location, c.sequence) : null);
+    const me = key(p, loc, seq);
+    const at = (pp, l, s) => players[pp]?.[l === LOC.MZONE ? "mzone" : "szone"]?.[s];
+    const self = at(p, loc, seq);
+    const out = new Map(); // chiave -> tipo ("equip" o "target")
+    const add = (k, kind) => k && k !== me && !out.has(k) && out.set(k, kind);
+    add(ref(self?.equipCard), "equip");
+    for (const t of self?.targetCards ?? []) add(ref(t), "target");
+    for (const pp of [0, 1]) {
+      for (const [l, list] of [[LOC.MZONE, players[pp]?.mzone], [LOC.SZONE, players[pp]?.szone]]) {
+        (list ?? []).forEach((c, s) => {
+          if (!c) return;
+          if (ref(c.equipCard) === me) add(key(pp, l, s), "equip");
+          if ((c.targetCards ?? []).some((t) => ref(t) === me)) add(key(pp, l, s), "target");
+        });
+      }
+    }
+    return [...out];
+  }
+
+  showLinks(p, loc, seq) {
+    this.clearLinks();
+    const links = this.linksOf(p, loc, seq);
+    if (!links.length) return;
+    const from = this.cardEls.get(key(p, loc, seq));
+    if (!from) return;
+    from.classList.add("link-src");
+    const box = rect(this.el);
+    const center = (el) => {
+      const r = rect(el);
+      return [r.left - box.left + r.width / 2, r.top - box.top + r.height / 2];
+    };
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "link-lines");
+    const [x1, y1] = center(from);
+    for (const [k, kind] of links) {
+      const el = this.cardEls.get(k);
+      if (!el) continue;
+      el.classList.add("linked", `linked-${kind}`);
+      const [x2, y2] = center(el);
+      const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      Object.entries({ x1, y1, x2, y2, class: `link-line ${kind}` }).forEach(([a, v]) => line.setAttribute(a, v));
+      svg.append(line);
+    }
+    this.el.append(svg);
+    this.linkSvg = svg;
+  }
+
+  clearLinks() {
+    this.linkSvg?.remove();
+    this.linkSvg = null;
+    this.el.querySelectorAll(".link-src, .linked").forEach((e) => e.classList.remove("link-src", "linked", "linked-equip", "linked-target"));
   }
 
   /** Codici dei materiali Xyz del mostro nella zona `k` (chiave della carta), [] se non ne ha. */

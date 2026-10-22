@@ -464,6 +464,14 @@ export function showOnline(app) {
     setStatus(`Connected ${via}${route?.rtt != null ? `, ping ${route.rtt} ms` : ""}. Agreeing on rules...`, "ok");
     // Mazzo e regole restano quelli del primo accordo anche per le rivincite.
     const match = { mux, host, deck: getDeck(), options: host ? opts.read() : undefined };
+    // Mazzo non valido (es. oltre il massimo di carte): non si gioca. L'host lo controlla con le sue regole,
+    // l'ospite senza banlist (quella dell'host la controlla l'host).
+    const errors = validateDeck(match.deck, host && match.options.banlist ? banlistByName(match.options.banlist) : null, { allowUnofficial: host ? match.options.allowUnofficial : true });
+    if (errors.length) {
+      setStatus(`Your Deck cannot be used: ${errors.slice(0, 3).join(" · ")}`, "error");
+      link.close();
+      return;
+    }
     try {
       await playMatch(app, match);
     } catch (err) {

@@ -29,13 +29,22 @@ function writeCache(c) {
  * Da chiamare dopo loadDatabase: usa subito le banlist già scaricate, poi (senza bloccare) controlla se ce
  * ne sono di nuove. Restituisce una Promise con true se le banlist sono cambiate.
  */
+/** Le banlist che non vengono da LFLists (es. Master Duel, aggiunta da build-data) restano quelle dei dati. */
+function withExtra(lists, bundled) {
+  const extra = bundled.filter((l) => !String(l.file).endsWith(".lflist.conf"));
+  const out = lists.filter((l) => String(l.file).endsWith(".lflist.conf"));
+  out.splice(out.filter((l) => /TCG|OCG/.test(l.file)).length, 0, ...extra);
+  return out;
+}
+
 export async function updateBanlists({ force = false } = {}) {
+  const shipped = db.banlists ?? [];
   const bundled = db.manifest?.repos?.LFLists ?? null;
   // Banlist scaricate prima: valgono solo con gli stessi dati del client (base). Dati nuovi (sito aggiornato,
   // un altro file singolo) possono avere banlist più recenti: si ricontrolla da capo.
   let cache = readCache();
   if (cache && cache.base !== bundled) cache = null;
-  if (cache?.lists.length && cache.sha !== bundled) db.banlists = cache.lists;
+  if (cache?.lists.length && cache.sha !== bundled) db.banlists = withExtra(cache.lists, shipped);
   if (!force && cache && Date.now() - (cache.checked ?? 0) < CHECK_EVERY) return false;
   try {
     const head = await fetch(`https://api.github.com/repos/${REPO}/commits/HEAD`, { cache: "no-store" });
@@ -54,7 +63,7 @@ export async function updateBanlists({ force = false } = {}) {
     const lists = sortBanlists(files.flatMap((f, i) => parseLflist(texts[i], f)));
     if (!lists.length) throw new Error("no banlists in the repository");
     writeCache({ sha, base: bundled, checked: Date.now(), lists: sha === bundled ? [] : lists });
-    db.banlists = lists;
+    db.banlists = withExtra(lists, shipped);
     return true;
   } catch (e) {
     console.warn("Banlist update:", e.message);

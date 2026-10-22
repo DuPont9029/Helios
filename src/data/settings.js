@@ -30,6 +30,7 @@ const DEFAULTS = {
   lastDeck: null,
   lastBanlist: null,
   lastTimer: "omega",
+  editorHistory: [], // deck builder: ultime carte aggiunte, tolte o spostate (scheda History)
   ranked: false, // duelli online classificati (ELO): conta solo se lo attivano entrambi (vedi src/net/elo.js)
   eloRelays: "", // relay Nostr della classifica, uno per riga; vuoto = quelli predefiniti
   hiddenBaseDecks: [], // mazzi base cancellati dalla schermata Deck (nomi, vedi src/data/base-content.js)
