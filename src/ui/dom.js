@@ -89,3 +89,38 @@ export const viewportSize = () => ({ width: window.innerWidth / rectScale, heigh
 
 /** Coordinate di un evento del puntatore in pixel CSS della pagina. */
 export const pointer = (e) => ({ x: e.clientX / rectScale, y: e.clientY / rectScale });
+
+/**
+ * Testo su una riga che, se non ci sta, scorre (avanti e indietro) passandoci sopra con il mouse invece di
+ * finire con "…". Il contenitore che reagisce è il pulsante o la riga che lo contiene.
+ */
+export function scrollText(...children) {
+  return h("span.scroll-text", h("span.scroll-inner", ...children));
+}
+
+const SCROLL_HOST = "button, .detail-line, .setup-field-row, .scroll-host, li";
+function startScroll(host) {
+  for (const outer of host.querySelectorAll(".scroll-text")) {
+    const inner = outer.firstElementChild;
+    const dist = inner.scrollWidth - outer.clientWidth;
+    if (dist <= 2) continue;
+    outer.style.setProperty("--scroll-dist", `${-dist}px`);
+    outer.style.setProperty("--scroll-time", `${Math.max(2, dist / 40 + 1.5)}s`);
+    outer.classList.add("scrolling");
+  }
+}
+function stopScroll(host) {
+  host.querySelectorAll(".scroll-text.scrolling").forEach((o) => o.classList.remove("scrolling"));
+}
+if (typeof document !== "undefined") {
+  document.addEventListener("mouseover", (e) => {
+    const host = e.target.closest?.(SCROLL_HOST);
+    if (host && host.querySelector(".scroll-text") && !host.contains(e.relatedTarget)) startScroll(host);
+  });
+  document.addEventListener("mouseout", (e) => {
+    const host = e.target.closest?.(SCROLL_HOST);
+    if (host && !host.contains(e.relatedTarget)) stopScroll(host);
+  });
+  document.addEventListener("focusin", (e) => { const host = e.target.closest?.(SCROLL_HOST); if (host) startScroll(host); });
+  document.addEventListener("focusout", (e) => { const host = e.target.closest?.(SCROLL_HOST); if (host) stopScroll(host); });
+}

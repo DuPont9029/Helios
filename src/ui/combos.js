@@ -2,7 +2,7 @@
 // tag sulle carte, note) legate a un mazzo o con le sole carte necessarie, con varianti; spreadsheet che raccolgono
 // più combo di un mazzo. Le combo si provano in un duello dove il trainer controlla i passi e l'avversario
 // interrompe dove deciso.
-import { h, clear, icon } from "./dom.js";
+import { h, clear, icon, scrollText } from "./dom.js";
 import { cardFace, miniCards } from "./card.js";
 import { openModal, toast, confirmModal, alertModal, promptModal } from "./modal.js";
 import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine } from "../data/db.js";
@@ -674,7 +674,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   branch.addEventListener("change", snap);
 
   const cardBtn = (code, onPick, opts = {}) =>
-    h("button.btn.card-pick-btn", { title: "Choose a card", onclick: () => pickCard(opts).then((v) => v && onPick(v)) }, code ? [miniCards([code]), cardName(code)] : opts.empty ?? "Choose a card…");
+    h("button.btn.card-pick-btn", { title: "Choose a card", onclick: () => pickCard(opts).then((v) => v && onPick(v)) }, code ? [miniCards([code]), scrollText(cardName(code))] : opts.empty ?? "Choose a card…");
 
   function renderHand() {
     clear(handEl).append(
@@ -721,6 +721,24 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
       renderSteps();
     },
   });
+
+  /**
+   * Menu a tendina con testi che scorrono (gli effetti delle carte sono frasi lunghe): pulsante con la scelta
+   * attuale e un elenco sotto, una riga per opzione. options: [{ desc, text, from? }].
+   */
+  function textSelect(options, value, onPick, title) {
+    const cur = options.find((o) => o.desc === value) ?? options[0];
+    const list = h("div.text-select-list", { hidden: true }, options.map((o) =>
+      h(`button.text-select-item${o.desc === value ? ".on" : ""}`, { onclick: (e) => { e.stopPropagation(); list.hidden = true; onPick(o.desc); } }, o.from ? miniCards([o.from]) : null, scrollText(o.text))));
+    const btn = h("button.select.step-effect.text-select", { title, onclick: (e) => {
+      e.stopPropagation();
+      const open = list.hidden;
+      document.querySelectorAll(".text-select-list").forEach((x) => (x.hidden = true));
+      list.hidden = !open;
+      if (open) setTimeout(() => document.addEventListener("click", () => (list.hidden = true), { once: true }));
+    } }, cur.from ? miniCards([cur.from]) : null, scrollText(cur.text), icon("expand_more"));
+    return h("span.text-select-wrap", btn, list);
+  }
 
   /** Menu ⋮ (stesso stile per passi e scelte precise). */
   const menuButton = (menu, title) =>
@@ -792,7 +810,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         "div.detail-line",
         menuButton(menu, "Choice options"),
         h("span.step-num.detail-num", `${i + 1}.${j + 1}`),
-        h("button.detail-text", { title: "Edit this choice", onclick: () => editDetail(s, j, true) }, icon(DETAIL_ICONS[d.t] ?? "ads_click"), miniCards(detailCodes(d)), h("span", detailText(d))),
+        h("button.detail-text", { title: "Edit this choice", onclick: () => editDetail(s, j, true) }, icon(DETAIL_ICONS[d.t] ?? "ads_click"), miniCards(detailCodes(d)), scrollText(detailText(d))),
         handle
       ),
       menu
@@ -821,7 +839,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         const card = h("button.btn.card-pick-btn.step-card", {
           title: "Choose the card of this step",
           onclick: () => pickCard({ title: `Card for step ${i + 1}: ${STEP_ACTIONS[s.kind]}`, pool: pool() }).then((v) => { if (v) { s.code = v; delete s.desc; delete s.way; renderSteps(); snap(); } }),
-        }, s.code ? [miniCards([s.code]), cardName(s.code)] : "Choose a card…");
+        }, s.code ? [miniCards([s.code]), scrollText(cardName(s.code))] : "Choose a card…");
         // End Phase: nessuna carta da scegliere.
         const syncCard = () => (card.style.visibility = NO_CARD.has(s.kind) ? "hidden" : "");
         act.addEventListener("change", () => {
@@ -860,13 +878,10 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         let effect = null;
         const effects = s.kind === "activate" ? cardEffects(s.code, [...c.cards.main, ...c.cards.extra]) : [];
         if (effects.length > 1 || s.desc) {
-          const label = (e) => { const t = e.from ? `From "${cardName(e.from)}": ${e.text}` : e.text; return t.length > 70 ? `${t.slice(0, 68)}…` : t; };
-          effect = h("select.select.step-effect", { title: "Which effect of the card this step activates (also the effects other cards give it)" },
-            h("option", { value: "" }, "Any effect"),
-            effects.map((e) => h("option", { value: e.desc }, label(e))));
-          if (s.desc && !effects.some((e) => e.desc === s.desc)) effect.append(h("option", { value: s.desc }, "Recorded effect"));
-          effect.value = s.desc ?? "";
-          effect.addEventListener("change", () => { if (effect.value) s.desc = effect.value; else delete s.desc; snap(); });
+          // Menu proprio (non <select>): i testi lunghi degli effetti scorrono invece di essere tagliati.
+          const label = (e) => (e.from ? `From "${cardName(e.from)}": ${e.text}` : e.text);
+          const opts = [{ desc: "", text: "Any effect" }, ...effects.map((e) => ({ desc: e.desc, text: label(e), from: e.from })), ...(s.desc && !effects.some((e) => e.desc === s.desc) ? [{ desc: s.desc, text: "Recorded effect" }] : [])];
+          effect = textSelect(opts, s.desc ?? "", (v) => { if (v) s.desc = v; else delete s.desc; snap(); renderSteps(); }, "Which effect of the card this step activates (also the effects other cards give it)");
         }
         // Evocazione con più procedure (registrata): quale modo.
         const way = s.kind === "spsummon" && s.way
@@ -1131,7 +1146,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
       pos.addEventListener("change", () => { x.pos = pos.value; snap(); });
       return h(
         "div.setup-field-row",
-        h("span.setup-field-name", { title: cardName(x.code) }, miniCards([x.code]), cardName(x.code)),
+        h("span.setup-field-name", { title: cardName(x.code) }, miniCards([x.code]), scrollText(cardName(x.code))),
         zone,
         pos,
         h("button.btn.small.ghost", { title: "Remove", onclick: () => { list.splice(i, 1); pruneInterrupts(); renderSetup(); snap(); } }, icon("close")),
@@ -1177,7 +1192,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
             return s.opp.hand.map((code, i) =>
               h(
                 "div.setup-field-row.setup-hand-row",
-                h("span.setup-field-name", { title: cardName(code) }, miniCards([code]), cardName(code)),
+                h("span.setup-field-name", { title: cardName(code) }, miniCards([code]), scrollText(cardName(code))),
                 useSelect(code, ints.get(`hand:${i}`)),
                 h("button.btn.small.ghost", { title: "Remove", onclick: () => { s.opp.hand.splice(i, 1); pruneInterrupts(); renderSetup(); snap(); } }, icon("close"))
               )
