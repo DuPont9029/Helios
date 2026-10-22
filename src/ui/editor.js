@@ -392,7 +392,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     paintBookmark(btn, code);
     return btn;
   }
-  let tab = "all"; // scheda della ricerca: "all" (tutte le carte) o "bookmarks"
+  let tab = "all"; // scheda della ricerca: "all" (tutte le carte), "bookmarks" o "history"
+  // Cronologia: le ultime carte con cui si è interagito (aggiunte, tolte, spostate), la più recente prima.
+  const HISTORY_MAX = 60;
+  const remember = (code) => {
+    if (!code || side || pick || view || collect) return;
+    settings.editorHistory = [code, ...(settings.editorHistory ?? []).filter((c) => c !== code)].slice(0, HISTORY_MAX);
+    refreshTabs?.();
+    if (tab === "history") runSearch();
+  };
   let refreshTabs = null;
 
   const detail = createDetailPanel();
@@ -952,14 +960,18 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       return change(() => deck[key].splice(at ?? deck[key].length, 0, code));
     }
     const part = routePart(c, target ?? "main");
-    if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
+    // Oltre il massimo si può andare (es. per provare una lista): l'editor lo segnala come errore e il mazzo
+    // non si può usare nei duelli con le regole. Solo il Side Deck tra i duelli resta nei limiti.
+    if (side && deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
     const limit = Math.min(3, cardLimit(banlist, code));
     if (limit === 0) return toast(`${c.name} is forbidden in the selected banlist`, { kind: "error" });
     if (countCopies(code) >= limit) return toast(`Maximum ${limit} copies of ${c.name}`, { kind: "error" });
+    remember(code);
     change(() => deck[part].splice(at ?? deck[part].length, 0, code));
   }
 
   function removeAt(part, index) {
+    remember(deck[part][index]);
     change(() => deck[part].splice(index, 1));
   }
 
@@ -969,6 +981,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const c = getCard(code);
     if (code == null || !c) return;
     const part = routePart(c, target);
+    if (part !== from) remember(code);
     if (part === from) {
       // La carta prende il posto di quella su cui cade (davanti se va indietro, dopo se va avanti).
       const to = at ?? deck[part].length - 1;
@@ -979,7 +992,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       });
       return;
     }
-    if (deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
+    if (side && deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
     if (side && part === "side" && swapped() >= SIDE_SWAPS) return toast(`You can swap at most ${SIDE_SWAPS} cards`, { kind: "error" });
     // Main↔Extra non cambia per tipo: l'indice di destinazione vale solo se la parte è quella richiesta
     change(() => {
@@ -1093,7 +1106,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       clear(head).append(
         h("b", cp ? cp.label : p === "hand" ? pick.label : `${PART_NAME[p]} Deck`),
         ...(cp?.hint ? [h("span.muted.small.collect-part-hint", cp.hint)] : []),
-        h("span.count", `${codes.length}`),
+        h(`span.count${MAX[p] && codes.length > MAX[p] ? ".over" : ""}`, { title: MAX[p] ? `${codes.length} / ${MAX[p]} cards maximum` : null }, `${codes.length}`),
         h("span.spacer"),
         ...counts
       );
@@ -1103,6 +1116,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     if (side) swapsEl.textContent = `Swapped ${swapped()} / ${SIDE_SWAPS}`;
     if (pick) pickCount.textContent = `${deck.hand.length} / ${pick.max}`;
     validity.textContent = errs.length ? `⚠ ${errs.length} issues` : "✓ Valid";
+    validity.title = errs.length ? `${errs.slice(0, 12).join("\n")}\n\nThis Deck cannot be used in Duels with rules until it is fixed.` : "The deck follows the rules and the selected banlist";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
     refreshState();
   }
@@ -1131,6 +1145,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       )
     );
     draw();
+    row.draw = draw;
     return row;
   };
   const typeChips = chipRow(fType, [["monster", "Monsters", "monster"], ["spell", "Spells", "spell"], ["trap", "Traps", "trap"], ["extra", "Extra", "extra"]], "types");
@@ -1164,7 +1179,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const def = fDef.value === "" ? null : +fDef.value;
     const lim = fLimit.value;
     const fmt = fFormat.value ? OT[fFormat.value] : 0;
-    const marks = tab === "bookmarks" ? new Map((settings.bookmarks ?? []).map((c, i) => [c, i])) : null;
+    // Preferiti e cronologia: solo quelle carte, nel loro ordine.
+    const own = tab === "bookmarks" ? settings.bookmarks : tab === "history" ? settings.editorHistory : null;
+    const marks = own ? new Map((own ?? []).map((c, i) => [c, i])) : null;
     found = (marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list).filter((c) => {
       if (!marks && (c.type & TYPE.TOKEN || c.type & TYPE.SKILL)) return false;
       if (!marks && !fUnoff.checked && c.source === 1) return false;
@@ -1193,11 +1210,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     }
     shown = 120;
     renderResults();
+    setFilters(settings.editorFilters); // contatore dei filtri e "Reset filters" (anche per il testo e le chip)
   }
 
   // Risultati come carte in griglia (come nel mazzo) o come lista con nome e statistiche.
   function renderResults() {
-    resultInfo.textContent = tab === "bookmarks" && !(settings.bookmarks ?? []).length ? "No bookmarks yet: use the bookmark icon on a card" : `${found.length} cards`;
+    resultInfo.textContent =
+      tab === "bookmarks" && !(settings.bookmarks ?? []).length ? "No bookmarks yet: use the bookmark icon on a card"
+      : tab === "history" && !(settings.editorHistory ?? []).length ? "No history yet: the cards you add, remove or move appear here"
+      : `${found.length} cards`;
     const list = settings.editorView === "list";
     results.classList.toggle("as-list", list);
     clear(results).append(
@@ -1234,8 +1255,23 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   for (const el of [fType, fSub, fAttr, fRace, fLimit, fFormat, fUnoff]) el.addEventListener("change", runSearch);
 
   // Filtri richiudibili: ridotti lasciano tutto lo spazio alla lista dei risultati.
+  // Filtri di ogni scheda (Cards, Bookmarks, History): cambiando scheda si salvano e si riprendono quelli
+  // dell'altra (all'inizio vuoti); "Reset filters" li azzera nella scheda aperta.
+  const FILTER_ELS = { fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat };
+  const filterStates = {};
+  const readFilters = () => ({ q: q.value, unoff: fUnoff.checked, ...Object.fromEntries(Object.entries(FILTER_ELS).map(([k, el]) => [k, el.value])) });
+  const writeFilters = (st = {}) => {
+    q.value = st.q ?? "";
+    fUnoff.checked = !!st.unoff;
+    for (const [k, el] of Object.entries(FILTER_ELS)) el.value = st[k] ?? "";
+    typeChips.draw();
+    attrChips.draw();
+    setFilters(settings.editorFilters);
+  };
+  const resetBtn = h("button.btn.small.ghost.filter-reset", { title: "Clear all the filters and the search of this tab", onclick: () => { writeFilters({}); runSearch(); } }, icon("filter_alt_off"), " Reset filters");
   const filters = h(
     "div.search-filters",
+    resetBtn,
     typeChips,
     attrChips,
     h("div.filter-grid", fSub, fRace, fLevel, fAtk, fDef, fLimit, fFormat),
@@ -1250,6 +1286,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     filters.hidden = !open;
     const n = activeFilters();
     filterCount.textContent = n ? String(n) : "";
+    resetBtn.disabled = !n && !q.value;
     // Filters non è una scheda ma apre/chiude i filtri: solo icona (con il contatore e la freccia).
     clear(filterToggle).append(icon("tune"), filterCount, icon(open ? "expand_less" : "expand_more"));
   }
@@ -1259,9 +1296,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   const tabAll = h("button.search-tab", { title: "Cards", onclick: () => setTab("all") }, icon("view_module"), h("span.tab-label", "Cards"));
   const tabMarks = h("button.search-tab", { title: "Bookmarks", onclick: () => setTab("bookmarks") });
+  const tabHistory = h("button.search-tab", { title: "History: the last cards you added, removed or moved", onclick: () => setTab("history") }, icon("history"), h("span.tab-label", "History"));
   refreshTabs = () => {
     tabAll.classList.toggle("on", tab === "all");
     tabMarks.classList.toggle("on", tab === "bookmarks");
+    tabHistory.classList.toggle("on", tab === "history");
     const n = (settings.bookmarks ?? []).length;
     clear(tabMarks).append(icon("bookmarks"), h("span.tab-label", "Bookmarks"), h("b.filter-count", n ? String(n) : ""));
   };
@@ -1299,7 +1338,10 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   dropBookmark(results, () => tab === "bookmarks");
 
   function setTab(t) {
+    if (t === tab) return;
+    filterStates[tab] = readFilters();
     tab = t;
+    writeFilters(filterStates[t]);
     refreshTabs();
     runSearch();
     results.scrollTop = 0;
@@ -1308,7 +1350,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   const search = h(
     "aside.search-panel",
-    h("div.search-tabs", tabAll, tabMarks, filterToggle),
+    h("div.search-tabs", tabAll, tabMarks, tabHistory, filterToggle),
     q,
     filters,
     h("div.results-head", resultInfo, viewToggle),

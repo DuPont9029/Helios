@@ -139,10 +139,34 @@ function buildStrings() {
 
 // ---------------------------------------------------------------- banlist
 
-function buildBanlists() {
+// Banlist di Master Duel: non è tra quelle di EDOPro (LFLists); YGO Omega non pubblica le sue, quindi si prende
+// lo stato delle carte da masterduelmeta.com (API pubblica, solo da server: niente CORS per il browser).
+// Se il sito non risponde il build continua senza.
+const MD_API = "https://www.masterduelmeta.com/api/v1/cards?banStatus[$exists]=true&limit=5000";
+async function masterDuelBanlist() {
+  try {
+    const r = await fetch(MD_API, { headers: { "user-agent": "Helios data build (github.com/DuPont9029/Helios)" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const LIMIT = { Forbidden: 0, "Limited 1": 1, "Limited 2": 2 };
+    const cards = {};
+    for (const c of await r.json()) if (c.konamiID && c.banStatus in LIMIT) cards[String(+c.konamiID)] = LIMIT[c.banStatus];
+    if (!Object.keys(cards).length) throw new Error("no cards");
+    const d = new Date();
+    console.log(`  Master Duel: ${Object.keys(cards).length} cards limited`);
+    return { name: `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")} Master Duel`, file: "masterduel", whitelist: false, cards };
+  } catch (e) {
+    console.warn(`  [banlist] Master Duel not available (${e.message}): skipped`);
+    return null;
+  }
+}
+
+async function buildBanlists() {
   const dir = path.join(VENDOR, "LFLists");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".lflist.conf")).sort();
   const lists = sortBanlists(files.flatMap((file) => parseLflist(fs.readFileSync(path.join(dir, file), "utf8"), file)));
+  // Master Duel subito dopo TCG e OCG.
+  const md = await masterDuelBanlist();
+  if (md) lists.splice(lists.filter((l) => /TCG|OCG/.test(l.file)).length, 0, md);
   fs.writeFileSync(path.join(OUT, "banlists.json"), JSON.stringify(lists));
   console.log(`banlists.json: ${lists.length} banlist`);
 }
@@ -235,7 +259,7 @@ await syncRepos();
 fs.mkdirSync(OUT, { recursive: true });
 const cards = buildCards();
 buildStrings();
-buildBanlists();
+await buildBanlists();
 buildScripts();
 buildStarters(cards);
 

@@ -346,6 +346,8 @@ export class DuelSession {
           this.view.prompter.forceManual = false;
         }
         if (auto !== undefined) {
+          await this.trainer?.waitResume?.(); // auto-play in pausa
+          if (this.over) return;
           await this.view.wait(prompt.type === MSG.SELECT_IDLECMD || prompt.type === MSG.SELECT_BATTLECMD ? 650 : 300);
           response = auto ?? this.ai.respond(prompt, { turn: res.snapshot.turn });
         }

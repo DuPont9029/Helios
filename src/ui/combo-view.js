@@ -6,6 +6,7 @@ import { openModal } from "./modal.js";
 import { cardName } from "../data/db.js";
 import { STEP_ACTIONS, NO_CARD, detailText, usedCards } from "../duel/trainer.js";
 import { openDeckViewer } from "./editor.js";
+import { comboStats, endBoard } from "./combo-meta.js";
 
 const ZONE_NAMES = { s0: "S/T 1", s1: "S/T 2", s2: "S/T 3", s3: "S/T 4", s4: "S/T 5", f: "Field", m5: "EMZ left", m6: "EMZ right" };
 const zoneName = (z) => ZONE_NAMES[z] ?? `Monster ${+z.slice(1) + 1}`;
@@ -97,16 +98,37 @@ export function showComboSchema(combo, { family = [combo], onPractice, onOpen } 
     : null;
 
   const sec = (title, ...body) => h("section.schema-sec", h("h3.combo-sec", title), ...body);
+  // Intestazione come ygopocket: mano → passi → board finale, i numeri della combo e le statistiche stimate.
+  const stats = comboStats(c);
+  const board = endBoard(c);
+  const tagOf = new Map((c.tags ?? []).map((t) => [t.code, t.text]));
+  const box = (ic, label, value) => h("div.cv-box", h("span.cv-box-label", icon(ic), ` ${label}`), h("b", value));
+  const header = [
+    h("div.cc-banner.cv-banner",
+      h("div.cc-side", h("div.cc-label", "Starter", h("b", stats.starters)), h("div.cc-faces", c.hand.map((code) => h("div.cc-face", { title: cardName(code) }, cardFace(code))))),
+      h("div.cc-mid", h("span.cc-pill", `${stats.steps} step${stats.steps === 1 ? "" : "s"}`)),
+      h("div.cc-side.end", h("div.cc-label", "Final board", h("b", stats.board || "?")), h("div.cc-faces", board.length ? board.slice(0, 6).map((code) => h("div.cc-face", { title: cardName(code) }, cardFace(code))) : h("span.muted.small", "Practice it or play it with Auto-play once to save the final board")))),
+    h("div.cc-chips", c.format ? h("span.cc-chip", c.format) : null, ...(c.archetypes ?? []).map((a) => h("span.cc-chip.arch", a)), c.difficulty ? h(`span.cc-chip.diff-${c.difficulty.toLowerCase()}`, c.difficulty) : null),
+    h("div.cv-boxes",
+      box("flag", "Starter", stats.starters), box("format_list_numbered", "Steps", stats.steps), box("emoji_events", "Final board", stats.board || "?"),
+      box("speed", "Difficulty", c.difficulty ?? "—"), box("swap_horiz", "Turn", c.first ? "1st" : "2nd"), box("style", "Format", c.format ?? "—"), box("local_fire_department", "OTK", c.otk ? "Yes" : "No")),
+    h("div.cv-statline", h("span.muted.small", "Stats:"),
+      h("span.cc-chip", `${stats.normal} Normal Summons`), h("span.cc-chip", `${stats.special} Special Summons`),
+      stats.handEnd != null ? h("span.cc-chip", `${stats.handEnd} cards in hand at the end`) : null,
+      stats.nibiru ? h("span.cc-chip.otk", "Vulnerable to Nibiru") : null, stats.droll ? h("span.cc-chip.otk", "Vulnerable to Droll") : null,
+      h("span.muted.small.cv-note", "heuristic estimates, not guarantees")),
+  ];
   const m = openModal({
     title: c.parent ? `${c.name} — ${c.branch || "Variant"}` : c.name,
     className: "wide combo-schema",
     body: [
+      ...header,
       h("div.muted.small", [c.first ? "Going first" : "Going second", `Decklist: ${list.main.length} Main · ${list.extra.length} Extra`].join(" · ")),
       c.notes ? h("p.schema-notes", c.notes) : null,
       sec("Starting hand", cardsRow(c.hand)),
       setupParts.length ? sec("Starting board state", h("ul.schema-setup", setupParts.map(([k, v]) => h("li", h("b", `${k}: `), v.join(", "))))) : null,
       sec("Steps", h("ol.schema-steps", steps)),
-      c.tags?.length ? sec("Final board", h("div.schema-cards", c.tags.map((t) => h("div.schema-card", { title: cardName(t.code) }, cardFace(t.code), h("span.schema-tag", t.text))))) : null,
+      board.length ? sec("Final board", h("div.schema-cards", board.map((code) => h("div.schema-card", { title: cardName(code) }, cardFace(code), tagOf.has(code) ? h("span.schema-tag", tagOf.get(code)) : null)))) : null,
       // La decklist si guarda nella schermata del deck builder, con evidenziate le carte che la combo usa.
       sec(
         "Decklist",

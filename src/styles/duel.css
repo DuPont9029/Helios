@@ -515,12 +515,27 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .hand-0 .card.field-chosen { transform: translateY(-14%); }
 
 /* Auto-play del Trainer: il duello non accetta clic (campo, mano, comandi, pannello della combo); restano
-   l'interruttore dell'auto-play, lo scorrimento dei pannelli e "Leave". */
+   l'interruttore e la pausa dell'auto-play, la velocità delle animazioni, lo schermo intero, lo scorrimento
+   dei pannelli e "Leave". */
 .duel-screen.autoplaying .duel-main,
-.duel-screen.autoplaying .duel-controls > :not(.duel-leave),
+.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.anim-speed):not(.fs-btn),
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto),
 .duel-float.autoplaying .chain-mode { pointer-events: none; }
-.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.spacer),
+.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.anim-speed):not(.fs-btn):not(.spacer),
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto) { opacity: 0.45; }
+
+/* Carta selezionata sopra le finestre del duello (come la barra dei timer): a sinistra, dove sta il pannello */
+.duel-float-detail { display: none; position: fixed; left: 10px; top: 10px; z-index: 120; width: min(300px, 26vw); max-height: calc(100vh - 20px); overflow: auto; background: rgba(6, 7, 11, 0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float-detail { display: block; }
+body:has(.modal-backdrop.top:not(.closing)) .duel-float-detail { display: none; }
+
+/* Legami tra carte (equipaggiamenti, bersagli persistenti) mostrati passando sopra una carta del campo */
+.board { position: relative; }
+.board .link-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; overflow: visible; }
+.board .link-line { stroke: #ffd23a; stroke-width: 3; stroke-dasharray: 7 5; stroke-linecap: round; filter: drop-shadow(0 0 4px rgba(255, 210, 58, 0.8)); }
+.board .link-line.target { stroke: #ff6b81; filter: drop-shadow(0 0 4px rgba(255, 107, 129, 0.8)); }
+.board .link-src { outline: 2px solid #ffd23a; outline-offset: 2px; }
+.board .linked-equip { outline: 3px solid #ffd23a; outline-offset: 2px; box-shadow: 0 0 18px rgba(255, 210, 58, 0.7); }
+.board .linked-target { outline: 3px solid #ff6b81; outline-offset: 2px; box-shadow: 0 0 18px rgba(255, 107, 129, 0.7); }

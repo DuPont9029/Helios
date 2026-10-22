@@ -144,6 +144,8 @@ export class DuelView {
 
   hover(code) {
     this.detail.show(code);
+    // Con una finestra aperta il pannello a sinistra è coperto: la stessa carta nel pannello sopra le finestre.
+    this.floatDetail?.show(code);
   }
 
   build() {
@@ -229,6 +231,10 @@ export class DuelView {
       this.floatTrainer
     );
     document.body.append(this.floatBar);
+    // Dettaglio della carta sopra le finestre del duello (scelte, catena...): si vede solo con una finestra aperta.
+    this.floatDetail = createDetailPanel();
+    this.floatDetailEl = h("div.duel-float-detail", this.floatDetail.el);
+    document.body.append(this.floatDetailEl);
     if (this.opts.trainerEl) {
       const sync = () => {
         const st = this.opts.trainerEl.querySelector(".trainer-status");
@@ -266,7 +272,7 @@ export class DuelView {
         h("div.spacer"),
         this.chainMode,
         h("label.check", h("input", { type: "checkbox", checked: settings.autoPlace, onchange: (e) => (settings.autoPlace = e.target.checked) }), "Auto-place"),
-        h("label.check", "Animations", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
+        h("label.check.anim-speed", "Animations", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
         fullscreenButton("btn", "Fullscreen"),
         this.opts.onSurrender && h("button.btn.danger", { onclick: () => this.opts.onSurrender() }, "Surrender"),
         h("button.btn.duel-leave", { onclick: () => this.opts.onLeave?.() }, "Leave")
@@ -973,6 +979,7 @@ export class DuelView {
     this.lingeringModal?.close();
     this.trainerObserver?.disconnect();
     this.floatBar.remove();
+    this.floatDetailEl?.remove();
     // Finestre del duello rimaste aperte (anche ridotte): non devono restare né ricomparire dopo l'uscita.
     this.modalObserver.disconnect();
     for (const b of this.modals) b.remove();

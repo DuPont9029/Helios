@@ -5,9 +5,9 @@ import { cardFace } from "../card.js";
 import { openModal } from "../modal.js";
 import { key } from "./board.js";
 import { locName } from "./describe.js";
-import { db, cardName, descString, hintString, sysString, counterName } from "../../data/db.js";
+import { db, getCard, cardName, descString, hintString, sysString, counterName } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
-import { ATTRIBUTES, BATTLE, IDLE, LOC, MSG, POS, RACES, RESP } from "../../core/constants.js";
+import { ATTRIBUTES, BATTLE, IDLE, LOC, MSG, POS, RACES, RESP, TYPE } from "../../core/constants.js";
 import { availableZones } from "../../core/zones.js";
 import { isValidSum, findSum } from "../../core/sum.js";
 import { isDeclarable } from "../../core/declarable.js";
@@ -192,8 +192,26 @@ export class Prompter {
         })
       );
     add(msg.summons, IDLE.SUMMON, () => IDLE_LABELS[IDLE.SUMMON]);
-    // La "Special Summon" offerta dalla carta nella zona Pendulum è la Pendulum Summon.
-    add(msg.special_summons, IDLE.SPSUMMON, (card) => (card.location & LOC.SZONE ? "Pendulum Summon" : IDLE_LABELS[IDLE.SPSUMMON]));
+    // La "Special Summon" offerta dalla carta nella zona Pendulum è la Pendulum Summon. Dall'Extra Deck si dice
+    // quale evocazione (Xyz, Synchro, Link, Fusion); una carta con più procedure (es. Xyz normale e "puoi anche
+    // evocarla usando un mostro Xyz di Rango…") compare più volte: si numerano i modi.
+    const cardKey = (c) => key(c.controller, c.location, c.sequence);
+    const spCount = new Map();
+    for (const c of msg.special_summons ?? []) spCount.set(cardKey(c), (spCount.get(cardKey(c)) ?? 0) + 1);
+    const spSeen = new Map();
+    add(msg.special_summons, IDLE.SPSUMMON, (card) => {
+      if (card.location & LOC.SZONE) return "Pendulum Summon";
+      const t = getCard(card.code)?.type ?? 0;
+      const base = card.location & LOC.EXTRA
+        ? t & TYPE.XYZ ? "Xyz Summon" : t & TYPE.SYNCHRO ? "Synchro Summon" : t & TYPE.LINK ? "Link Summon" : t & TYPE.FUSION ? "Fusion Summon" : IDLE_LABELS[IDLE.SPSUMMON]
+        : IDLE_LABELS[IDLE.SPSUMMON];
+      const k = cardKey(card);
+      const n = spCount.get(k);
+      if (n < 2) return base;
+      const i = (spSeen.get(k) ?? 0) + 1;
+      spSeen.set(k, i);
+      return `${base} (way ${i} of ${n})`;
+    });
     add(msg.pos_changes, IDLE.REPOS, () => IDLE_LABELS[IDLE.REPOS]);
     add(msg.monster_sets, IDLE.MSET, () => IDLE_LABELS[IDLE.MSET]);
     add(msg.spell_sets, IDLE.SSET, () => IDLE_LABELS[IDLE.SSET]);
