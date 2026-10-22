@@ -3,7 +3,7 @@
 // più combo di un mazzo. Le combo si provano in un duello dove il trainer controlla i passi e l'avversario
 // interrompe dove deciso.
 import { h, clear, icon } from "./dom.js";
-import { cardFace } from "./card.js";
+import { cardFace, miniCards } from "./card.js";
 import { openModal, toast, confirmModal, alertModal, promptModal } from "./modal.js";
 import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine } from "../data/db.js";
 import { settings } from "../data/settings.js";
@@ -13,7 +13,7 @@ import { loadDecks, saveDecks, sortDeckPart } from "../deck/deck.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import {
-  ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, cleanStep, cleanSetup, cleanCards, cardEffects,
+  ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, detailCodes, cleanStep, cleanSetup, cleanCards, cardEffects,
   loadComboStore, saveComboStore, comboToCode, comboFromCode, detectCards, comboDeck, interruptsOutsideBoard, isSheetCode,
   loadBoards, saveBoards, boardToCode, boardFromCode,
 } from "../duel/trainer.js";
@@ -674,7 +674,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   branch.addEventListener("change", snap);
 
   const cardBtn = (code, onPick, opts = {}) =>
-    h("button.btn.card-pick-btn", { title: "Choose a card", onclick: () => pickCard(opts).then((v) => v && onPick(v)) }, code ? cardName(code) : opts.empty ?? "Choose a card…");
+    h("button.btn.card-pick-btn", { title: "Choose a card", onclick: () => pickCard(opts).then((v) => v && onPick(v)) }, code ? [miniCards([code]), cardName(code)] : opts.empty ?? "Choose a card…");
 
   function renderHand() {
     clear(handEl).append(
@@ -792,7 +792,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         "div.detail-line",
         menuButton(menu, "Choice options"),
         h("span.step-num.detail-num", `${i + 1}.${j + 1}`),
-        h("button.detail-text", { title: "Edit this choice", onclick: () => editDetail(s, j, true) }, icon(DETAIL_ICONS[d.t] ?? "ads_click"), h("span", detailText(d))),
+        h("button.detail-text", { title: "Edit this choice", onclick: () => editDetail(s, j, true) }, icon(DETAIL_ICONS[d.t] ?? "ads_click"), miniCards(detailCodes(d)), h("span", detailText(d))),
         handle
       ),
       menu
@@ -821,7 +821,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         const card = h("button.btn.card-pick-btn.step-card", {
           title: "Choose the card of this step",
           onclick: () => pickCard({ title: `Card for step ${i + 1}: ${STEP_ACTIONS[s.kind]}`, pool: pool() }).then((v) => { if (v) { s.code = v; delete s.desc; delete s.way; renderSteps(); snap(); } }),
-        }, s.code ? cardName(s.code) : "Choose a card…");
+        }, s.code ? [miniCards([s.code]), cardName(s.code)] : "Choose a card…");
         // End Phase: nessuna carta da scegliere.
         const syncCard = () => (card.style.visibility = NO_CARD.has(s.kind) ? "hidden" : "");
         act.addEventListener("change", () => {
@@ -906,7 +906,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     // carte
     const codes = [];
     const chosen = h("div.detail-cards");
-    const paintCodes = () => clear(chosen).append(...(codes.length ? codes.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { codes.splice(i, 1); paintCodes(); } }, cardName(code), " ×")) : [h("span.muted.small", "No cards yet.")]));
+    const paintCodes = () => clear(chosen).append(...(codes.length ? codes.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { codes.splice(i, 1); paintCodes(); } }, miniCards([code]), cardName(code), " ×")) : [h("span.muted.small", "No cards yet.")]));
     const addCard = h("button.btn.small", { onclick: () => pick("Card to select").then((v) => { if (v) { codes.push(v); paintCodes(); } }) }, icon("add"), " Add card");
     // una carta / fine
     let one = 0;
@@ -1116,7 +1116,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   function cardList(arr, key, ordered = false) {
     return h(
       "div.setup-list",
-      arr.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { arr.splice(i, 1); renderSetup(); snap(); } }, ordered ? `${i + 1}. ` : "", cardName(code), " ×")),
+      arr.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { arr.splice(i, 1); renderSetup(); snap(); } }, ordered ? `${i + 1}. ` : "", miniCards([code]), cardName(code), " ×")),
       addBtn(key)
     );
   }
@@ -1131,7 +1131,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
       pos.addEventListener("change", () => { x.pos = pos.value; snap(); });
       return h(
         "div.setup-field-row",
-        h("span.setup-field-name", { title: cardName(x.code) }, cardName(x.code)),
+        h("span.setup-field-name", { title: cardName(x.code) }, miniCards([x.code]), cardName(x.code)),
         zone,
         pos,
         h("button.btn.small.ghost", { title: "Remove", onclick: () => { list.splice(i, 1); pruneInterrupts(); renderSetup(); snap(); } }, icon("close")),
@@ -1161,7 +1161,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         h("span.muted.small", "Top of your Deck, after the starting hand (1 = next draw)"),
         h(
           "div.setup-list",
-          s.me.deckTop.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { s.me.deckTop.splice(i, 1); renderSetup(); snap(); } }, `${i + 1}. `, cardName(code), " ×")),
+          s.me.deckTop.map((code, i) => h("button.chip", { title: "Remove", onclick: () => { s.me.deckTop.splice(i, 1); renderSetup(); snap(); } }, `${i + 1}. `, miniCards([code]), cardName(code), " ×")),
           h("button.btn.small.ghost", { disabled: empty(), onclick: () => chooseCards("top") }, icon("style"), " Choose in the Deck Builder")
         )
       ),
@@ -1177,7 +1177,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
             return s.opp.hand.map((code, i) =>
               h(
                 "div.setup-field-row.setup-hand-row",
-                h("span.setup-field-name", { title: cardName(code) }, cardName(code)),
+                h("span.setup-field-name", { title: cardName(code) }, miniCards([code]), cardName(code)),
                 useSelect(code, ints.get(`hand:${i}`)),
                 h("button.btn.small.ghost", { title: "Remove", onclick: () => { s.opp.hand.splice(i, 1); pruneInterrupts(); renderSetup(); snap(); } }, icon("close"))
               )

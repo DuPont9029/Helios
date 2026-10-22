@@ -85,3 +85,9 @@ export function regionBadge(code) {
   const r = cardRegion(getCard(code));
   return r ? h(`span.region-badge.${r.toLowerCase()}`, { title: `${r}-only card` }, r) : null;
 }
+
+/** Miniature delle carte (accanto ai nomi nelle interfacce: una carta si riconosce prima dall'immagine). */
+export function miniCards(codes) {
+  const list = [...new Set((codes ?? []).filter(Boolean))];
+  return list.length ? h("span.mini-cards", list.map((code) => h("span.mini-card", { title: getCard(code)?.name ?? "" }, cardFace(code)))) : null;
+}
