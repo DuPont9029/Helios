@@ -82,7 +82,7 @@ function installButton() {
 
 /** Amici online nella home: porta alla scheda Friends della pagina Online. */
 function friendsBadge(go) {
-  const b = h("button.friends-badge", { title: "Friends", onclick: go(() => showOnline(app, { tab: "friends" })) });
+  const b = h("button.friends-badge", { title: "Friends", onclick: go(() => showOnline(app, { tab: "social" })) });
   const draw = () => {
     const n = onlineCount();
     b.replaceChildren(icon("group"), n ? ` ${n} online` : " Friends");
@@ -243,7 +243,7 @@ onInvite((inv) => {
   });
 });
 onInviteCancel(({ id }) => openInvites.get(id)?.close("cancelled"));
-onFriendRequest(({ name }) => toast(`${name} wants to be your friend (Online Duel → Friends)`, { ms: 6000 }));
+onFriendRequest(({ name }) => toast(`${name} wants to be your friend (Online Duel → Friends & Ranking)`, { ms: 6000 }));
 // Inizio e fine di un duello: lo stato per gli amici cambia subito.
 let wasInDuel = false;
 new MutationObserver(() => {
