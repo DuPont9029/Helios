@@ -13,7 +13,8 @@ import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks, pruneForbiddenBookmarks } from "./data/bookmarks.js";
 import { updateBanlists } from "./data/banlist-update.js";
-import { toast } from "./ui/modal.js";
+import { toast, openModal } from "./ui/modal.js";
+import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
 import { showHdpc } from "./ui/hdpc.js";
 import { version } from "../package.json";
@@ -79,6 +80,19 @@ function installButton() {
   }, icon("install_desktop"), " Install app");
 }
 
+/** Amici online nella home: porta alla scheda Friends della pagina Online. */
+function friendsBadge(go) {
+  const b = h("button.friends-badge", { title: "Friends", onclick: go(() => showOnline(app, { tab: "friends" })) });
+  const draw = () => {
+    const n = onlineCount();
+    b.replaceChildren(icon("group"), n ? ` ${n} online` : " Friends");
+    b.classList.toggle("on", n > 0);
+  };
+  draw();
+  const off = onSocialChange(() => (b.isConnected ? draw() : off()));
+  return b;
+}
+
 /** Home; section "training" = sottomenu con le modalità di allenamento. */
 function home(section = null) {
   leaveCurrent();
@@ -111,7 +125,7 @@ function home(section = null) {
       h(
         "header.home-head",
         h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", `v${version.replace(/\.0$/, "")}`), h("span.beta-badge", { title: "Beta: some features may still change or have bugs" }, "BETA")),
-        h("div.home-user", "Welcome,", h("b", settings.name)),
+        h("div.home-user", "Welcome,", h("b", settings.name), friendsBadge(go)),
         installButton(),
         fullscreenButton(),
         h("button.btn.ghost.round", { title: "Settings", onclick: go(() => showSettings(app)) }, icon("settings"))
@@ -182,6 +196,64 @@ const REF_HEIGHT = 860;
 const MIN_WIDTH = 1180;
 const DUEL_WIDTH = 1180;
 
+// ---------------------------------------------------------------- amici e inviti (src/net/social.js)
+
+const inDuel = () => !!app.root.querySelector(":scope > .duel-screen");
+const activeDeckName = () => {
+  const decks = loadDecks();
+  return (decks.find((d) => d.id === settings.lastDeck) ?? decks[0])?.name ?? "none";
+};
+const openInvites = new Map(); // id → finestra dell'invito
+onInvite((inv) => {
+  if (openInvites.has(inv.id)) return;
+  // In duello non si interrompe: l'amico riceve "busy".
+  if (inDuel()) {
+    replyInvite(inv, false, "in a Duel");
+    toast(`${inv.name} invited you to a Duel, but you are in a Duel`, { ms: 5000 });
+    return;
+  }
+  const r = inv.rules;
+  const left = h("span");
+  const m = openModal({
+    title: "Duel invite",
+    className: "friend-invite",
+    dismissable: false,
+    body: [
+      h("p", h("b", inv.name), " invites you to a Duel."),
+      h("ul.invite-rules", h("li", r.mode), h("li", `Banlist: ${r.banlist}`), h("li", `Timer: ${r.timer}`), r.bestOf > 1 ? h("li", `Match: best of ${r.bestOf}`) : null, h("li", r.ranked ? "Ranked (ELO), if you enable it too" : "Not ranked")),
+      h("p.muted.small", `You play with your active Deck (${activeDeckName()}). `, left),
+    ],
+    actions: [{ label: "Decline", value: false }, { label: "Accept", primary: true, value: true }],
+  });
+  openInvites.set(inv.id, m);
+  const tick = () => (left.textContent = `Expires in ${Math.max(0, inv.expires - Math.floor(Date.now() / 1000))} s.`);
+  tick();
+  const timer = setInterval(() => (inv.expires * 1000 <= Date.now() ? m.close("expired") : tick()), 1000);
+  document.title = `(invite) ${document.title.replace(/^\(invite\) /, "")}`;
+  m.result.then((v) => {
+    clearInterval(timer);
+    openInvites.delete(inv.id);
+    document.title = document.title.replace(/^\(invite\) /, "");
+    if (v === "cancelled") return toast(`${inv.name} withdrew the invite`);
+    if (v === "expired") return toast(`The invite from ${inv.name} expired`);
+    replyInvite(inv, v === true);
+    if (v !== true) return;
+    leaveCurrent();
+    showOnline(app, { join: inv.room });
+  });
+});
+onInviteCancel(({ id }) => openInvites.get(id)?.close("cancelled"));
+onFriendRequest(({ name }) => toast(`${name} wants to be your friend (Online Duel → Friends)`, { ms: 6000 }));
+// Inizio e fine di un duello: lo stato per gli amici cambia subito.
+let wasInDuel = false;
+new MutationObserver(() => {
+  if (inDuel() !== wasInDuel) {
+    wasInDuel = inDuel();
+    statusChanged();
+  }
+}).observe(app.root, { childList: true });
+window.addEventListener("pagehide", goingOffline);
+
 function fitScreen() {
   const w = window.innerWidth;
   const hgt = window.innerHeight;
@@ -217,6 +289,7 @@ async function boot() {
       prune();
     });
     if (location.hash === "#ai-vs-ai") return aiVsAi();
+    startSocial({ status: () => (inDuel() ? "duel" : "online") });
     home();
   } catch (e) {
     console.error(e);
