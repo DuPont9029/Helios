@@ -14,6 +14,7 @@ import { openSideEditor } from "./editor.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
+import { findMatch, watchSeeks, queueOf } from "../net/matchmaking.js";
 import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
 import { socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
@@ -134,6 +135,11 @@ function optionsForm({ host = true } = {}) {
   if (!host) el.hidden = true;
   return {
     el,
+    /** Imposta le regole (es. quelle di chi sta cercando un duello nel matchmaking). */
+    set(v) {
+      apply(v);
+      drawPresets("");
+    },
     read() {
       settings.lastBanlist = banlist.value;
       settings.lastTimer = timer.value;
@@ -463,6 +469,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const deck = deckSelect(decks, settings.lastDeck);
   deck.addEventListener("change", () => (settings.lastDeck = deck.value));
   const opts = optionsForm();
+  const rankedBox = h("input", { type: "checkbox", checked: !!settings.ranked, onchange: (e) => (settings.ranked = e.target.checked) });
   const status = h("div.status-box", "Choose how to connect to the other player.");
   const setStatus = (t, kind = "") => {
     status.textContent = t;
@@ -703,6 +710,110 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     }
   };
 
+  // --- Matchmaking con sconosciuti (src/net/matchmaking.js): coda per regole sui relay Nostr.
+  const mmBody = h("div.online-pane.matchmaking");
+  const mmStatus = h("p.mm-status.muted");
+  const mmList = h("div.mm-queues");
+  const mmBtn = h("button.btn.primary.mm-search");
+  let search = null;
+  let stopSeeks = null;
+  const rulesNow = () => {
+    const o = opts.read();
+    return { mode: o.mode, banlist: o.banlist || "", timer: o.timer, bestOf: o.bestOf, lp: o.lp, hand: o.hand, draw: o.draw, unofficial: o.allowUnofficial, ranked: !!settings.ranked };
+  };
+  const rulesText = (r) => [
+    DUEL_MODES[r.mode]?.label ?? r.mode,
+    r.banlist || "No banlist",
+    TIMER_PRESETS[r.timer]?.label ?? "No timer",
+    r.bestOf > 1 ? `best of ${r.bestOf}` : null,
+    r.lp !== 8000 || r.hand !== 5 || r.draw !== 1 ? `${r.lp} LP, hand ${r.hand}, draw ${r.draw}` : null,
+    r.unofficial ? "unofficial cards" : null,
+    r.ranked ? "Ranked" : null,
+  ].filter(Boolean).join(" · ");
+  const drawMmButton = () => {
+    mmBtn.replaceChildren(icon(search ? "close" : "search"), search ? " Stop searching" : " Find a Duel");
+    mmBtn.className = `btn ${search ? "" : "primary "}mm-search`;
+  };
+  const stopSearch = (why) => {
+    search?.stop();
+    search = null;
+    drawMmButton();
+    if (why) mmStatus.textContent = why;
+  };
+  mmBtn.addEventListener("click", async () => {
+    if (search) return stopSearch("Search stopped.");
+    const o = opts.read();
+    if (!checkDeck(getDeck(), o)) return;
+    withdrawInvite();
+    cancel();
+    const rules = rulesNow();
+    mmStatus.textContent = "Joining the queue…";
+    const s = await findMatch({
+      rules,
+      data: db.manifest?.version ?? "?",
+      name: settings.name,
+      onStatus: (t) => (mmStatus.textContent = t),
+      // La stanza la crea chi propone, con le regole della coda.
+      createRoom: async () => {
+        opts.set(rules);
+        const code = await viaServer(null, { forceNostr: true, quiet: true });
+        if (!code) throw new Error("invalid Deck");
+        return code;
+      },
+      onMatch: ({ room, host, opponent }) => {
+        search = null;
+        drawMmButton();
+        mmStatus.textContent = `Matched with ${opponent.name}!`;
+        setStatus(host ? `Matched with ${opponent.name}: waiting for them in Room ${room}…` : `Matched with ${opponent.name}: joining their Room…`, "ok");
+        if (!host) viaServer(room);
+      },
+    });
+    search = s;
+    drawMmButton();
+  });
+  const drawQueues = async (list) => {
+    if (!mmBody.isConnected) return;
+    const mine = await queueOf(rulesNow(), db.manifest?.version ?? "?");
+    const me = identity().pk;
+    const groups = new Map();
+    for (const s of list) {
+      if (s.pk === me) continue;
+      if (!groups.has(s.queue)) groups.set(s.queue, { rules: s.rules, data: s.data, players: [] });
+      groups.get(s.queue).players.push(s);
+    }
+    const sameData = (g) => g.data === (db.manifest?.version ?? "?");
+    const rows = [...groups.entries()].sort((a, b) => b[1].players.length - a[1].players.length);
+    clear(mmList).append(
+      h("h3", "Searching now"),
+      rows.length
+        ? h("ul.friend-list", rows.map(([q, g]) => h("li.friend-row",
+            h(`span.presence-dot.${q === mine ? "online" : "offline"}`),
+            h("div.friend-info", { title: g.players.map((p) => p.name).join(", ") }, h("b", `${g.players.length} player${g.players.length === 1 ? "" : "s"}`), h("span.muted.small", ` ${rulesText(g.rules)}${sameData(g) ? "" : " · other data version"}`)),
+            q === mine
+              ? h("span.muted.small", "Your rules")
+              : h("button.btn.small", { disabled: !sameData(g) || !!search, title: sameData(g) ? "Use these rules (the Ranked checkbox too)" : "They use another version of the card data", onclick: () => { opts.set(g.rules); settings.ranked = g.rules.ranked; rankedBox.checked = g.rules.ranked; toast("Rules set: press Find a Duel"); watchQueues(); } }, "Use these rules"))))
+        : h("p.muted.small", "Nobody else is searching right now. Start searching: whoever opens this tab sees you here.")
+    );
+  };
+  let lastSeeks = [];
+  const watchQueues = () => {
+    stopSeeks ??= watchSeeks((list) => drawQueues((lastSeeks = list)));
+    drawQueues(lastSeeks);
+  };
+  // Regole cambiate: la coda è un'altra (si smette di cercare in quella vecchia).
+  const rulesChanged = () => {
+    if (search) stopSearch("Rules changed: press Find a Duel again to search with the new ones.");
+    drawQueues(lastSeeks);
+  };
+  opts.el.addEventListener("change", rulesChanged);
+  rankedBox.addEventListener("change", rulesChanged);
+  drawMmButton();
+  mmBody.append(
+    h("p.muted", "Play against anyone looking for a Duel right now, with the same rules as you (left panel). No server: players meet on public Nostr relays, then the Duel runs peer-to-peer. Your name and player key are visible to the other players searching."),
+    h("div.card-box.mm-box", mmBtn, mmStatus),
+    mmList
+  );
+
   // --- Amici (src/net/social.js): richieste, chi è online, inviti in una stanza Nostr.
   const friendsBody = h("div.online-pane.friends");
   let invited = null; // invito mandato in attesa di risposta: { pk, id, name }
@@ -853,6 +964,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         )
       ),
     },
+    { id: "match", label: "Find a Duel", body: mmBody, onShow: watchQueues },
     { id: "friends", label: "Friends", body: friendsBody, onShow: () => { drawFriends(); syncProfile().catch(() => {}); } },
     { id: "ranking", label: "Ranking (ELO)", body: rankBody, onShow: loadRanking },
   ];
@@ -878,14 +990,14 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   root.append(
     h(
       "div.page.online",
-      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { stopSearch(); stopSeeks?.(); withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
       h("div.online-grid",
         h("div.card-box",
           h("h3", "Your Profile"),
           h("label.field", h("span", "Name"), name),
           h("label.field", h("span", "Deck"), deck),
           h("label.check", { title: "The Duel counts for the ELO ranking only if both players enable this" },
-            h("input", { type: "checkbox", checked: !!settings.ranked, onchange: (e) => (settings.ranked = e.target.checked) }), "Ranked Duel (ELO)"),
+            rankedBox, "Ranked Duel (ELO)"),
           h("p.muted.small", "Ranked: the result, your name and your player key are published on public Nostr relays (see Settings → Profile)."),
           h("h3", "Rules (set by the host)"),
           opts.el,
@@ -896,6 +1008,8 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     )
   );
   app.onLeave = () => {
+    stopSearch();
+    stopSeeks?.();
     withdrawInvite();
     offReply();
     offSocial();

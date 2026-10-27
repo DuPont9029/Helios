@@ -405,3 +405,12 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .seed-words li { padding: 4px 0; }
 .profile-box h4 { margin: 14px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
 .profile-box .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
+
+/* Matchmaking (scheda Find a Duel) */
+.mm-box { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+.mm-status { margin: 0; }
+.mm-queues h3 { margin-top: 4px; }
+
+/* Pagina Online: cinque schede su una riga (si riducono invece di andare a capo) */
+.online .tabs.big { flex-wrap: nowrap; }
+.online .tabs.big .tab { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; padding: 12px 12px; letter-spacing: 0.06em; font-size: 12px; }
