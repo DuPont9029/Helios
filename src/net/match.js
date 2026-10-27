@@ -223,6 +223,8 @@ export async function negotiate(mux, opts) {
     iWinToss,
     options,
     ranked,
+    // Chiave pubblica e nome dell'avversario (per aggiungerlo agli amici).
+    opponent: /^[0-9a-f]{64}$/.test(hello.pk ?? "") && hello.pk !== identity().pk ? { pk: hello.pk, name: theirName } : null,
     // Online i mazzi si mescolano sempre (con il seed comune): nessuna opzione per pescare in ordine.
     duel: { flags: String(options.flags), seed, lp: options.lp, hand: options.hand, draw: options.draw, decks, shuffle: [true, true] },
   };
