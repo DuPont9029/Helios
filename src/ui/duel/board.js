@@ -172,7 +172,8 @@ export class Board {
       ps.szone.forEach((c, s) => c && this.renderFieldCard(p, LOC.SZONE, s, c));
       this.renderPile(p, LOC.DECK, ps.deck, null);
       this.renderPile(p, LOC.GRAVE, ps.grave.length, ps.grave[ps.grave.length - 1]);
-      this.renderPile(p, LOC.REMOVED, ps.removed.length, ps.removed[ps.removed.length - 1]);
+      // Banditi: quante sono coperte (face-down) lo si vede sul contatore.
+      this.renderPile(p, LOC.REMOVED, ps.removed.length, ps.removed[ps.removed.length - 1], 0, ps.removed.filter((c) => c && isFaceDown(c.position ?? POS.FACEUP)).length);
       const faceupExtra = ps.extra.filter((c) => c && !isFaceDown(c.position));
       this.renderPile(p, LOC.EXTRA, ps.extra.length, null, faceupExtra.length);
       this.renderHand(p, ps.hand);
@@ -230,7 +231,7 @@ export class Board {
     this.cardEls.set(key(p, loc, seq), el);
   }
 
-  renderPile(p, loc, count, top, faceup = 0) {
+  renderPile(p, loc, count, top, faceup = 0, facedown = 0) {
     const z = this.zoneEls.get(key(p, loc, 0));
     if (!z) return;
     if (count > 0) {
@@ -239,12 +240,14 @@ export class Board {
       el.dataset.owner = p;
       if (this.side(p) === 1) el.classList.add("theirs");
       el.classList.add("pile-top");
+      // Carta bandita coperta che il giocatore vede (è sua): si segna, l'avversario vede solo il dorso.
+      if (loc === LOC.REMOVED && visible && isFaceDown(top.position ?? POS.FACEUP)) el.classList.add("banished-fd");
       if (count > 1) el.style.setProperty("--stack", Math.min(6, Math.ceil(count / 6)));
       z.append(el);
       z.classList.add("occupied");
       el.addEventListener("mouseenter", () => visible && this.opts.onHover?.(top.code));
     }
-    z.append(h("div.zone-badge.count", faceup ? `${count} (${faceup}↑)` : count));
+    z.append(h("div.zone-badge.count", { title: facedown ? `${count} banished, ${facedown} face-down` : null }, faceup ? `${count} (${faceup}↑)` : facedown ? `${count} (${facedown}↓)` : count));
     this.cardEls.set(key(p, loc, 0), z);
   }
 
