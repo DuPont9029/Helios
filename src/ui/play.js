@@ -15,8 +15,7 @@ import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen,
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
-import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
-import { socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
+import { identity, shortKey } from "../net/identity.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
 import "../styles/play.css";
@@ -409,7 +408,6 @@ async function playMatch(app, match, old = null) {
     setTimeout(() => m.close(), 1800);
   } else if (iFirst != null) toast(iFirst ? "Rematch: you lost the last Duel, so you go first" : "Rematch: your opponent lost the last Duel, so they go first");
   else toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
-  if (result.opponent) rememberOpponent(result.opponent.pk, result.opponent.name);
   if (settings.ranked) toast(result.ranked ? "Ranked Duel: the result counts for the ELO ranking" : "This Duel is not ranked (your opponent did not enable Ranked)", { kind: result.ranked ? "ok" : "info", ms: 4000 });
   if (!result.sameData) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
@@ -440,22 +438,7 @@ async function playMatch(app, match, old = null) {
   });
 }
 
-/** Stato di un amico da mostrare: testo e classe del pallino. */
-function presenceLabel(f) {
-  const p = presenceOf(f);
-  if (p.status === "pending") return ["Request sent", "pending"];
-  if (p.status === "online") return ["Online", "online"];
-  if (p.status === "duel") return ["In a Duel", "duel"];
-  if (!p.lastSeen) return ["Offline", "offline"];
-  const m = Math.round((Date.now() / 1000 - p.lastSeen) / 60);
-  return [m < 60 ? `Last seen ${m} min ago` : m < 48 * 60 ? `Last seen ${Math.round(m / 60)} h ago` : `Last seen ${Math.round(m / 1440)} days ago`, "offline"];
-}
-
-/**
- * Pagina dei duelli online. join: codice di una stanza in cui entrare subito (invito di un amico accettato);
- * tab: scheda da aprire ("server", "invite", "friends", "ranking").
- */
-export function showOnline(app, { join = null, tab = null } = {}) {
+export function showOnline(app) {
   const decks = loadDecks();
   if (!decks.length) return alertModal("No Decks", "Create a Deck in the Deck Editor.");
   const root = clear(app.root);
@@ -475,8 +458,6 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   // Dopo il collegamento WebRTC: accordo sul duello e avvio.
   const onConnected = async (link, host) => {
     stopWatch();
-    invited = null;
-    clearTimeout(inviteTimer);
     const mux = new LinkMux(link);
     const route = await link.routeInfo().catch(() => null);
     const via = route ? (route.local === "relay" || route.remote === "relay" ? "via TURN (relay)" : route.local === "host" && route.remote === "host" ? "over local network" : "direct P2P (STUN)") : "";
@@ -507,12 +488,10 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const roomCode = h("div.room-code");
   const roomHint = h("p.muted.small.clip-hint");
   let usedRoom = null;
-  // forceNostr: stanza decentralizzata anche se in Settings è scelto il server (inviti agli amici).
-  // quiet: il codice non va negli appunti (lo riceve l'amico invitato). Restituisce il codice della stanza.
-  const viaServer = async (room, { forceNostr = false, quiet = false } = {}) => {
+  const viaServer = async (room) => {
     cancel();
-    if (room === null && !checkDeck(getDeck(), opts.read())) return null;
-    const nostr = room ? isNostrCode(room) : useNostr || forceNostr;
+    if (room === null && !checkDeck(getDeck(), opts.read())) return;
+    const nostr = room ? isNostrCode(room) : useNostr;
     let c;
     if (nostr) {
       setStatus("Preparing STUN/TURN...");
@@ -521,7 +500,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     } else c = connectViaServer({ room, onStatus: (t) => setStatus(t) });
     cancel = c.cancel;
     c.room.then(async (code) => {
-      if (room || quiet) return;
+      if (room) return;
       roomCode.textContent = code;
       // Come per i codici invito: il codice della stanza va subito negli appunti, pronto da mandare.
       ownCodes.add(code);
@@ -531,7 +510,6 @@ export function showOnline(app, { join = null, tab = null } = {}) {
       }
     });
     c.ready.then(({ link, host }) => onConnected(link, host)).catch((e) => setStatus(e.message, "error"));
-    return c.room;
   };
 
   // --- Codice invito (nessun server)
@@ -703,116 +681,6 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     }
   };
 
-  // --- Amici (src/net/social.js): richieste, chi è online, inviti in una stanza Nostr.
-  const friendsBody = h("div.online-pane.friends");
-  let invited = null; // invito mandato in attesa di risposta: { pk, id, name }
-  let inviteTimer = 0;
-  const withdrawInvite = () => {
-    if (!invited) return;
-    cancelInvite(invited.pk, invited.id);
-    invited = null;
-    clearTimeout(inviteTimer);
-  };
-  const inviteFriend = async (f) => {
-    const o = opts.read();
-    if (!checkDeck(getDeck(), o)) return;
-    withdrawInvite();
-    setStatus(`Creating a Room for ${f.name}…`);
-    const code = await viaServer(null, { forceNostr: true, quiet: true });
-    if (!code) return;
-    const rules = {
-      mode: DUEL_MODES[o.mode]?.label ?? o.mode,
-      banlist: o.banlist || "No banlist",
-      timer: TIMER_PRESETS[o.timer]?.label ?? "No timer",
-      bestOf: o.bestOf,
-      ranked: !!settings.ranked,
-    };
-    try {
-      const id = await sendInvite(f.pk, code, rules);
-      invited = { pk: f.pk, id, name: f.name };
-      setStatus(`Invite sent to ${f.name}: waiting for an answer…`, "ok");
-      clearTimeout(inviteTimer);
-      inviteTimer = setTimeout(() => {
-        if (invited?.id !== id) return;
-        withdrawInvite();
-        cancel();
-        setStatus(`${f.name} did not answer the invite.`, "error");
-      }, INVITE_SECONDS * 1000);
-    } catch (e) {
-      cancel();
-      setStatus(e.message, "error");
-    }
-  };
-  const offReply = onInviteReply((r) => {
-    if (!invited || r.id !== invited.id || r.from !== invited.pk) return;
-    if (r.accept) return setStatus(`${invited.name} accepted: connecting…`, "ok");
-    const who = invited.name;
-    invited = null;
-    clearTimeout(inviteTimer);
-    cancel();
-    setStatus(`${who} declined the invite${r.reason ? ` (${r.reason})` : ""}.`, "error");
-  });
-  const friendCode = () => npubOf(identity().pk);
-  const addInput = h("input.input.mono", { placeholder: "Friend code (npub1…)", onkeydown: (e) => e.key === "Enter" && addBtn.click() });
-  const addBtn = h("button.btn.primary", {
-    onclick: async () => {
-      const pk = pubkeyFrom(addInput.value);
-      if (!pk) return toast("Paste your friend's code: it starts with npub1", { kind: "error" });
-      try {
-        await addFriend(pk);
-        addInput.value = "";
-        toast("Friend request sent");
-      } catch (e) {
-        toast(e.message, { kind: "error" });
-      }
-    },
-  }, icon("person_add"), " Add");
-  const friendRow = (f) => {
-    const [label, dot] = presenceLabel(f);
-    const canInvite = dot === "online";
-    return h("li.friend-row",
-      h(`span.presence-dot.${dot}`, { title: label }),
-      h("div.friend-info", h("b", f.name), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
-      f.status === "friend" ? h("button.btn.small.primary", { disabled: !canInvite, title: canInvite ? "Invite to a Duel with the rules on the left" : "You can invite a friend when they are online", onclick: () => inviteFriend(f) }, icon("swords"), " Invite") : null,
-      h("button.btn.small.ghost", { title: "Rename", onclick: async () => { const n = await promptModal("Rename friend", "Name", f.name); if (n?.trim()) renameFriend(f.pk, n); } }, icon("edit")),
-      h("button.btn.small.ghost", { title: "Remove from friends", onclick: async () => { if (await confirmModal("Remove friend", `Remove ${f.name} from your friends? They will no longer see when you are online.`, "Remove", "Cancel", { danger: true })) removeFriend(f.pk); } }, icon("person_remove"))
-    );
-  };
-  const drawFriends = () => {
-    const { friends, requests, recent } = socialState();
-    const order = { online: 0, duel: 1, offline: 2, pending: 3 };
-    const sorted = [...friends].sort((a, b) => order[presenceLabel(a)[1]] - order[presenceLabel(b)[1]] || a.name.localeCompare(b.name));
-    clear(friendsBody).append(...[
-      h("p.muted", "Add friends with their friend code, see when they are online and invite them to a Duel. No server and no account: your friends list is encrypted and saved on the Nostr relays with your player key (Settings → Profile), only friends can see when you are online."),
-      h("div.card-box.friend-code",
-        h("h3", "Your friend code"),
-        h("div.row", h("code.mono.friend-npub", { title: friendCode() }, friendCode()), h("button.btn.small", { onclick: () => copyText(friendCode()).then((ok) => toast(ok ? "Friend code copied" : "Copy failed")) }, icon("content_copy"), " Copy")),
-        h("div.row", addInput, addBtn)
-      ),
-      requests.length
-        ? h("div.card-box", h("h3", `Friend requests (${requests.length})`),
-            h("ul.friend-list", requests.map((r) => h("li.friend-row",
-              h("span.presence-dot.pending"),
-              h("div.friend-info", h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
-              h("button.btn.small.primary", { onclick: () => acceptRequest(r.pk) }, icon("check"), " Accept"),
-              h("button.btn.small.ghost", { onclick: () => declineRequest(r.pk) }, icon("close"), " Decline")))))
-        : null,
-      h("div.card-box", h("h3", `Friends (${friends.filter((f) => f.status === "friend").length})`),
-        sorted.length ? h("ul.friend-list", sorted.map(friendRow)) : h("p.muted.small", "No friends yet: send your friend code to someone, or add a recent opponent below.")),
-      recent.length
-        ? h("div.card-box", h("h3", "Recent opponents"),
-            h("ul.friend-list", recent.map((r) => h("li.friend-row",
-              h("span.presence-dot.offline"),
-              h("div.friend-info", h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
-              h("button.btn.small", { onclick: () => addFriend(r.pk, r.name).then(() => toast("Friend request sent"), (e) => toast(e.message, { kind: "error" })) }, icon("person_add"), " Add friend")))))
-        : null,
-    ].filter(Boolean));
-  };
-  // La lista si ridisegna quando cambia (richieste, presenza), ma non mentre si scrive il codice di un amico.
-  const offSocial = onSocialChange(() => {
-    if (friendsBody.isConnected && document.activeElement !== addInput) drawFriends();
-  });
-
   const tabs = [
     {
       id: "server",
@@ -853,7 +721,6 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         )
       ),
     },
-    { id: "friends", label: "Friends", body: friendsBody, onShow: () => { drawFriends(); syncProfile().catch(() => {}); } },
     { id: "ranking", label: "Ranking (ELO)", body: rankBody, onShow: loadRanking },
   ];
   const tabBar = h("div.tabs.big");
@@ -866,7 +733,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     startWatch();
   };
   for (const t of tabs) tabBar.append(h("button.tab", { dataset: { tab: t.id }, onclick: () => show(t.id) }, t.label));
-  show(tabs.some((t) => t.id === tab) ? tab : "server");
+  show("server");
   // Server di segnalazione scelto ma irraggiungibile (es. sito su GitHub Pages): si propongono le alternative.
   if (!useNostr) {
     signalingAvailable().then((ok) => {
@@ -878,7 +745,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   root.append(
     h(
       "div.page.online",
-      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
       h("div.online-grid",
         h("div.card-box",
           h("h3", "Your Profile"),
@@ -886,7 +753,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
           h("label.field", h("span", "Deck"), deck),
           h("label.check", { title: "The Duel counts for the ELO ranking only if both players enable this" },
             h("input", { type: "checkbox", checked: !!settings.ranked, onchange: (e) => (settings.ranked = e.target.checked) }), "Ranked Duel (ELO)"),
-          h("p.muted.small", "Ranked: the result, your name and your player key are published on public Nostr relays (see Settings → Profile)."),
+          h("p.muted.small", "Ranked: the result, your name and your player key are published on public Nostr relays (see Settings → Ranked)."),
           h("h3", "Rules (set by the host)"),
           opts.el,
           h("p.muted.small", `Data: ${db.manifest?.version ?? "?"} · Both players must have the same data version.`)
@@ -896,19 +763,9 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     )
   );
   app.onLeave = () => {
-    withdrawInvite();
-    offReply();
-    offSocial();
     cancel();
     stopWatch();
   };
-  // Invito di un amico accettato: si entra subito nella sua stanza.
-  if (join) {
-    show("server");
-    roomInput.value = join;
-    usedRoom = join;
-    viaServer(join);
-  }
 }
 
 export { confirmModal };

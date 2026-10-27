@@ -33,7 +33,6 @@ const DEFAULTS = {
   editorHistory: [], // deck builder: ultime carte aggiunte, tolte o spostate (scheda History)
   ranked: false, // duelli online classificati (ELO): conta solo se lo attivano entrambi (vedi src/net/elo.js)
   eloRelays: "", // relay Nostr della classifica, uno per riga; vuoto = quelli predefiniti
-  showOnline: true, // amici: mostrare quando si è online (src/net/social.js)
   hiddenBaseDecks: [], // mazzi base cancellati dalla schermata Deck (nomi, vedi src/data/base-content.js)
   gamePresets: [], // preset delle impostazioni di gioco salvati: [{ name, values }] (src/ui/play.js)
   lastPreset: "", // ultimo preset scelto (nome di uno salvato o "b<i>" di uno già pronto)

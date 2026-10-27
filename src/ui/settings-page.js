@@ -5,130 +5,9 @@ import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
-import { identity, importIdentity, newIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
-import { copyText } from "../net/clipboard.js";
-import { statusChanged } from "../net/social.js";
+import { identity, importIdentity, shortKey } from "../net/identity.js";
 import { eloRelays } from "../net/elo.js";
 import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
-
-/** Copia un testo segreto: prima si conferma. */
-async function copySecret(title, message, text) {
-  if (!(await confirmModal(title, message, "Copy", "Cancel"))) return;
-  toast((await copyText(typeof text === "function" ? text() : text)) ? "Copied to the clipboard" : "Copy failed", { kind: "ok" });
-}
-
-/** Le 12 parole del profilo, in griglia. */
-function showSeed() {
-  const words = identity().seed.split(" ");
-  openModal({
-    title: "Your seed words",
-    className: "seed-modal",
-    body: [
-      h("p.status-box.error", "Write these words down in order and keep them private: whoever has them can play as you, and they are the only way to get your profile back (rating, friends) on another browser."),
-      h("ol.seed-words", words.map((w) => h("li", w))),
-    ],
-    actions: [
-      { label: "Copy", onClick: () => copyText(identity().seed).then((ok) => toast(ok ? "Seed words copied" : "Copy failed")) },
-      { label: "Done", primary: true, value: true },
-    ],
-  });
-}
-
-/** Backup del profilo con una password (ncryptsec, NIP-49). */
-async function exportWithPassword() {
-  const a = h("input.input", { type: "password", autocomplete: "new-password", placeholder: "Password" });
-  const b = h("input.input", { type: "password", autocomplete: "new-password", placeholder: "Repeat the password" });
-  const err = h("p.muted.small");
-  const v = await openModal({
-    title: "Backup with a password",
-    body: [h("p.muted.small", "The backup (ncryptsec1…) only works with this password: you can keep it somewhere less safe (a note, an email to yourself). Import it in Settings → Profile."), a, b, err],
-    actions: [{ label: "Cancel", value: null }, {
-      label: "Create backup",
-      primary: true,
-      onClick: (close) => {
-        if (a.value.length < 8) return (err.textContent = "Use at least 8 characters.");
-        if (a.value !== b.value) return (err.textContent = "The passwords do not match.");
-        close(a.value);
-      },
-    }],
-  }).result;
-  if (!v) return;
-  toast("Encrypting…");
-  // scrypt richiede un attimo: si lascia disegnare il messaggio.
-  await new Promise((r) => setTimeout(r, 30));
-  const code = passwordBackup(v);
-  openModal({
-    title: "Password backup",
-    body: [h("p.muted.small", "Your backup (it needs the password):"), h("textarea.code-area.mono", { readOnly: true }, code)],
-    actions: [{ label: "Copy", onClick: () => copyText(code).then((ok) => toast(ok ? "Backup copied" : "Copy failed")) }, { label: "Done", primary: true, value: true }],
-  });
-}
-
-/** Import del profilo: parole, nsec, backup con password o chiave esadecimale. */
-async function importProfile(onDone) {
-  const input = h("textarea.code-area.mono", { placeholder: "12 seed words, nsec1…, ncryptsec1… or 64 hexadecimal characters" });
-  const pass = h("input.input", { type: "password", placeholder: "Backup password", hidden: true });
-  const err = h("p.muted.small");
-  input.addEventListener("input", () => (pass.hidden = profileKind(input.value) !== "ncryptsec"));
-  const v = await openModal({
-    title: "Import profile",
-    body: [h("p.muted.small", "It replaces the profile of this browser (player key, rating, friends): export the current one first if you want to keep it."), input, pass, err],
-    actions: [{ label: "Cancel", value: null }, {
-      label: "Import",
-      primary: true,
-      onClick: (close) => {
-        if (!profileKind(input.value)) return (err.textContent = "Not recognized: paste 12 seed words, an nsec1… key, a password backup (ncryptsec1…) or a 64-character hexadecimal key.");
-        err.textContent = "Importing…";
-        setTimeout(() => {
-          try {
-            importIdentity(input.value, pass.value);
-            close(true);
-          } catch (e) {
-            err.textContent = e.message;
-          }
-        }, 30);
-      },
-    }],
-  }).result;
-  if (!v) return;
-  toast("Profile imported: your friends and settings are loaded from the Nostr relays", { kind: "ok", ms: 4000 });
-  onDone();
-}
-
-/** Sezione Profilo: chiave del giocatore (seed, nsec, backup), amici, classifica. */
-function profileSection(field, area) {
-  const box = h("section.card-box.profile-box");
-  const draw = () => {
-    const me = identity();
-    clear(box).append(
-      h("h3", "Profile (friends and ranking)"),
-      h("p.muted.small", "Your player key identifies you to your friends and in the ELO ranking, with no account. It lives only in this browser: back it up to keep your rating and your friends on another browser. Whoever has it can play as you."),
-      h("div.row", h("span", "Friend code "), h("code.mono", { title: npubOf(me.pk) }, shortKey(npubOf(me.pk))),
-        h("button.btn.small", { onclick: () => copyText(npubOf(me.pk)).then((ok) => toast(ok ? "Friend code copied" : "Copy failed")) }, icon("content_copy"), " Copy")),
-      h("h4", "Backup"),
-      me.seed
-        ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"), h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
-        : h("p.muted.small", "This profile was created before seed words existed: back it up with the nsec key or a password backup."),
-      h("div.row",
-        h("button.btn.small", { onclick: () => copySecret("Export nsec key", "Your secret key (nsec1…) works in any Nostr app. Anyone with it can play as you: keep it private.", nsec) }, "Copy nsec key"),
-        h("button.btn.small", { onclick: exportWithPassword }, "Backup with a password"),
-        h("button.btn.small", { onclick: () => importProfile(draw) }, icon("upload_file"), " Import profile"),
-        h("button.btn.small.ghost", {
-          onclick: async () => {
-            if (!(await confirmModal("New profile", "A new player key with new seed words: your rating and your friends stay with the old key, which is lost if you have not backed it up.", "Create", "Cancel", { danger: true }))) return;
-            newIdentity();
-            draw();
-            toast("New profile created");
-          },
-        }, "New profile")),
-      h("h4", "Friends"),
-      h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
-      field("Nostr relays (one per line)", area("eloRelays"), `Used for friends, invites and the ranking. Empty = ${eloRelays().length} public relays. Friends must share at least one relay.`)
-    );
-  };
-  draw();
-  return box;
-}
 
 /** Raccoglie i candidati ICE per verificare che STUN/TURN funzionino. */
 async function testIce(out) {
@@ -428,7 +307,32 @@ export function showSettings(app) {
           h("div.row", h("button.btn.primary", { onclick: () => testIce(iceOut).catch((e) => (iceOut.textContent = e.message)) }, "Test STUN/TURN")),
           iceOut
         ),
-        profileSection(field, area),
+        h(
+          "section.card-box",
+          h("h3", "Ranked (ELO)"),
+          h("p.muted.small", "Your player key identifies you in the ELO ranking (no account): ranked results are signed with it. Export it to keep your rating on another browser; whoever has it can play as you."),
+          (() => {
+            const pk = h("code.mono", shortKey(identity().pk));
+            return h("div.row", h("span", "Player key "), pk,
+              h("button.btn.small", { onclick: () => navigator.clipboard?.writeText(identity().pk).then(() => toast("Public key copied")) }, "Copy public key"),
+              h("button.btn.small", { onclick: async () => { if (await confirmModal("Export secret key", "Anyone with this key can play ranked Duels as you. Keep it private.", "Copy", "Cancel")) navigator.clipboard?.writeText(identity().sk).then(() => toast("Secret key copied")); } }, "Export secret key"),
+              h("button.btn.small", {
+                onclick: async () => {
+                  const input = h("input.input.mono", { placeholder: "64 hexadecimal characters" });
+                  const v = await openModal({ title: "Import secret key", body: [h("p.muted.small", "It replaces your current player key (export it first if you want to keep it)."), input], actions: [{ label: "Cancel", value: null }, { label: "Import", primary: true, onClick: (close) => close(input.value) }] }).result;
+                  if (!v) return;
+                  try {
+                    importIdentity(v);
+                    pk.textContent = shortKey(identity().pk);
+                    toast("Player key imported");
+                  } catch (e) {
+                    toast(e.message, { kind: "error" });
+                  }
+                },
+              }, "Import secret key"));
+          })(),
+          field("Ranking relays (one per line)", area("eloRelays"), `Nostr relays where ranked results are published and read. Empty = ${eloRelays().length} public relays.`)
+        ),
         h(
           "section.card-box",
           h("h3", "Data"),
