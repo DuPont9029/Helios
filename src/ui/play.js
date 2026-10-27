@@ -459,7 +459,7 @@ function presenceLabel(f) {
 
 /**
  * Pagina dei duelli online. join: codice di una stanza in cui entrare subito (invito di un amico accettato);
- * tab: scheda da aprire ("server", "invite", "friends", "ranking").
+ * tab: scheda da aprire ("match", "manual", "social"; valgono anche i nomi vecchi).
  */
 export function showOnline(app, { join = null, tab = null } = {}) {
   const decks = loadDecks();
@@ -638,7 +638,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const onClipboard = async (text, initial) => {
     if (ownCodes.has(text)) return;
     // Codice di una stanza (6 caratteri: server di segnalazione, 8: Nostr) copiato dall'avversario.
-    if (ROOM_CODE.test(text) && paneHost.firstChild === tabs[0].body) {
+    if (ROOM_CODE.test(text) && paneHost.firstChild === manualBody) {
       if (text === usedRoom) return;
       roomInput.value = text;
       if (initial) {
@@ -924,49 +924,50 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     if (friendsBody.isConnected && document.activeElement !== addInput) drawFriends();
   });
 
+  // Scheda "Manual matchmaking": stanza con codice e codice invito, una sotto l'altra.
+  const roomPane = h(
+    "section.online-pane",
+    h("h3.pane-head", "Online Room (no server)"),
+    h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically and the Duel runs directly between the two browsers (peer-to-peer). No game server is involved: the Room is only used to meet. 8-character codes are serverless Rooms on public Nostr relays; 6-character codes use a signaling server. Choose where new Rooms are created in Settings."),
+    roomHint,
+    h("div.row-group",
+      h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
+      h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
+    )
+  );
+  const manualBody = h(
+    "div.online-manual",
+    roomPane,
+    h(
+      "section.online-pane",
+      h("h3.pane-head", "Invite code (no server)"),
+      h("p.muted", "Also peer-to-peer and serverless: instead of a Room you exchange two long codes (e.g. via chat). Paste them quickly: the connection may fail if the exchange takes more than about a minute."),
+      clipHint,
+      h("div.row-group",
+        h("div.card-box",
+          h("h3", "1. You host"),
+          h("button.btn.primary", { onclick: hostGenerate }, "Generate invite code"),
+          inviteOut,
+          h("button.btn", { onclick: () => copy(inviteOut) }, "Copy invite"),
+          answerIn,
+          h("button.btn.primary", { onclick: hostConnect }, "Connect")
+        ),
+        h("div.card-box",
+          h("h3", "2. You're invited"),
+          inviteIn,
+          h("button.btn.primary", { onclick: guestRespond }, "Generate response"),
+          answerOut,
+          h("button.btn", { onclick: () => copy(answerOut) }, "Copy response")
+        )
+      )
+    )
+  );
+  // Scheda "Friends & Ranking": amici, poi la classifica ELO.
+  const socialBody = h("div.online-social", friendsBody, h("h3.pane-head", "Ranking (ELO)"), rankBody);
   const tabs = [
-    {
-      id: "server",
-      label: "Online Room (no server)",
-      body: h(
-        "div.online-pane",
-        h("p.muted", "Create a Room and send the code to your opponent: the connection info is exchanged automatically and the Duel runs directly between the two browsers (peer-to-peer). No game server is involved: the Room is only used to meet. 8-character codes are serverless Rooms on public Nostr relays; 6-character codes use a signaling server. Choose where new Rooms are created in Settings."),
-        roomHint,
-        h("div.row-group",
-          h("div.card-box", h("h3", "Create a Room"), h("p.muted.small", "Get a code to give to your opponent. You set the rules."), h("button.btn.primary", { onclick: () => viaServer(null) }, "Create Room"), roomCode),
-          h("div.card-box", h("h3", "Join a Room"), roomInput, h("button.btn.primary", { onclick: () => roomInput.value.trim() && viaServer(roomInput.value.trim()) }, "Join"))
-        )
-      ),
-    },
-    {
-      id: "invite",
-      label: "Invite code (no server)",
-      body: h(
-        "div.online-pane",
-        h("p.muted", "Also peer-to-peer and serverless: instead of a Room you exchange two long codes (e.g. via chat). Paste them quickly: the connection may fail if the exchange takes more than about a minute."),
-        clipHint,
-        h("div.row-group",
-          h("div.card-box",
-            h("h3", "1. You host"),
-            h("button.btn.primary", { onclick: hostGenerate }, "Generate invite code"),
-            inviteOut,
-            h("button.btn", { onclick: () => copy(inviteOut) }, "Copy invite"),
-            answerIn,
-            h("button.btn.primary", { onclick: hostConnect }, "Connect")
-          ),
-          h("div.card-box",
-            h("h3", "2. You're invited"),
-            inviteIn,
-            h("button.btn.primary", { onclick: guestRespond }, "Generate response"),
-            answerOut,
-            h("button.btn", { onclick: () => copy(answerOut) }, "Copy response")
-          )
-        )
-      ),
-    },
     { id: "match", label: "Find a Duel", body: mmBody, onShow: watchQueues },
-    { id: "friends", label: "Friends", body: friendsBody, onShow: () => { drawFriends(); syncProfile().catch(() => {}); } },
-    { id: "ranking", label: "Ranking (ELO)", body: rankBody, onShow: loadRanking },
+    { id: "manual", label: "Manual matchmaking", body: manualBody },
+    { id: "social", label: "Friends & Ranking", body: socialBody, onShow: () => { drawFriends(); syncProfile().catch(() => {}); loadRanking(); } },
   ];
   const tabBar = h("div.tabs.big");
   const paneHost = h("div");
@@ -978,12 +979,15 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     startWatch();
   };
   for (const t of tabs) tabBar.append(h("button.tab", { dataset: { tab: t.id }, onclick: () => show(t.id) }, t.label));
-  show(tabs.some((t) => t.id === tab) ? tab : "server");
+  // Nomi vecchi delle schede (link e chiamate di prima).
+  const alias = { server: "manual", invite: "manual", friends: "social", ranking: "social" };
+  tab = alias[tab] ?? tab;
+  show(tabs.some((t) => t.id === tab) ? tab : "match");
   // Server di segnalazione scelto ma irraggiungibile (es. sito su GitHub Pages): si propongono le alternative.
   if (!useNostr) {
     signalingAvailable().then((ok) => {
       if (ok) return;
-      tabs[0].body.prepend(h("div.status-box.error", "No signaling server found, so you can only join decentralized Rooms (8-character codes). To create Rooms without a server, choose \"Nostr relays\" for Online Rooms in Settings, or use the invite code."));
+      roomPane.prepend(h("div.status-box.error", "No signaling server found, so you can only join decentralized Rooms (8-character codes). To create Rooms without a server, choose \"Nostr relays\" for Online Rooms in Settings, or use the invite code."));
     });
   }
 
@@ -1018,7 +1022,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   };
   // Invito di un amico accettato: si entra subito nella sua stanza.
   if (join) {
-    show("server");
+    show("manual");
     roomInput.value = join;
     usedRoom = join;
     viaServer(join);

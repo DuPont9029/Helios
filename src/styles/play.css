@@ -414,3 +414,8 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 /* Pagina Online: cinque schede su una riga (si riducono invece di andare a capo) */
 .online .tabs.big { flex-wrap: nowrap; }
 .online .tabs.big .tab { flex: 0 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: clip; padding: 12px 12px; letter-spacing: 0.06em; font-size: 12px; }
+
+/* Schede che ne uniscono due (Manual matchmaking, Friends & Ranking) */
+.online-manual > .online-pane + .online-pane { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+.pane-head { margin: 0 0 8px; font: 700 15px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-soft); }
+.online-social > .pane-head { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
