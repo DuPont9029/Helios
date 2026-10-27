@@ -545,3 +545,11 @@ body:has(.duel-float-detail) .modal-backdrop:not(.top):not(.minimized) { padding
 .board .link-src { outline: 2px solid #ffd23a; outline-offset: 2px; }
 .board .linked-equip { outline: 3px solid #ffd23a; outline-offset: 2px; box-shadow: 0 0 18px rgba(255, 210, 58, 0.7); }
 .board .linked-target { outline: 3px solid #ff6b81; outline-offset: 2px; box-shadow: 0 0 18px rgba(255, 107, 129, 0.7); }
+
+/* Carte bandite coperte (face-down): il proprietario le vede, ma devono sembrare coperte */
+/* La carta resta ben visibile (il proprietario sa cos'è): solo un bordo tratteggiato e l'etichetta "face-down". */
+.card.banished-fd { outline: 2px dashed #ffd23a; outline-offset: -2px; }
+.card.banished-fd::after { content: "face-down"; position: absolute; left: 50%; top: 4%; transform: translateX(-50%); padding: 0 4px; font: 700 8px var(--mono); letter-spacing: 0.04em; text-transform: uppercase; color: #ffd23a; background: rgba(6, 7, 11, 0.85); white-space: nowrap; pointer-events: none; }
+.pile-item .card.banished-fd::after { display: none; } /* nell'elenco c'è già l'etichetta sopra la carta */
+.pile-item { position: relative; }
+.fd-badge { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 1px 7px; font: 700 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; background: #1a1d27; border: 1px solid var(--line-strong); color: #ffd23a; white-space: nowrap; }

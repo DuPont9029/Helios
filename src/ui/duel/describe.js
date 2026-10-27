@@ -126,7 +126,7 @@ function describeParts(m, names, canSee, ctx) {
       // Da dove arriva la carta (dal campo si dice solo "is sent to the GY": può essere distrutta o mandata).
       const from_ = from.location & LOC.ONFIELD || from.location === 0 ? "" : ` from the ${locName(from.location)}`;
       if (to.location === LOC.GRAVE) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is sent to the GY${from_}` };
-      if (to.location === LOC.REMOVED) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is banished${from_}` };
+      if (to.location === LOC.REMOVED) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} is banished${to.position & POS.FACEDOWN ? " face-down" : ""}${from_}` };
       if (to.location === LOC.HAND && from.location !== LOC.DECK) return { text: t`${nameIf(m.card, to.controller, to.location, to.position)} returns to the Hand` };
       if (to.location === LOC.HAND && from.location === LOC.DECK) return { text: t`${who(to.controller)} adds ${nameIf(m.card, to.controller, to.location, to.position)} from the Deck to the Hand` };
       if (to.location === LOC.DECK || to.location === LOC.EXTRA) {

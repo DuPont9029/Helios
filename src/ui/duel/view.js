@@ -483,7 +483,8 @@ export class DuelView {
     if (!snap) return;
     const ps = snap.players[p];
     const list = loc === LOC.GRAVE ? ps.grave : loc === LOC.REMOVED ? ps.removed : ps.extra;
-    const title = `${this.names[p]}'s ${loc === LOC.GRAVE ? "GY" : loc === LOC.REMOVED ? "Banishment" : "Extra Deck"}`;
+    const fdCount = loc === LOC.REMOVED ? list.filter((c) => c && c.position & POS.FACEDOWN).length : 0;
+    const title = `${this.names[p]}'s ${loc === LOC.GRAVE ? "GY" : loc === LOC.REMOVED ? "Banishment" : "Extra Deck"}${fdCount ? ` · ${fdCount} face-down` : ""}`;
     const items = list
       .map((info, i) => ({ info, i }))
       .filter(({ info }) => info)
@@ -493,8 +494,11 @@ export class DuelView {
         const actions = this.onPileActions?.(key(p, loc, i)) ?? [];
         const face = cardFace(visible ? info.code : 0, { faceDown: !visible });
         face.dataset.owner = p;
-        if (info.position & POS.FACEDOWN && loc === LOC.REMOVED) face.classList.add("facedown");
-        const tile = h("div.pile-item", face, actions.length > 0 && h("div.pile-actions", actions.map((a) =>
+        // Bandita coperta: senza caratteristiche (non è un mostro né una magia/trappola per gli effetti),
+        // nascosta all'avversario; il proprietario la vede, segnata come "Face-down".
+        const fd = loc === LOC.REMOVED && info.position & POS.FACEDOWN;
+        if (fd) face.classList.add("banished-fd");
+        const tile = h("div.pile-item", face, fd && visible ? h("span.fd-badge", { title: "Banished face-down: it has no name, type or stats while face-down, so most effects cannot choose or count it" }, "Face-down") : null, actions.length > 0 && h("div.pile-actions", actions.map((a) =>
                 h(
                   "button.btn.small.primary",
                   { onclick: () => { m.close(); a.onClick(); } },
