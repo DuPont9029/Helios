@@ -167,7 +167,7 @@ function seen(id) {
   return false;
 }
 
-const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set() };
+const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set(), direct: new Set() };
 /** Inviti ricevuti da un amico: fn({ id, from, name, room, rules, expires }). */
 export const onInvite = (fn) => (handlers.invite.add(fn), () => handlers.invite.delete(fn));
 /** Risposte ai nostri inviti: fn({ id, from, accept, reason }). */
@@ -261,8 +261,21 @@ function receive(wrap) {
       return;
     case "invite-cancel":
       if (isFriend(from) && typeof m.id === "string") emit(handlers.cancel, { id: m.id, from });
+      return;
+    default:
+      // Matchmaking con sconosciuti (matchmaking.js): solo messaggi recenti, il resto lo controlla lui.
+      if (typeof m.t === "string" && m.t.startsWith("mm-") && at > now() - 120) emit(handlers.direct, { ...m, from, name, at });
   }
 }
+
+/** Messaggi "mm-*" da qualunque giocatore (matchmaking): fn({ t, from, name, at, ... }). */
+export const onDirect = (fn) => (handlers.direct.add(fn), () => handlers.direct.delete(fn));
+/** Messaggio cifrato a un giocatore qualunque (matchmaking). */
+export const sendDirect = (pk, msg) => sendTo(pk, msg);
+/** Evento firmato con la chiave del giocatore, pubblicato sui relay. */
+export const publishSigned = (tmpl) => publish(finalizeEvent(tmpl, sk()));
+/** Iscrizione ai relay (null se non collegati): restituisce { close() }. */
+export const subscribeRelays = (filter, onevent) => (pool ? pool.subscribeMany(relays(), filter, { onevent }) : null);
 
 /** Riassunto delle regole di un invito (solo da mostrare: quelle vere arrivano con il duello). */
 function cleanRules(r) {
