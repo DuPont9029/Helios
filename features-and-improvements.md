@@ -74,5 +74,10 @@
 - [ ] Fare vedere hoverando sopra a le carte equipaggiate o alle carte che gli sono state equipaggiate cosa è legato a cosa. (prendere ispirazione dagli altri sim che lo fanno quasi tutti, IMPORTANTISSIMO)
 - [ ] Aggiungere la possibilità di mettere in pausa una combo in quto play
 - [ ] permettere quando bloccati in auto mode nel trainer comunque di interaggire con la velocità delle animazioni di gioco e con il bottone che mette in full screen.
+- [ ] per tutte le impostazioni che necessitano un upload (es: sleeves) aggiungere una rubrica delle tue scelte precedenti.
+- [ ] aggiornare il look della sezione spreadsheets ora che la sezione combo ne ha uno diverso per mantenere consistenza nella grafica. mantenere la colo scheme originale di rossoscuro e celeste.
+- [ ] permettere di editare la fase di gioco nel trainer sotto "starting board state".
+- [ ] per i mostri che si possono evocare dall'extradeck in più di un modo far apparire un solo bottone es: synchro summon e far scegliere il modo dopo.
+
 
 
