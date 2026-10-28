@@ -442,3 +442,37 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .chip-btn:hover { color: var(--accent-soft); }
 .setup-phase-field { margin: 0 0 4px; }
 .setup-phase { width: auto; }
+
+/* Find a Duel: schermata a tutto schermo del matchmaking (src/ui/mm-scene.js), sotto le finestre (inviti, avvisi) */
+.mm-scene { position: fixed; inset: 0; z-index: 95; overflow: hidden; background: radial-gradient(ellipse at 50% 45%, #0d1a2e 0%, #07080f 55%, #040408 100%); color: var(--text); animation: mm-in 0.3s ease-out; }
+.mm-scene.closing { opacity: 0; transition: opacity 0.25s; }
+@keyframes mm-in { from { opacity: 0; } }
+.mm-scene-canvas { position: absolute; inset: 0; }
+.mm-scene-canvas canvas { width: 100%; height: 100%; display: block; }
+.mm-scene-labels { position: absolute; inset: 0; pointer-events: none; }
+.mm-label { position: absolute; left: 0; top: 0; margin: 14px 0 0; white-space: nowrap; font: 600 12px var(--font); color: var(--accent-soft); text-shadow: 0 0 6px #000, 0 0 12px #000; translate: -50% 0; will-change: transform; }
+.mm-label.me { font-size: 14px; color: #fff; margin-top: 22px; }
+.mm-label.relay { font: 500 10px var(--mono); color: var(--muted); }
+.mm-label.relay.off { opacity: 0.45; text-decoration: line-through; }
+.mm-label.player { color: var(--star); }
+.mm-label.player.dim { opacity: 0.3; }
+.mm-label.player.opp { font-size: 15px; color: #fff; text-shadow: 0 0 10px var(--accent), 0 0 4px #000; }
+.mm-scene-head { position: absolute; top: 20px; left: 24px; display: flex; flex-direction: column; gap: 2px; max-width: calc(100% - 48px); }
+.mm-scene-head h2 { margin: 0; font: 700 22px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+.mm-scene-side { position: absolute; top: 20px; right: 24px; width: 240px; max-height: 45vh; overflow: auto; padding: 10px 12px; background: rgba(7, 9, 16, 0.7); border: 1px solid var(--line); font-size: 13px; }
+.mm-scene-side-head { margin-bottom: 6px; color: var(--muted); }
+.mm-scene-count { color: var(--star); font: 700 18px var(--mono); }
+.mm-scene-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; }
+.mm-scene-list li { color: var(--star); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-scene-list li.on { color: #fff; font-weight: 700; }
+.mm-scene-list li.on::before { content: "▶ "; color: var(--accent); }
+.mm-scene-list li.muted { color: var(--muted); white-space: normal; font-size: 12px; }
+.mm-scene-foot { position: absolute; left: 50%; bottom: 28px; translate: -50% 0; display: flex; flex-direction: column; align-items: center; gap: 12px; width: min(640px, calc(100% - 32px)); text-align: center; }
+.mm-scene-status { margin: 0; padding: 8px 14px; background: rgba(7, 9, 16, 0.75); border: 1px solid var(--line-gold); font-size: 14px; }
+.mm-scene-status.ok { border-color: var(--ok); color: #b6f5cf; }
+.mm-scene-status.error { border-color: var(--danger); color: #ffb3bb; }
+.mm-scene.no-gl .mm-scene-side { position: static; margin: 90px auto 0; width: min(420px, calc(100% - 32px)); max-height: none; }
+@media (max-width: 640px) {
+  .mm-scene-side { top: auto; bottom: 150px; right: 16px; left: 16px; width: auto; max-height: 22vh; }
+  .mm-scene-head { left: 16px; }
+}

@@ -7,7 +7,7 @@
 //   Chi aspetta una risposta rifiuta le altre offerte; chi ha la chiave più grande di tutti aspetta e basta.
 // - Offerte, risposte e conferme viaggiano cifrate (gift wrap NIP-59, social.js), il duello poi è P2P come sempre.
 import { identity, sha256Hex, canonical } from "./identity.js";
-import { onDirect, sendDirect, publishSigned, subscribeRelays } from "./social.js";
+import { onDirect, sendDirect, publishSigned, subscribeRelays, seenOn } from "./social.js";
 
 const KIND = 30078;
 const TAG = "helios-mm-v1";
@@ -51,7 +51,10 @@ export function watchSeeks(onChange) {
   const seeks = new Map();
   const emit = () => {
     const t = now();
-    for (const [pk, s] of seeks) if (t - s.at > ACTIVE_S) seeks.delete(pk);
+    for (const [pk, s] of seeks) {
+      if (t - s.at > ACTIVE_S) seeks.delete(pk);
+      else s.relays = seenOn(s.id); // lo stesso annuncio arriva via via anche dagli altri relay
+    }
     onChange([...seeks.values()]);
   };
   const sub = subscribeRelays({ kinds: [KIND], "#t": [TAG], since: now() - ACTIVE_S }, async (ev) => {
@@ -70,7 +73,7 @@ export function watchSeeks(onChange) {
     }
     const rules = cleanRules(c.rules);
     const data = String(c.data ?? "").slice(0, 40);
-    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at });
+    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at, id: ev.id, relays: seenOn(ev.id) });
     emit();
   });
   const timer = setInterval(emit, 10000);
@@ -85,9 +88,11 @@ export function watchSeeks(onChange) {
  *  - onStatus(text)
  *  - createRoom(): Promise<code> — chi propone crea la stanza Nostr quando l'altro accetta;
  *  - onMatch({ room, host, opponent: { pk, name } }) — host: true per chi ha creato la stanza (il guest ci entra).
+ *  - onEvent(e) — per la schermata del matchmaking: { t: "seek" } (annuncio pubblicato), { t: "others", list },
+ *    { t: "send", type, to } e { t: "recv", type, from, relay } (messaggi della stretta di mano), { t: "back" }.
  * Restituisce { stop() }.
  */
-export async function findMatch({ rules, data, name, onStatus = () => {}, createRoom, onMatch }) {
+export async function findMatch({ rules, data, name, onStatus = () => {}, createRoom, onMatch, onEvent = () => {} }) {
   const me = identity().pk;
   rules = cleanRules(rules);
   const queue = await queueOf(rules, data);
@@ -102,12 +107,21 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     tags: [["d", D], ["t", TAG], ["q", queue], ["expiration", String(now() + ACTIVE_S + 30)]],
     content: JSON.stringify({ v: 1, status, name: cleanName(name), rules, data }),
   });
-  const announce = () => state === "searching" || state === "proposing" || state === "accepted" ? seekEvent("searching") : null;
+  const announce = () => {
+    if (!(state === "searching" || state === "proposing" || state === "accepted")) return null;
+    onEvent({ t: "seek" });
+    return seekEvent("searching");
+  };
+  const send = (pk, msg) => {
+    onEvent({ t: "send", type: msg.t, to: pk });
+    return sendDirect(pk, msg);
+  };
   const refresh = setInterval(announce, REFRESH_S * 1000);
   announce();
 
   const stopWatch = watchSeeks((list) => {
     others = list.filter((s) => s.pk !== me && s.queue === queue);
+    onEvent({ t: "others", list: others });
     if (state === "searching") onStatus(others.length ? `Searching… ${others.length} other player${others.length === 1 ? "" : "s"} with these rules` : "Searching for an opponent with these rules…");
     tryPropose();
   });
@@ -117,6 +131,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     clearTimeout(pending?.timer);
     pending = null;
     state = "searching";
+    onEvent({ t: "back" });
     onStatus(why ?? "Searching for an opponent with these rules…");
     setTimeout(tryPropose, 500 + Math.random() * 1500);
   };
@@ -132,7 +147,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     state = "proposing";
     pending = { id, pk: target.pk, name: target.name, timer: setTimeout(() => { cooldown.set(target.pk, Date.now() + COOLDOWN_MS); back(); }, ANSWER_MS) };
     onStatus(`Opponent found: ${target.name}. Waiting for their client…`);
-    sendDirect(target.pk, { t: "mm-offer", id, queue });
+    send(target.pk, { t: "mm-offer", id, queue });
   }
 
   const finish = (m) => {
@@ -147,14 +162,15 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   const offDirect = onDirect(async (m) => {
     if (state === "matched" || state === "stopped" || !HEX64.test(m.from) || typeof m.id !== "string" || m.id.length > 40) return;
     const seek = others.find((s) => s.pk === m.from);
+    onEvent({ t: "recv", type: m.t, from: m.from, relay: m.relay });
     switch (m.t) {
       case "mm-offer": {
         // Offerta da chi ha la chiave più piccola, nella stessa coda e con un annuncio attivo.
-        if (m.queue !== queue || !seek || !(m.from < me) || state !== "searching") return void sendDirect(m.from, { t: "mm-decline", id: m.id });
+        if (m.queue !== queue || !seek || !(m.from < me) || state !== "searching") return void send(m.from, { t: "mm-decline", id: m.id });
         state = "accepted";
         pending = { id: m.id, pk: m.from, name: seek.name, timer: setTimeout(() => back("The opponent did not confirm: searching again…"), ANSWER_MS) };
         onStatus(`Opponent found: ${seek.name}. Waiting for the Room…`);
-        sendDirect(m.from, { t: "mm-accept", id: m.id });
+        send(m.from, { t: "mm-accept", id: m.id });
         return;
       }
       case "mm-accept": {
@@ -166,12 +182,12 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
         try {
           room = await createRoom();
         } catch (e) {
-          sendDirect(m.from, { t: "mm-decline", id: m.id });
+          send(m.from, { t: "mm-decline", id: m.id });
           state = "searching";
           back(`Could not create the Room: ${e.message}`);
           return;
         }
-        sendDirect(m.from, { t: "mm-confirm", id: m.id, room });
+        send(m.from, { t: "mm-confirm", id: m.id, room });
         finish({ room, host: true, opponent: opp });
         return;
       }
@@ -197,7 +213,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   return {
     stop() {
       if (state === "matched" || state === "stopped") return;
-      if ((state === "proposing" || state === "accepted") && pending) sendDirect(pending.pk, { t: "mm-decline", id: pending.id });
+      if ((state === "proposing" || state === "accepted") && pending) send(pending.pk, { t: "mm-decline", id: pending.id });
       clearTimeout(pending?.timer);
       state = "stopped";
       cleanup();

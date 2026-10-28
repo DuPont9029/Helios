@@ -17,7 +17,7 @@ import { LinkMux, negotiate } from "../net/match.js";
 import { findMatch, watchSeeks, queueOf } from "../net/matchmaking.js";
 import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
-import { socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
+import { relayStatus, socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
 import { unpackSignal } from "../net/peer.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
 import "../styles/play.css";
@@ -485,9 +485,12 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const opts = optionsForm();
   const rankedBox = h("input", { type: "checkbox", checked: !!settings.ranked, onchange: (e) => (settings.ranked = e.target.checked) });
   const status = h("div.status-box", "Choose how to connect to the other player.");
+  // Schermata a tutto schermo del matchmaking (mm-scene.js), aperta da Find a Duel fino all'inizio del duello.
+  let mmScene = null;
   const setStatus = (t, kind = "") => {
     status.textContent = t;
     status.className = `status-box ${kind}`;
+    if (mmScene) kind === "error" ? mmScene.failed(t) : mmScene.status(t, kind);
   };
   let cancel = () => {};
 
@@ -500,8 +503,16 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     clearTimeout(inviteTimer);
     const mux = new LinkMux(link);
     const route = await link.routeInfo().catch(() => null);
-    const via = route ? (route.local === "relay" || route.remote === "relay" ? "via TURN (relay)" : route.local === "host" && route.remote === "host" ? "over local network" : "direct P2P (STUN)") : "";
+    const via = route?.local === "nostr" ? "through the Nostr relays (slower than P2P)" : route ? (route.local === "relay" || route.remote === "relay" ? "via TURN (relay)" : route.local === "host" && route.remote === "host" ? "over local network" : "direct P2P (STUN)") : "";
     setStatus(`Connected ${via}${route?.rtt != null ? `, ping ${route.rtt} ms` : ""}. Agreeing on rules...`, "ok");
+    // Matchmaking: il collegamento P2P si vede formarsi, poi la schermata lascia il posto al duello.
+    if (mmScene) {
+      const sc = mmScene;
+      sc.connected(route);
+      await new Promise((r) => setTimeout(r, 1600));
+      if (mmScene !== sc) return link.close(); // annullato nel frattempo
+      closeMmScene();
+    }
     // Mazzo e regole restano quelli del primo accordo anche per le rivincite.
     const match = { mux, host, deck: getDeck(), options: host ? opts.read() : undefined };
     // Mazzo non valido (es. oltre il massimo di carte): non si gioca. L'host lo controlla con le sue regole,
@@ -748,7 +759,34 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     mmBtn.replaceChildren(icon(search ? "close" : "search"), search ? " Stop searching" : " Find a Duel");
     mmBtn.className = `btn ${search ? "" : "primary "}mm-search`;
   };
+  let relayTimer = 0;
+  let joinTimer = 0;
+  const closeMmScene = () => {
+    clearInterval(relayTimer);
+    clearTimeout(joinTimer);
+    mmScene?.close();
+    mmScene = null;
+  };
+  /** Annulla dalla schermata: la ricerca o, dopo l'abbinamento, la connessione in corso. */
+  const cancelFromScene = () => {
+    const searching = !!search;
+    closeMmScene();
+    if (searching) stopSearch("Search stopped.");
+    else {
+      cancel();
+      mmStatus.textContent = "Cancelled.";
+      setStatus("Choose how to connect to the other player.");
+    }
+  };
+  const openMmScene = async (rules) => {
+    const { openMatchScene } = await import("./mm-scene.js");
+    mmScene = openMatchScene({ name: settings.name, rules: rulesText(rules), onCancel: cancelFromScene });
+    const relays = () => mmScene?.relays(relayStatus());
+    relays();
+    relayTimer = setInterval(relays, 2000);
+  };
   const stopSearch = (why) => {
+    closeMmScene();
     search?.stop();
     search = null;
     drawMmButton();
@@ -762,11 +800,20 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     cancel();
     const rules = rulesNow();
     mmStatus.textContent = "Joining the queue…";
+    await openMmScene(rules);
+    let lastRelay = null;
     const s = await findMatch({
       rules,
       data: db.manifest?.version ?? "?",
       name: settings.name,
-      onStatus: (t) => (mmStatus.textContent = t),
+      onStatus: (t) => {
+        mmStatus.textContent = t;
+        mmScene?.status(t);
+      },
+      onEvent: (e) => {
+        if (e.t === "recv") lastRelay = e.relay;
+        mmScene?.event(e);
+      },
       // La stanza la crea chi propone, con le regole della coda.
       createRoom: async () => {
         opts.set(rules);
@@ -778,12 +825,21 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         search = null;
         drawMmButton();
         mmStatus.textContent = `Matched with ${opponent.name}!`;
+        mmScene?.matched(opponent, lastRelay);
+        // Se l'altro client non arriva nella stanza, non si aspetta per sempre.
+        joinTimer = setTimeout(() => {
+          if (!mmScene) return;
+          cancel();
+          setStatus(`${opponent.name} did not connect. Press Back and search again.`, "error");
+        }, 45000);
         setStatus(host ? `Matched with ${opponent.name}: waiting for them in Room ${room}…` : `Matched with ${opponent.name}: joining their Room…`, "ok");
         if (!host) viaServer(room);
       },
     });
     search = s;
     drawMmButton();
+    // Annullato mentre si entrava nella coda.
+    if (!mmScene) stopSearch("Search stopped.");
   });
   const drawQueues = async (list) => {
     if (!mmBody.isConnected) return;

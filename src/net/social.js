@@ -264,7 +264,7 @@ function receive(wrap) {
       return;
     default:
       // Matchmaking con sconosciuti (matchmaking.js): solo messaggi recenti, il resto lo controlla lui.
-      if (typeof m.t === "string" && m.t.startsWith("mm-") && at > now() - 120) emit(handlers.direct, { ...m, from, name, at });
+      if (typeof m.t === "string" && m.t.startsWith("mm-") && at > now() - 120) emit(handlers.direct, { ...m, from, name, at, relay: seenOn(wrap.id)[0] ?? null });
   }
 }
 
@@ -274,6 +274,14 @@ export const onDirect = (fn) => (handlers.direct.add(fn), () => handlers.direct.
 export const sendDirect = (pk, msg) => sendTo(pk, msg);
 /** Evento firmato con la chiave del giocatore, pubblicato sui relay. */
 export const publishSigned = (tmpl) => publish(finalizeEvent(tmpl, sk()));
+/** Relay da cui è arrivato un evento (per la schermata del matchmaking). */
+export const seenOn = (id) => [...(pool?.seenOn.get(id) ?? [])].map((r) => r.url);
+/** Relay in uso con il loro stato: [{ url, connected }]. */
+export function relayStatus() {
+  const st = pool?.listConnectionStatus() ?? new Map();
+  const norm = (u) => u.replace(/\/+$/, "");
+  return relays().map((url) => ({ url, connected: [...st].some(([u, ok]) => ok && norm(u) === norm(url)) }));
+}
 /** Iscrizione ai relay (null se non collegati): restituisce { close() }. */
 export const subscribeRelays = (filter, onevent) => (pool ? pool.subscribeMany(relays(), filter, { onevent }) : null);
 
@@ -427,6 +435,30 @@ export const INVITE_SECONDS = INVITE_TTL_S;
 
 let inbox = null;
 let tick = 0;
+let inboxGuard = 0;
+
+/**
+ * Messaggi in arrivo (gift wrap per la nostra chiave). Quando un relay si riconnette nostr-tools riprende le
+ * iscrizioni chiedendo solo gli eventi più nuovi dell'ultimo ricevuto (since = lastEmitted + 1), ma i gift wrap
+ * hanno di proposito una data casuale fino a 2 giorni prima (NIP-59): dopo una riconnessione il relay scartava quasi
+ * tutti i messaggi nuovi (offerte del matchmaking, inviti, richieste di amicizia). Per questa iscrizione l'ultimo
+ * evento ricevuto non si ricorda, così riparte sempre dai 2 giorni prima; i doppioni li toglie seen().
+ */
+function guardInbox() {
+  for (const relay of pool?.relays?.values() ?? []) {
+    for (const sub of relay.openSubs?.values() ?? []) {
+      if (sub.heliosInbox || !sub.filters?.some((f) => f.kinds?.includes(1059))) continue;
+      sub.heliosInbox = true;
+      Object.defineProperty(sub, "lastEmitted", { get: () => undefined, set: () => {}, configurable: true });
+    }
+  }
+}
+function openInbox() {
+  const old = inbox;
+  inbox = pool.subscribeMany(relays(), { kinds: [1059], "#p": [identity().pk], since: now() - TWO_DAYS - 600 }, { onevent: receive });
+  old?.close();
+  guardInbox();
+}
 
 /** Lista per la UI. */
 export const socialState = () => ({ friends: state.friends, requests: state.requests, recent: state.recent.filter((r) => !friend(r.pk)) });
@@ -442,7 +474,10 @@ export function startSocial({ status } = {}) {
   state = load();
   persist();
   pool = new SimplePool({ enablePing: true, enableReconnect: true });
-  inbox = pool.subscribeMany(relays(), { kinds: [1059], "#p": [identity().pk], since: now() - TWO_DAYS - 600 }, { onevent: receive });
+  pool.trackRelays = true; // da quale relay arriva un evento (seenOn)
+  openInbox();
+  // Le iscrizioni ai relay nascono quando ognuno si collega: si proteggono appena ci sono.
+  inboxGuard = setInterval(guardInbox, 1000);
   subscribePresence();
   heartbeat();
   syncProfile().catch((e) => console.warn("Friends sync:", e));
@@ -454,6 +489,7 @@ export function stopSocial() {
   clearTimeout(heartbeatTimer);
   clearTimeout(profileTimer);
   clearInterval(tick);
+  clearInterval(inboxGuard);
   inbox?.close();
   presenceSub?.close();
   inbox = presenceSub = null;
