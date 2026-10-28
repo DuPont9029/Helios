@@ -89,9 +89,10 @@ let pool = null;
 const relays = () => eloRelays();
 const sk = () => fromHex(identity().sk);
 
-function publish(ev) {
+function publish(ev, extra = []) {
   if (!pool) return Promise.resolve(0);
-  return Promise.allSettled(pool.publish(relays(), ev, { maxWait: 6000 })).then((r) => r.filter((x) => x.status === "fulfilled").length);
+  const urls = [...new Set([...relays(), ...extra])];
+  return Promise.allSettled(pool.publish(urls, ev, { maxWait: 6000 })).then((r) => r.filter((x) => x.status === "fulfilled").length);
 }
 
 // ---------------------------------------------------------------- profilo sincronizzato
@@ -142,10 +143,10 @@ export async function syncProfile() {
 // ---------------------------------------------------------------- messaggi tra giocatori (NIP-59)
 
 /** Manda un messaggio cifrato a un giocatore; restituisce quanti relay l'hanno accettato. */
-function sendTo(pk, msg) {
+function sendTo(pk, msg, extra) {
   if (!pool) return Promise.resolve(0);
   const ev = wrapEvent({ kind: KIND, created_at: now(), tags: [["t", MSG_TAG]], content: JSON.stringify({ ...msg, name: cleanName(settings.name) }) }, sk(), pk);
-  return publish(ev);
+  return publish(ev, extra);
 }
 
 const friend = (pk) => state.friends.find((f) => f.pk === pk);
@@ -271,7 +272,8 @@ function receive(wrap) {
 /** Messaggi "mm-*" da qualunque giocatore (matchmaking): fn({ t, from, name, at, ... }). */
 export const onDirect = (fn) => (handlers.direct.add(fn), () => handlers.direct.delete(fn));
 /** Messaggio cifrato a un giocatore qualunque (matchmaking). */
-export const sendDirect = (pk, msg) => sendTo(pk, msg);
+/** extra: altri relay su cui pubblicarlo (es. quelli da cui arriva l'annuncio dell'altro, se usa relay diversi). */
+export const sendDirect = (pk, msg, extra) => sendTo(pk, msg, extra);
 /** Evento firmato con la chiave del giocatore, pubblicato sui relay. */
 export const publishSigned = (tmpl) => publish(finalizeEvent(tmpl, sk()));
 /** Relay da cui è arrivato un evento (per la schermata del matchmaking). */
