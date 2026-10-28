@@ -2,7 +2,10 @@
 // pubblici, senza un server di segnalazione nostro. Il codice stanza ha 8 caratteri (quelle del server ne hanno 6)
 // e fa anche da password: le offerte WebRTC viaggiano cifrate sui relay. Dopo la connessione il duello è P2P
 // come con il server. TrysteroLink si comporta come PeerLink (send, eventi message/close, routeInfo).
+// Se WebRTC non riesce a collegarsi (nessuna strada diretta né TURN) il duello passa dai relay Nostr
+// (nostr-relay-link.js): più lento, ma senza server.
 import { encode, decode, routeOf } from "./peer.js";
+import { relayChannel } from "./nostr-relay-link.js";
 
 const APP_ID = "helios-ygo";
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // come i codici del server: niente 0/O e 1/I
@@ -76,16 +79,47 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
   let link = null;
   let cancelled = false;
   let waitTimer = 0;
+  let fallback = null; // canale sui relay (ripiego)
+  let fallbackTimer = 0;
 
   const ready = new Promise((resolve, reject) => {
     onStatus("Connecting to the decentralized network (Nostr relays)...");
+    // Ripiego sui relay: in ascolto da subito, così se l'altro ci passa lo segue anche questo client.
+    const toRelays = (why) => {
+      if (!fallback || link || cancelled) return;
+      clearTimeout(waitTimer);
+      onStatus(why);
+      troom?.leave().catch(() => {});
+      troom = null;
+      clearTimeout(fallbackTimer);
+      fallbackTimer = setTimeout(() => !link && reject(new Error("The direct connection failed and the Nostr relays did not connect the two players either. Try again.")), 30000);
+    };
+    relayChannel(code, { onPeer: () => toRelays("Direct connection not possible: your opponent is connecting through the Nostr relays...") }).then((ch) => {
+      if (cancelled) return ch.close();
+      fallback = ch;
+      ch.ready.then((l) => {
+        if (cancelled || link) return l.close();
+        clearTimeout(fallbackTimer);
+        link = l;
+        onStatus("Connected through the Nostr relays!");
+        resolve({ link, host });
+      });
+    });
     import("trystero/nostr")
       .then(({ joinRoom }) => {
         if (cancelled) return;
         troom = joinRoom(
           { appId: APP_ID, password: code, rtcConfig: { iceServers, iceTransportPolicy: forceRelay ? "relay" : "all" } },
           code,
-          { onJoinError: (e) => reject(new Error(`Unable to join the Room: ${e.error}`)) }
+          {
+            onJoinError: (e) => {
+              // WebRTC non si collega (es. nessun TURN): si passa ai relay invece di rinunciare.
+              if (fallback && !link && /could not connect|SDP|ICE|TURN/i.test(String(e.error))) {
+                fallback.request();
+                toRelays("Direct connection not possible: connecting through the Nostr relays (slower)...");
+              } else if (!link) reject(new Error(`Unable to join the Room: ${e.error}`));
+            },
+          }
         );
         const action = troom.makeAction("duel", {
           onMessage: (data, { peerId }) => {
@@ -96,6 +130,7 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
           if (link || cancelled) return; // stanza da 2 giocatori: gli altri si ignorano
           clearTimeout(waitTimer);
           link = new TrysteroLink(troom, action, peerId);
+          fallback?.close();
           onStatus("Connected!");
           resolve({ link, host });
         };
@@ -117,6 +152,8 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
     cancel() {
       cancelled = true;
       clearTimeout(waitTimer);
+      clearTimeout(fallbackTimer);
+      if (!(link && fallback && link.ch === fallback)) fallback?.close();
       if (link) link.close();
       else troom?.leave().catch(() => {});
     },
