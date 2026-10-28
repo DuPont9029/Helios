@@ -51,34 +51,35 @@
 - [x] separare la funzionalità di spreadsheet in editor e viewer e implemenatre la possibilità di esportare le spreadsheet come vengono esportate le combo
 - [ ] non aprire una finestra per costi che scartano e far selezionare direttamente dalla mano \[implementato, testare\]
 - [ ] mettere una flag per segnalare che è una beta e modifica l’app in modo che la versione sia 1.0 \[implementato, testare\]
-- [ ] genesys support \[implementato, testare\]
-- [ ] salvare e importare board state nel trainer editor. \[implementato, testare\]
-- [ ] presets for game setting before a game. \[implementato, testare\]
+- [x] genesys support \[implementato, testare\]
+- [x] salvare e importare board state nel trainer editor. \[implementato, testare\]
+- [x] presets for game setting before a game. \[implementato, testare\]
 - [ ] \*decklist base nel gioco con livello base.
 - [ ] \*combo per decklist base.
-- [ ] disabilitare gli input del giocatore durante l'autoplay tranne l'abilità di disabilitare l'autoplay. \[implementato, testare\]
-- [ ] disabilitare l'opzione di levare l'autoplay quando si apre una combo in modalità autoplay dal menu. \[implementato, testare\]
-- [ ] quando si seleziona una carta con la visualizzazione in modalità in cui si vede una copia di ogni carta, cambiare la visualizzazione per permettere di vedere tutte le copie delle carte presenti nella decklist ma di muovere le carte solo in blocco con le sue altre copie. ES: quando si selezionano gli starter nell'HDPC al posto di vedere una copia di ogni carta nel mio deck dovrei vedere tutte le copie presenti ma poterle spostare nella categoria starter solo insieme alle loro altre copie. Inoltre aggiungere auto sorting dopo ogni spostamento in queste schermate per tenere l'ordine del cìdeck dato che cambiarne l'ordine non serve. \[implementato, testare\]
+- [x] disabilitare gli input del giocatore durante l'autoplay tranne l'abilità di disabilitare l'autoplay. \[implementato, testare\]
+- [x] disabilitare l'opzione di levare l'autoplay quando si apre una combo in modalità autoplay dal menu. \[implementato, testare\]
+- [x] quando si seleziona una carta con la visualizzazione in modalità in cui si vede una copia di ogni carta, cambiare la visualizzazione per permettere di vedere tutte le copie delle carte presenti nella decklist ma di muovere le carte solo in blocco con le sue altre copie. ES: quando si selezionano gli starter nell'HDPC al posto di vedere una copia di ogni carta nel mio deck dovrei vedere tutte le copie presenti ma poterle spostare nella categoria starter solo insieme alle loro altre copie. Inoltre aggiungere auto sorting dopo ogni spostamento in queste schermate per tenere l'ordine del cìdeck dato che cambiarne l'ordine non serve. \[implementato, testare\]
 - [ ] Cambiare l'interfaccia e la funzionalità del trainer prendendo ispirazione da https://ygopocket.com/combos e integrando le feature non presenti nel sito che il client già ha mantenendo l'ispirazione presa da https://www.masterduelmeta.com/combos-and-counters#spreadsheets. \[implementato, testare\]
 - [ ] \* modalità carte anime e rush come per ygo omega necessita nuova source per le immagini.
 - [ ] \* importazione di collezioni dal altri sim.
-- [ ] banlist di master duel (molto importatnte, predere da omega e non da edopro). \[implementato, testare\]
+- [x] banlist di master duel (molto importatnte, predere da omega e non da edopro). \[implementato, testare\]
 - [ ] \* related cards come master duel.
-- [ ] Deck editor history, the deck editor remembers the last cards to have been interacted with by the player and logs them in a separete category like the bookmarks. \[implementato, testare\]
-- [ ] resettare i filtri se si cambia categoria nel deck builder finchè non si torna alla categoria iniziale. Insomma rendere i filtri esclusivi a categorie. \[implementato, testare\]
-- [ ] buttone per resettare til filtro. \[implementato, testare\]
-- [ ] Permettereai giocatori di includere più diel numero maxssimo di carte in deck, extradeck o sidedeck ma segnalarlo come errore in alto a destra nell'editor e non permettere di usare il deck in modalità con regole. \[implementato, testare\]
-- [ ] superimporre la carta selezionata (quella sulla sinistra dello schermo) quando aperta una finestra durante una partita. \[implementato, testare\]
+- [x] Deck editor history, the deck editor remembers the last cards to have been interacted with by the player and logs them in a separete category like the bookmarks. \[implementato, testare\]
+- [x] resettare i filtri se si cambia categoria nel deck builder finchè non si torna alla categoria iniziale. Insomma rendere i filtri esclusivi a categorie. \[implementato, testare\]
+- [x] buttone per resettare til filtro. \[implementato, testare\]
+- [x] Permettereai giocatori di includere più diel numero maxssimo di carte in deck, extradeck o sidedeck ma segnalarlo come errore in alto a destra nell'editor e non permettere di usare il deck in modalità con regole. \[implementato, testare\]
+- [x] superimporre la carta selezionata (quella sulla sinistra dello schermo) quando aperta una finestra durante una partita. \[implementato, testare\]
 - [ ] \* le window aperte durante la partita per attivare un effetto in chain dovrebbero specificare di che tipo di effetto si parla. Es: --da aggiungere esempio di altro sim--.
-- [ ] rfunzionalità di rematch nel combo trainer per ri iniziare da capo se si fa un errore. \[implementato, testare\]
-- [ ] Fare vedere hoverando sopra a le carte equipaggiate o alle carte che gli sono state equipaggiate cosa è legato a cosa. (prendere ispirazione dagli altri sim che lo fanno quasi tutti, IMPORTANTISSIMO) \[implementato, testare\]
-- [ ] Aggiungere la possibilità di mettere in pausa una combo in quto play \[implementato, testare\]
+- [x] rfunzionalità di rematch nel combo trainer per ri iniziare da capo se si fa un errore. \[implementato, testare\]
+- [x] Fare vedere hoverando sopra a le carte equipaggiate o alle carte che gli sono state equipaggiate cosa è legato a cosa. (prendere ispirazione dagli altri sim che lo fanno quasi tutti, IMPORTANTISSIMO) \[implementato, testare\]
+- [x] Aggiungere la possibilità di mettere in pausa una combo in quto play \[implementato, testare\]
 - [ ] permettere quando bloccati in auto mode nel trainer comunque di interaggire con la velocità delle animazioni di gioco e con il bottone che mette in full screen. \[implementato, testare\]
-- [ ] per tutte le impostazioni che necessitano un upload (es: sleeves) aggiungere una rubrica delle tue scelte precedenti. \[implementato, testare\]
-- [ ] aggiornare il look della sezione spreadsheets ora che la sezione combo ne ha uno diverso per mantenere consistenza nella grafica. mantenere la colo scheme originale di rossoscuro e celeste. \[implementato, testare\]
-- [ ] permettere di editare la fase di gioco nel trainer sotto "starting board state". \[implementato, testare\]
-- [ ] permettere di editare carte nel cimitero e bandite sia face down che face up nel trainer quando si edita il board state \[implementato, testare\]
-- [ ] per i mostri che si possono evocare dall'extradeck in più di un modo far apparire un solo bottone es: synchro summon e far scegliere il modo dopo. \[implementato, testare\]
+- [x] per tutte le impostazioni che necessitano un upload (es: sleeves) aggiungere una rubrica delle tue scelte precedenti. \[implementato, testare\]
+- [x] aggiornare il look della sezione spreadsheets ora che la sezione combo ne ha uno diverso per mantenere consistenza nella grafica. mantenere la colo scheme originale di rossoscuro e celeste. \[implementato, testare\]
+- [x] permettere di editare la fase di gioco nel trainer sotto "starting board state". \[implementato, testare\]
+- [x] permettere di editare carte nel cimitero e bandite sia face down che face up nel trainer quando si edita il board state \[implementato, testare\]
+- [x] per i mostri che si possono evocare dall'extradeck in più di un modo far apparire un solo bottone es: synchro summon e far scegliere il modo dopo. \[implementato, testare\]
+- [ ] \*supporti per banlist customizzate (da aggiungere quando si aggiunge il drafting)
 
 
 

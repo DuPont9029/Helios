@@ -8,19 +8,26 @@
 // - Offerte, risposte e conferme viaggiano cifrate (gift wrap NIP-59, social.js), il duello poi è P2P come sempre.
 import { identity, sha256Hex, canonical } from "./identity.js";
 import { onDirect, sendDirect, publishSigned, subscribeRelays, seenOn } from "./social.js";
+import { eloRelays } from "./elo.js";
 
 const KIND = 30078;
 const TAG = "helios-mm-v1";
 const D = "helios-seek";
 const REFRESH_S = 30;
 const ACTIVE_S = 75; // un annuncio vale se rinnovato da meno di così
-const ANSWER_MS = 9000; // attesa di una risposta (accetto, conferma)
+// I gift wrap a volte arrivano in ritardo o si perdono: offerta e accetto si ripetono finché non arriva la risposta,
+// e una risposta in ritardo vale ancora se nel frattempo non si è preso un altro impegno.
+const OFFER_MS = 15000; // chi propone aspetta l'accetto
+const CONFIRM_MS = 30000; // chi accetta aspetta la conferma (chi propone intanto prepara la stanza)
+const RESEND_MS = 2500;
+const LATE_MS = 60000; // per quanto si ricordano offerte e accetti scaduti
 const COOLDOWN_MS = 45000; // chi non ha risposto non si riprova subito
 const HEX64 = /^[0-9a-f]{64}$/;
 const ROOM = /^[A-HJ-NP-Z2-9]{8}$/;
 
 const now = () => Math.floor(Date.now() / 1000);
 const cleanName = (n) => String(n ?? "").replace(/\s+/g, " ").trim().slice(0, 40) || "Duelist";
+const cleanRelays = (l) => (Array.isArray(l) ? l.filter((u) => typeof u === "string" && /^wss:\/\/[^\s]{3,120}$/.test(u)).slice(0, 8) : []);
 
 /** Regole di un annuncio: solo i campi noti, con valori di forma giusta. */
 export function cleanRules(r) {
@@ -73,7 +80,7 @@ export function watchSeeks(onChange) {
     }
     const rules = cleanRules(c.rules);
     const data = String(c.data ?? "").slice(0, 40);
-    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at, id: ev.id, relays: seenOn(ev.id) });
+    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at, id: ev.id, relays: seenOn(ev.id), inbox: cleanRelays(c.inbox) });
     emit();
   });
   const timer = setInterval(emit, 10000);
@@ -105,17 +112,29 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     kind: KIND,
     created_at: now(),
     tags: [["d", D], ["t", TAG], ["q", queue], ["expiration", String(now() + ACTIVE_S + 30)]],
-    content: JSON.stringify({ v: 1, status, name: cleanName(name), rules, data }),
+    content: JSON.stringify({ v: 1, status, name: cleanName(name), rules, data, inbox: eloRelays() }),
   });
   const announce = () => {
     if (!(state === "searching" || state === "proposing" || state === "accepted")) return null;
     onEvent({ t: "seek" });
     return seekEvent("searching");
   };
+  // Anche sui relay dove l'altro legge i messaggi, se sono diversi dai nostri.
   const send = (pk, msg) => {
     onEvent({ t: "send", type: msg.t, to: pk });
-    return sendDirect(pk, msg);
+    return sendDirect(pk, msg, others.find((s) => s.pk === pk)?.inbox);
   };
+  const offered = new Map(); // id → { pk, name, at }: offerte fatte da noi
+  const accepted = new Map(); // id → { pk, name, at }: offerte accettate da noi
+  const forget = () => {
+    const t = Date.now() - LATE_MS;
+    for (const m of [offered, accepted]) for (const [id, x] of m) if (x.at < t) m.delete(id);
+  };
+  // Ripete l'ultimo messaggio finché si aspetta la risposta.
+  const resender = setInterval(() => {
+    if (state === "proposing" && pending) send(pending.pk, { t: "mm-offer", id: pending.id, queue });
+    else if (state === "accepted" && pending) send(pending.pk, { t: "mm-accept", id: pending.id });
+  }, RESEND_MS);
   const refresh = setInterval(announce, REFRESH_S * 1000);
   announce();
 
@@ -131,6 +150,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     clearTimeout(pending?.timer);
     pending = null;
     state = "searching";
+    forget();
     onEvent({ t: "back" });
     onStatus(why ?? "Searching for an opponent with these rules…");
     setTimeout(tryPropose, 500 + Math.random() * 1500);
@@ -145,7 +165,8 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     if (!target) return;
     const id = crypto.getRandomValues(new Uint32Array(2)).join("-");
     state = "proposing";
-    pending = { id, pk: target.pk, name: target.name, timer: setTimeout(() => { cooldown.set(target.pk, Date.now() + COOLDOWN_MS); back(); }, ANSWER_MS) };
+    pending = { id, pk: target.pk, name: target.name, timer: setTimeout(() => { cooldown.set(target.pk, Date.now() + COOLDOWN_MS); back(); }, OFFER_MS) };
+    offered.set(id, { pk: target.pk, name: target.name, at: Date.now() });
     onStatus(`Opponent found: ${target.name}. Waiting for their client…`);
     send(target.pk, { t: "mm-offer", id, queue });
   }
@@ -165,18 +186,26 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     onEvent({ t: "recv", type: m.t, from: m.from, relay: m.relay });
     switch (m.t) {
       case "mm-offer": {
+        // La stessa offerta ripetuta: l'accetto si ripete già da solo.
+        if (state === "accepted" && pending?.id === m.id && pending.pk === m.from) return;
         // Offerta da chi ha la chiave più piccola, nella stessa coda e con un annuncio attivo.
         if (m.queue !== queue || !seek || !(m.from < me) || state !== "searching") return void send(m.from, { t: "mm-decline", id: m.id });
         state = "accepted";
-        pending = { id: m.id, pk: m.from, name: seek.name, timer: setTimeout(() => back("The opponent did not confirm: searching again…"), ANSWER_MS) };
+        accepted.set(m.id, { pk: m.from, name: seek.name, at: Date.now() });
+        pending = { id: m.id, pk: m.from, name: seek.name, timer: setTimeout(() => back("The opponent did not confirm: searching again…"), CONFIRM_MS) };
         onStatus(`Opponent found: ${seek.name}. Waiting for the Room…`);
         send(m.from, { t: "mm-accept", id: m.id });
         return;
       }
       case "mm-accept": {
-        if (state !== "proposing" || pending?.id !== m.id || pending.pk !== m.from) return;
-        clearTimeout(pending.timer);
-        const opp = { pk: m.from, name: pending.name };
+        const mine = offered.get(m.id);
+        if (!mine || mine.pk !== m.from) return;
+        // Accetto in ritardo: vale se si sta ancora cercando, altrimenti si annulla.
+        const late = !(state === "proposing" && pending?.id === m.id);
+        if (late && state !== "searching") return void send(m.from, { t: "mm-decline", id: m.id });
+        offered.delete(m.id);
+        clearTimeout(pending?.timer);
+        const opp = { pk: m.from, name: mine.name };
         state = "matched";
         let room;
         try {
@@ -187,7 +216,11 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
           back(`Could not create the Room: ${e.message}`);
           return;
         }
-        send(m.from, { t: "mm-confirm", id: m.id, room });
+        // La conferma parte più volte: dopo finish() non si ascoltano più le ripetizioni dell'accetto.
+        const confirm = () => send(m.from, { t: "mm-confirm", id: m.id, room });
+        confirm();
+        setTimeout(confirm, 2000);
+        setTimeout(confirm, 6000);
         finish({ room, host: true, opponent: opp });
         return;
       }
@@ -198,14 +231,21 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
           back();
         }
         return;
-      case "mm-confirm":
-        if (state !== "accepted" || pending?.id !== m.id || pending.pk !== m.from || !ROOM.test(m.room ?? "")) return;
-        finish({ room: m.room, host: false, opponent: { pk: m.from, name: pending.name } });
+      case "mm-confirm": {
+        const ok = accepted.get(m.id);
+        if (!ok || ok.pk !== m.from || !ROOM.test(m.room ?? "")) return;
+        // Conferma in ritardo: chi l'ha mandata ci aspetta già nella stanza, quindi si va anche se intanto si stava
+        // proponendo a un altro (che riceve un rifiuto).
+        if (state === "proposing" && pending) send(pending.pk, { t: "mm-decline", id: pending.id });
+        else if (state !== "accepted" && state !== "searching") return;
+        finish({ room: m.room, host: false, opponent: { pk: m.from, name: ok.name } });
+      }
     }
   });
 
   function cleanup() {
     clearInterval(refresh);
+    clearInterval(resender);
     stopWatch();
     offDirect();
   }
