@@ -36,6 +36,7 @@ export function cleanRules(r) {
     draw: int(r?.draw, 0, 10, 1),
     unofficial: r?.unofficial === true,
     ranked: r?.ranked === true,
+    ...(Number.isInteger(r?.pointCap) && r.pointCap >= 0 && r.pointCap <= 10000 ? { pointCap: r.pointCap } : {}),
   };
 }
 

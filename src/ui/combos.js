@@ -13,7 +13,7 @@ import { loadDecks, saveDecks, sortDeckPart } from "../deck/deck.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import {
-  ComboTrainer, ComboRecorder, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, detailCodes, cleanStep, cleanSetup, cleanCards, cardEffects,
+  ComboTrainer, ComboRecorder, START_PHASES, STEP_ACTIONS, NO_CARD, NOTES_MAX, stepText, detailText, detailCodes, cleanStep, cleanSetup, cleanCards, cardEffects,
   loadComboStore, saveComboStore, comboToCode, comboFromCode, detectCards, comboDeck, interruptsOutsideBoard, isSheetCode,
   loadBoards, saveBoards, boardToCode, boardFromCode,
 } from "../duel/trainer.js";
@@ -434,7 +434,7 @@ export function showComboTrainer(app, { review } = {}) {
   }
 }
 
-const hasSetup = (s) => !!s && [s.me, s.opp].some((x) => x && Object.values(x).some((v) => v?.length));
+const hasSetup = (s) => !!s && (!!s.phase || [s.me, s.opp].some((x) => x && Object.values(x).some((v) => v?.length)));
 
 /** Esportazione: codice da condividere o video della combo (giocata dal trainer o dal giocatore). */
 async function exportCombo(app, c) {
@@ -575,7 +575,7 @@ function freeZone(list, code) {
   return pref.find((z) => !taken.has(z)) ?? ZONES.map(([z]) => z).find((z) => !taken.has(z)) ?? null;
 }
 
-const emptySetup = () => ({ me: { field: [], gy: [], banished: [], deckTop: [] }, opp: { field: [], gy: [], banished: [], hand: [], deckTop: [], extra: [] } });
+const emptySetup = () => ({ me: { field: [], gy: [], banished: [], banishedDown: [], deckTop: [] }, opp: { field: [], gy: [], banished: [], banishedDown: [], hand: [], deckTop: [], extra: [] } });
 
 /**
  * Editor di una combo; restituisce la combo salvata o null.
@@ -620,7 +620,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   /** Carte che una scelta precisa può indicare: la decklist e le carte dello stato di partenza (es. quelle dell'avversario). */
   const choicePool = () => {
     const st = c.setup;
-    const fromSetup = [st.me, st.opp].flatMap((x) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.hand ?? []), ...(x.deckTop ?? []), ...(x.extra ?? [])]);
+    const fromSetup = [st.me, st.opp].flatMap((x) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.banishedDown ?? []), ...(x.hand ?? []), ...(x.deckTop ?? []), ...(x.extra ?? [])]);
     return uniq([...deckCards(), ...fromSetup, ...c.interrupts.map((x) => x.code)]);
   };
   const handEl = h("div.combo-hand-pick");
@@ -667,7 +667,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   const undo = () => at > 0 && restore(history[--at]);
   const redo = () => at < history.length - 1 && restore(history[++at]);
   name.addEventListener("change", snap);
-  first.addEventListener("change", () => { c.first = first.value === "1"; snap(); });
+  first.addEventListener("change", () => { c.first = first.value === "1"; renderSetup(); snap(); });
   notes.addEventListener("input", () => (c.notes = notes.value));
   notes.addEventListener("change", snap);
   branch.addEventListener("input", () => (c.branch = branch.value));
@@ -1068,26 +1068,66 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     const parts = [
       { key: "me_field", label: "Your field", cards: st.me.field.map((x) => x.code), max: 13, hint: "zones and positions: in the combo editor" },
       { key: "me_gy", label: "Your GY", cards: st.me.gy },
-      { key: "me_banished", label: "Your banished cards", cards: st.me.banished },
+      { key: "me_banished", label: "Your banished cards", cards: [...st.me.banished, ...st.me.banishedDown], hint: "face-up or face-down: in the combo editor" },
       { key: "opp_field", label: "Opponent's field", cards: st.opp.field.map((x) => x.code), max: 13, hint: "e.g. Set traps · zones, positions and when they are used: in the combo editor" },
       { key: "opp_hand", label: "Opponent's hand", cards: st.opp.hand, filter: noExtra, hint: "e.g. hand traps · when they are used: in the combo editor" },
       { key: "opp_deckTop", label: "Top of the opponent's Deck", cards: st.opp.deckTop, filter: noExtra, hint: "the first card is the top one" },
       { key: "opp_extra", label: "Opponent's Extra Deck", cards: st.opp.extra, filter: isExtraDeckCard },
       { key: "opp_gy", label: "Opponent's GY", cards: st.opp.gy },
-      { key: "opp_banished", label: "Opponent's banished cards", cards: st.opp.banished },
+      { key: "opp_banished", label: "Opponent's banished cards", cards: [...st.opp.banished, ...st.opp.banishedDown], hint: "face-up or face-down: in the combo editor" },
     ];
     const v = await deckScreen(() => openCardCollector({ title: c.name, subtitle: "Starting board state", parts, active }));
     if (!v) return;
     const bound = interruptOf();
     st.me.field = fieldFrom(st.me.field, v.me_field);
     st.opp.field = fieldFrom(st.opp.field, v.opp_field);
-    Object.assign(st.me, { gy: v.me_gy, banished: v.me_banished });
-    Object.assign(st.opp, { hand: v.opp_hand, deckTop: v.opp_deckTop, extra: v.opp_extra, gy: v.opp_gy, banished: v.opp_banished });
+    Object.assign(st.me, { gy: v.me_gy, ...splitBanished(st.me, v.me_banished) });
+    Object.assign(st.opp, { hand: v.opp_hand, deckTop: v.opp_deckTop, extra: v.opp_extra, gy: v.opp_gy, ...splitBanished(st.opp, v.opp_banished) });
     // Le interruzioni restano alle carte che l'avversario ha ancora (stesso codice).
     c.interrupts = [...bound.values()];
     pruneInterrupts();
     renderSetup();
     snap();
+  }
+  /** Bandite dopo il deck builder: restano coperte tante copie quante lo erano prima. */
+  function splitBanished(side, codes) {
+    const down = [...side.banishedDown];
+    const out = { banished: [], banishedDown: [] };
+    for (const code of codes) {
+      const i = down.indexOf(code);
+      if (i >= 0) out.banishedDown.push(...down.splice(i, 1));
+      else out.banished.push(code);
+    }
+    return out;
+  }
+  /** Carte bandite (scoperte e coperte): un clic sull'occhio le gira, × le toglie. */
+  function banishedList(side, key) {
+    const chip = (code, i, down) =>
+      h(`span.chip.banished-chip${down ? ".down" : ""}`,
+        miniCards([code]), cardName(code),
+        h("button.chip-btn", {
+          title: down ? "Face-down: click to banish it face-up" : "Face-up: click to banish it face-down",
+          onclick: () => {
+            (down ? side.banishedDown : side.banished).splice(i, 1);
+            (down ? side.banished : side.banishedDown).push(code);
+            renderSetup();
+            snap();
+          },
+        }, icon(down ? "visibility_off" : "visibility")),
+        h("button.chip-btn", { title: "Remove", onclick: () => { (down ? side.banishedDown : side.banished).splice(i, 1); renderSetup(); snap(); } }, "×"));
+    return h("div.setup-list", side.banished.map((code, i) => chip(code, i, false)), side.banishedDown.map((code, i) => chip(code, i, true)), addBtn(key));
+  }
+  /** Fase in cui inizia la combo: Battle Phase e Main Phase 2 solo andando per secondi (turno 2). */
+  function phaseSelect() {
+    const sel = h("select.select.setup-phase", Object.entries(START_PHASES).map(([k, l]) => h("option", { value: k, disabled: c.first && k !== "main1" }, l)));
+    sel.value = c.first ? "main1" : c.setup.phase ?? "main1";
+    sel.title = c.first ? "Going first there is no Battle Phase on turn 1: the combo starts in Main Phase 1" : "The phase of your turn in which the combo starts";
+    sel.addEventListener("change", () => {
+      if (sel.value === "main1") delete c.setup.phase;
+      else c.setup.phase = sel.value;
+      snap();
+    });
+    return sel;
   }
   /**
    * Interruzione di ogni carta dell'avversario (mano, poi campo): le interruzioni { after, code } si legano,
@@ -1170,9 +1210,10 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
       h(
         "div.setup-col",
         h("h4", "You"),
+        h("label.field.setup-phase-field", h("span.muted.small", "Starting phase"), phaseSelect()),
         h("span.muted.small", "Field"), fieldList(s.me.field, "me_field"),
         h("span.muted.small", "GY"), cardList(s.me.gy, "me_gy"),
-        h("span.muted.small", "Banished"), cardList(s.me.banished, "me_banished"),
+        h("span.muted.small", "Banished (the eye turns a card face-down)"), banishedList(s.me, "me_banished"),
         h("span.muted.small", "Top of your Deck, after the starting hand (1 = next draw)"),
         h(
           "div.setup-list",
@@ -1203,7 +1244,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         h("span.muted.small", "Top of the Deck (1 = top card)"), cardList(s.opp.deckTop, "opp_deckTop", true),
         h("span.muted.small", "Extra Deck"), cardList(s.opp.extra, "opp_extra"),
         h("span.muted.small", "GY"), cardList(s.opp.gy, "opp_gy"),
-        h("span.muted.small", "Banished"), cardList(s.opp.banished, "opp_banished")
+        h("span.muted.small", "Banished (the eye turns a card face-down)"), banishedList(s.opp, "opp_banished")
       )
     );
   }
@@ -1240,7 +1281,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     let list = loadBoards();
     const area = h("textarea.input.combo-code", { rows: 3, placeholder: "HELIOS-BOARD:..." });
     const summary = (b) => {
-      const n = (s) => s.field.length + s.gy.length + s.banished.length + s.deckTop.length + (s.hand?.length ?? 0) + (s.extra?.length ?? 0);
+      const n = (s) => s.field.length + s.gy.length + s.banished.length + (s.banishedDown?.length ?? 0) + s.deckTop.length + (s.hand?.length ?? 0) + (s.extra?.length ?? 0);
       return `You ${plural(n(b.setup.me), "card")} · Opponent ${plural(n(b.setup.opp), "card")}${b.interrupts.length ? ` · ${plural(b.interrupts.length, "hand trap")}` : ""}`;
     };
     const listEl = h("div.board-list");
@@ -1626,6 +1667,7 @@ function placeCards(player, side) {
   }
   for (const code of side.gy ?? []) out.push({ player, code, location: LOC.GRAVE, sequence: 0, position: POS.FACEUP_ATTACK });
   for (const code of side.banished ?? []) out.push({ player, code, location: LOC.REMOVED, sequence: 0, position: POS.FACEUP_ATTACK });
+  for (const code of side.banishedDown ?? []) out.push({ player, code, location: LOC.REMOVED, sequence: 0, position: POS.FACEDOWN });
   return out;
 }
 

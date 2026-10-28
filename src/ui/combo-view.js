@@ -68,7 +68,7 @@ export function showComboSchema(combo, { family = [combo], onPractice, onOpen } 
   const setupParts = [
     ["Your field", (st.me?.field ?? []).map((f) => `${cardName(f.code)} (${zoneName(f.zone)})`)],
     ["Your GY", (st.me?.gy ?? []).map(cardName)],
-    ["Your banished cards", (st.me?.banished ?? []).map(cardName)],
+    ["Your banished cards", [...(st.me?.banished ?? []).map(cardName), ...(st.me?.banishedDown ?? []).map((code) => `${cardName(code)} (face-down)`)]],
     ["Top of your Deck", (st.me?.deckTop ?? []).map(cardName)],
     ["Opponent's field", (st.opp?.field ?? []).map((f) => `${cardName(f.code)} (${zoneName(f.zone)})`)],
     ["Opponent's hand", (st.opp?.hand ?? []).map(cardName)],

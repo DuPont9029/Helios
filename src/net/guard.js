@@ -71,6 +71,7 @@ export function cleanOptions(o) {
   if (o.banlist != null && !(isStr(o.banlist, 200) && db.banlists.some((b) => b.name === o.banlist))) bad(`banlist "${String(o.banlist).slice(0, 60)}" not found: update the client`);
   if (!Object.hasOwn(TIMER_PRESETS, o.timer)) bad("timer");
   if (!(isInt(o.bestOf, 1, MAX_BEST_OF) && o.bestOf % 2 === 1)) bad("best of");
+  if (o.pointCap != null && !isInt(o.pointCap, 0, 10000)) bad("point cap");
   return {
     mode,
     flags: String(DUEL_MODES[mode].flags),
@@ -82,6 +83,7 @@ export function cleanOptions(o) {
     bestOf: o.bestOf,
     allowUnofficial: o.allowUnofficial === true,
     ranked: o.ranked === true,
+    ...(o.pointCap != null ? { pointCap: o.pointCap } : {}),
   };
 }
 

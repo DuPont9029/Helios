@@ -160,7 +160,7 @@ export async function negotiate(mux, opts) {
 
   const sameData = hello.data === (db.manifest?.version ?? "?");
   const banlist = options.banlist ? banlistByName(options.banlist) : null;
-  const theirErrors = validateDeck(hello.deck ? { ...hello.deck, side: [] } : { main: [], extra: [], side: [] }, banlist, { allowUnofficial: options.allowUnofficial });
+  const theirErrors = validateDeck(hello.deck ? { ...hello.deck, side: [] } : { main: [], extra: [], side: [] }, banlist, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap });
   if (theirErrors.length) {
     mux.send({ t: "reject", reason: `Invalid Deck for banlist "${options.banlist || "none"}":\n${theirErrors.slice(0, 6).join("\n")}` });
     throw new Error(`Your opponent's Deck is invalid:\n${theirErrors.slice(0, 6).join("\n")}`);
