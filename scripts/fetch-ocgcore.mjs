@@ -21,6 +21,9 @@ const STAMP = path.join(DEST, ".version");
 // 2. readQuery non gestisce QUERY_TYPE e non salta i campi sconosciuti, quindi
 //    il resto della query viene letto disallineato ("eof").
 // 3. ATK/DEF nelle query sono interi con segno (-2 = "?").
+// 4. SHUFFLE_SET_CARD: il numero di carte è un byte e il core scrive prima tutte le posizioni di partenza e poi
+//    tutte quelle d'arrivo (libduel.cpp, ShuffleSetCard), non coppie da/a con un numero a 4 byte: si leggeva oltre
+//    la fine del messaggio ("eof" in duelGetMessage).
 const PATCHES = [
   {
     name: "risposta SORT_CARD",
@@ -37,9 +40,16 @@ const PATCHES = [
     bad: `t.${f}=e.u32()`,
     good: `t.${f}=e.i32()`,
   })),
+  {
+    name: "SHUFFLE_SET_CARD",
+    bad: "location:e.u8(),cards:Array.from({length:e.u32()},()=>({from:p(e),to:p(e)}))",
+    good: "location:e.u8(),cards:(()=>{let n=e.u8(),f=Array.from({length:n},()=>p(e)),o=Array.from({length:n},()=>p(e));return f.map((r,i)=>({from:r,to:o[i]}))})()",
+  },
 ];
+// Cambiando le patch si riscarica il pacchetto (le vecchie si applicano sul codice originale).
+const STAMP_TEXT = `${VERSION}+${crypto.createHash("sha256").update(JSON.stringify(PATCHES)).digest("hex").slice(0, 12)}`;
 
-if (fs.existsSync(STAMP) && fs.readFileSync(STAMP, "utf8") === VERSION) {
+if (fs.existsSync(STAMP) && fs.readFileSync(STAMP, "utf8") === STAMP_TEXT) {
   console.log(`ocgcore-wasm ${VERSION} già presente`);
   process.exit(0);
 }
@@ -69,5 +79,5 @@ for (const p of PATCHES) {
   }
 }
 fs.writeFileSync(index, src);
-fs.writeFileSync(STAMP, VERSION);
+fs.writeFileSync(STAMP, STAMP_TEXT);
 console.log("ocgcore-wasm pronto in vendor/ocgcore-wasm");

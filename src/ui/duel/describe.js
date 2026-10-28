@@ -140,6 +140,7 @@ function describeParts(m, names, canSee, ctx) {
     case MSG.ADD_COUNTER: return { text: `+${m.count} ${counterName(m.counter_type)}` };
     case MSG.REMOVE_COUNTER: return { text: `-${m.count} ${counterName(m.counter_type)}` };
     case MSG.SHUFFLE_DECK: return { cls: "dim", text: `${who(m.player)} shuffles the Deck` };
+    case MSG.SHUFFLE_SET_CARD: return { text: `${who(m.cards[0]?.from.controller ?? 0)} shuffles ${m.cards.length} Set card${m.cards.length === 1 ? "" : "s"}` };
     case MSG.CONFIRM_CARDS: {
       const shown = m.cards.flatMap((c, i) => (i ? [", ", C(c.code)] : [C(c.code)]));
       return { text: t`${who(m.cards[0]?.controller ?? m.player)} reveals: ${shown}` };

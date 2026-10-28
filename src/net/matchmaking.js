@@ -13,6 +13,9 @@ import { eloRelays } from "./elo.js";
 const KIND = 30078;
 const TAG = "helios-mm-v1";
 const D = "helios-seek";
+// Versione della stretta di mano: si abbinano solo client con la stessa (le vecchie non capiscono le ripetizioni).
+// Gli annunci senza "p" sono della 1.
+export const MM_PROTO = 2;
 const REFRESH_S = 30;
 const ACTIVE_S = 75; // un annuncio vale se rinnovato da meno di così
 // I gift wrap a volte arrivano in ritardo o si perdono: offerta e accetto si ripetono finché non arriva la risposta,
@@ -80,7 +83,7 @@ export function watchSeeks(onChange) {
     }
     const rules = cleanRules(c.rules);
     const data = String(c.data ?? "").slice(0, 40);
-    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at, id: ev.id, relays: seenOn(ev.id), inbox: cleanRelays(c.inbox) });
+    seeks.set(ev.pubkey, { pk: ev.pubkey, name: cleanName(c.name), rules, data, queue: await queueOf(rules, data), at: ev.created_at, id: ev.id, relays: seenOn(ev.id), inbox: cleanRelays(c.inbox), proto: Number.isInteger(c.p) ? c.p : 1 });
     emit();
   });
   const timer = setInterval(emit, 10000);
@@ -112,7 +115,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     kind: KIND,
     created_at: now(),
     tags: [["d", D], ["t", TAG], ["q", queue], ["expiration", String(now() + ACTIVE_S + 30)]],
-    content: JSON.stringify({ v: 1, status, name: cleanName(name), rules, data, inbox: eloRelays() }),
+    content: JSON.stringify({ v: 1, p: MM_PROTO, status, name: cleanName(name), rules, data, inbox: eloRelays() }),
   });
   const announce = () => {
     if (!(state === "searching" || state === "proposing" || state === "accepted")) return null;
@@ -139,9 +142,19 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   announce();
 
   const stopWatch = watchSeeks((list) => {
-    others = list.filter((s) => s.pk !== me && s.queue === queue);
+    const same = list.filter((s) => s.pk !== me && s.queue === queue);
+    others = same.filter((s) => s.proto === MM_PROTO);
     onEvent({ t: "others", list: others });
-    if (state === "searching") onStatus(others.length ? `Searching… ${others.length} other player${others.length === 1 ? "" : "s"} with these rules` : "Searching for an opponent with these rules…");
+    // Stesse regole ma un'altra versione di Helios: non si possono abbinare, si dice chi deve aggiornare.
+    const older = same.filter((s) => s.proto < MM_PROTO).map((s) => s.name);
+    const newer = same.some((s) => s.proto > MM_PROTO);
+    if (state === "searching") {
+      onStatus(newer && !others.length
+        ? "Someone is searching with a newer version of Helios: reload the page to update and play with them."
+        : older.length && !others.length
+          ? `${older.join(", ")} ${older.length === 1 ? "is" : "are"} searching with an older version of Helios: ask them to reload the page to update.`
+          : others.length ? `Searching… ${others.length} other player${others.length === 1 ? "" : "s"} with these rules` : "Searching for an opponent with these rules…");
+    }
     tryPropose();
   });
 
@@ -159,9 +172,12 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   function tryPropose() {
     if (state !== "searching") return;
     const t = Date.now();
+    // Prima chi ha rinnovato l'annuncio da poco (è ancora lì: una scheda chiusa lascia l'annuncio fino alla scadenza),
+    // tra questi chi cerca da più tempo.
+    const fresh = (s) => now() - s.at <= REFRESH_S + 10;
     const target = others
       .filter((s) => s.pk > me && (cooldown.get(s.pk) ?? 0) < t)
-      .sort((a, b) => a.at - b.at)[0];
+      .sort((a, b) => fresh(b) - fresh(a) || a.at - b.at)[0];
     if (!target) return;
     const id = crypto.getRandomValues(new Uint32Array(2)).join("-");
     state = "proposing";
@@ -188,11 +204,16 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
       case "mm-offer": {
         // La stessa offerta ripetuta: l'accetto si ripete già da solo.
         if (state === "accepted" && pending?.id === m.id && pending.pk === m.from) return;
-        // Offerta da chi ha la chiave più piccola, nella stessa coda e con un annuncio attivo.
-        if (m.queue !== queue || !seek || !(m.from < me) || state !== "searching") return void send(m.from, { t: "mm-decline", id: m.id });
+        // Offerta da chi ha la chiave più piccola, nella stessa coda e con un annuncio attivo. Se intanto si sta
+        // proponendo a un altro (che magari non risponde più), vince l'offerta: si ritira la proposta.
+        if (m.queue !== queue || !seek || !(m.from < me) || !(state === "searching" || state === "proposing")) return void send(m.from, { t: "mm-decline", id: m.id });
+        if (state === "proposing") {
+          send(pending.pk, { t: "mm-decline", id: pending.id });
+          clearTimeout(pending.timer);
+        }
         state = "accepted";
         accepted.set(m.id, { pk: m.from, name: seek.name, at: Date.now() });
-        pending = { id: m.id, pk: m.from, name: seek.name, timer: setTimeout(() => back("The opponent did not confirm: searching again…"), CONFIRM_MS) };
+        pending = { id: m.id, pk: m.from, name: seek.name, timer: setTimeout(() => back(`${seek.name}'s client did not answer: searching again…`), CONFIRM_MS) };
         onStatus(`Opponent found: ${seek.name}. Waiting for the Room…`);
         send(m.from, { t: "mm-accept", id: m.id });
         return;
