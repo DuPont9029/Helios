@@ -9,6 +9,7 @@ import { identity, importIdentity, newIdentity, profileKind, npubOf, nsec, passw
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
 import { eloRelays } from "../net/elo.js";
+import { uploadHistory, rememberUpload, forgetUpload } from "../data/uploads.js";
 import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
 
 /** Copia un testo segreto: prima si conferma. */
@@ -191,13 +192,35 @@ function turnPicker(field, text) {
   return h("div.field", h("span", "TURN server"), select, hint, custom);
 }
 
+/**
+ * Rubrica delle scelte precedenti di un'impostazione con upload: miniature (thumb(value)) da cliccare per
+ * tornare a una scelta, con la × per toglierla. el.refresh() la ridisegna (dopo una scelta nuova).
+ */
+function previousChoices(kind, { thumb, title, onPick, current }) {
+  const row = h("div.prev-choices-row");
+  const el = h("div.prev-choices", { hidden: true }, h("small.muted", "Previous choices"), row);
+  el.refresh = async () => {
+    const list = await uploadHistory(kind);
+    const now = JSON.stringify(current());
+    el.hidden = !list.length;
+    clear(row).append(...list.map(({ value }) =>
+      h(`div.prev-choice${JSON.stringify(value) === now ? ".on" : ""}`,
+        h("button.prev-choice-use", { title: title(value), onclick: () => { onPick(value); el.refresh(); } }, thumb(value)),
+        h("button.prev-choice-del", { title: "Remove from the previous choices", onclick: async () => { await forgetUpload(kind, value); el.refresh(); } }, "×"))));
+  };
+  // La scelta attuale (anche di prima che ci fosse la rubrica) è tra le precedenti.
+  if (current() != null) rememberUpload(kind, current()).then(el.refresh);
+  else el.refresh();
+  return el;
+}
+
 /** Sleeve: immagine usata come dorso delle tue carte; nei duelli online la vede anche l'avversario. */
 function sleevePicker() {
   const preview = h("div.card.back.sleeve-preview", { dataset: { owner: "0" } }, h("div.card-back"));
   const status = h("small.muted");
   const box = h("div.sleeve-box.has-sleeve-0", preview, h("div.sleeve-side", status));
   const remove = h("button.btn.small.danger", { onclick: () => { settings.sleeve = null; update(); } }, icon("delete"), " Remove");
-  const update = () => {
+  let update = () => {
     const s = validSleeve(settings.sleeve);
     box.classList.toggle("has-sleeve-0", !!s);
     box.style.setProperty("--sleeve-0", s ? `url("${s}")` : "none");
@@ -210,6 +233,7 @@ function sleevePicker() {
       if (!f) return;
       try {
         settings.sleeve = await makeSleeve(f);
+        await rememberUpload("sleeve", settings.sleeve);
         toast("Sleeve updated");
       } catch (e) {
         toast(e.message || "Unable to read the image", { kind: "error" });
@@ -217,7 +241,15 @@ function sleevePicker() {
       update();
     },
   }, icon("image"), " Choose image");
-  box.lastChild.append(h("div.row", choose, remove));
+  const prev = previousChoices("sleeve", {
+    current: () => validSleeve(settings.sleeve),
+    title: () => "Use this sleeve again",
+    thumb: (v) => h("div.card.back.prev-sleeve", { style: { backgroundImage: `url("${validSleeve(v) ?? ""}")` } }),
+    onPick: (v) => { if (validSleeve(v)) { settings.sleeve = v; update(); toast("Sleeve updated"); } },
+  });
+  const baseUpdate = update;
+  update = () => { baseUpdate(); prev.refresh(); };
+  box.lastChild.append(h("div.row", choose, remove), prev);
   update();
   return h("div.field", h("span", "Sleeve (card back)"), box);
 }
@@ -236,7 +268,7 @@ function pendulumPicker() {
     h("option", { value: "left" }, "Image drawn for the left zone"),
     h("option", { value: "right" }, "Image drawn for the right zone")
   );
-  const update = () => {
+  let update = () => {
     const icons = pendulumIcons();
     for (const [el, color, scale] of [[blue, "blue", "left"], [red, "red", "right"]]) {
       // Anteprima: la gemma personalizzata oppure quella predefinita disegnata in CSS (come sul campo).
@@ -258,6 +290,7 @@ function pendulumPicker() {
         const chosen = await askPendulumSide(icons);
         if (!chosen) return;
         settings.pendulumIcon = { ...icons, side: chosen };
+        await rememberUpload("pendulum", settings.pendulumIcon);
         toast("Pendulum gems updated");
       } catch (e) {
         toast(e.message || "Unable to read the image", { kind: "error" });
@@ -265,8 +298,16 @@ function pendulumPicker() {
       update();
     },
   }, icon("image"), " Choose image");
+  const prev = previousChoices("pendulum", {
+    current: () => pendulumIcons(),
+    title: () => "Use these gems again",
+    thumb: (v) => h("span.prev-gems", h("img", { src: v.blue, alt: "" }), h("img", { src: v.red, alt: "" })),
+    onPick: (v) => { settings.pendulumIcon = v; update(); toast("Pendulum gems updated"); },
+  });
+  const baseUpdate = update;
+  update = () => { baseUpdate(); prev.refresh(); };
   update();
-  return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, side, h("div.row", choose, remove))));
+  return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, side, h("div.row", choose, remove), prev)));
 }
 
 /** Campo 3D: sorgente dei campi (cartella, link a uno .zip o .zip dal computer), scelta del campo e anteprima. */
@@ -344,6 +385,8 @@ function field3dPicker() {
       select.append(h("option", { value: "random" }, "Random field each duel"), ...list.map((f) => h("option", { value: f.id }, f.name)));
       const stored = await storedSize(src).catch(() => 0);
       forget.hidden = !stored;
+      // Indirizzi che funzionano nella rubrica (uno .zip dal computer no: nel browser se ne tiene uno solo).
+      if (!src.startsWith("file:")) rememberUpload("fields", src).then(prev.refresh);
       status.textContent = `${list.length} fields available${stored ? ` · ${mb(stored)} .zip stored in this browser` : ""}. Your opponent sees the field they chose.`;
     } catch (e) {
       status.textContent = `Unable to read the fields: ${e.message}`;
@@ -351,6 +394,12 @@ function field3dPicker() {
     select.value = [...select.options].some((o) => o.value === settings.field3d) ? settings.field3d : "";
     preview();
   };
+  const prev = previousChoices("fields", {
+    current: () => null,
+    title: (v) => `Use these 3D fields again: ${v}`,
+    thumb: (v) => h("span.prev-source", v.replace(/^https?:\/\//, "").slice(0, 60)),
+    onPick: (v) => { url.value = settings.fieldsUrl = v; refresh(); },
+  });
   const fx = h("label.check", h("input", { type: "checkbox", checked: settings.field3dFx, onchange: (e) => { settings.field3dFx = e.target.checked; preview(); } }), "Particles and glow (turn off on slow computers)");
   refresh();
   return h(
@@ -362,6 +411,7 @@ function field3dPicker() {
       h("small.muted", "Address of the fields folder or of a .zip with it (downloaded once and kept in this browser). The fields are not part of Helios.")
     ),
     h("div.row", upload, forget),
+    prev,
     h("label.field", h("span", "3D field"), select, status),
     box,
     fx

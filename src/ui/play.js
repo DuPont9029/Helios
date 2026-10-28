@@ -41,6 +41,7 @@ const BUILTIN_PRESETS = [
   ["TCG match (best of 3)", () => ({ mode: "MR5", banlist: banlistLike(/TCG/), lp: 8000, hand: 5, draw: 1, bestOf: 3, timer: "omega" })],
   ["Standard OCG", () => ({ mode: "MR5", banlist: banlistLike(/OCG/), lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
   ["GOAT format", () => ({ mode: "GOAT", banlist: banlistLike(/GOAT/), lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+  ["Genesys (100 points)", () => ({ mode: "MR5", banlist: banlistLike(/^Genesys$/), pointCap: 100, lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
   ["Speed Duel", () => ({ mode: "SPEED", banlist: banlistLike(/Speed/), lp: 4000, hand: 4, draw: 1, bestOf: 1 })],
   ["No banlist", () => ({ mode: "MR5", banlist: "", lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
 ];
@@ -61,8 +62,15 @@ function optionsForm({ host = true } = {}) {
   // Solo numeri dispari: un valore pari scritto a mano diventa il dispari successivo.
   bestOf.addEventListener("change", () => (bestOf.value = clampBestOf(bestOf.value)));
   timer.value = settings.lastTimer in TIMER_PRESETS ? settings.lastTimer : "omega";
+  // Genesys: tetto dei punti del mazzo (100 di norma, chi organizza può sceglierne un altro).
+  const pointCap = h("input.input", { type: "number", min: 0, max: 10000, step: 5, value: settings.lastPointCap ?? 100, title: "Maximum total points of the Main, Extra and Side Deck" });
+  const capField = h("label.field", h("span", "Point cap"), pointCap);
+  const pointsList = () => !!banlistByName(banlist.value)?.points;
+  const drawCap = () => (capField.hidden = !pointsList());
+  banlist.addEventListener("change", drawCap);
+  const capValue = () => Math.max(0, Math.min(10000, Math.round(+pointCap.value) || 0));
 
-  const values = () => ({ mode: mode.value, banlist: banlist.value, lp: +lp.value, hand: +hand.value, draw: +draw.value, timer: timer.value, bestOf: clampBestOf(bestOf.value), unofficial: unofficial.checked });
+  const values = () => ({ mode: mode.value, banlist: banlist.value, lp: +lp.value, hand: +hand.value, draw: +draw.value, timer: timer.value, bestOf: clampBestOf(bestOf.value), unofficial: unofficial.checked, ...(pointsList() ? { pointCap: capValue() } : {}) });
   const apply = (v) => {
     if (v.mode in DUEL_MODES) mode.value = v.mode;
     if (v.banlist === "" || db.banlists.some((b) => b.name === v.banlist)) banlist.value = v.banlist;
@@ -72,6 +80,8 @@ function optionsForm({ host = true } = {}) {
     if (v.timer in TIMER_PRESETS) timer.value = v.timer;
     if (v.bestOf) bestOf.value = clampBestOf(v.bestOf);
     unofficial.checked = !!v.unofficial;
+    if (Number.isInteger(v.pointCap)) pointCap.value = v.pointCap;
+    drawCap();
   };
   const preset = h("select.select");
   const delPreset = h("button.btn.small.ghost", { title: "Delete this saved preset" }, icon("delete"));
@@ -92,7 +102,7 @@ function optionsForm({ host = true } = {}) {
     settings.lastPreset = k.startsWith("u") ? userPresets()[+k.slice(1)].name : k;
   });
   // Un campo cambiato a mano: non è più il preset scelto.
-  for (const x of [mode, banlist, lp, hand, draw, timer, bestOf, unofficial]) x.addEventListener("change", () => { drawPresets(""); settings.lastPreset = ""; });
+  for (const x of [mode, banlist, lp, hand, draw, timer, bestOf, unofficial, pointCap]) x.addEventListener("change", () => { drawPresets(""); settings.lastPreset = ""; });
   const savePreset = h("button.btn.small.ghost", {
     title: "Save these settings as a preset",
     onclick: async () => {
@@ -125,6 +135,7 @@ function optionsForm({ host = true } = {}) {
     h("div.field.preset-row", h("span", "Preset"), h("div.preset-tools", preset, savePreset, delPreset)),
     h("label.field", h("span", "Rules"), mode),
     h("label.field", h("span", "Banlist"), banlist),
+    capField,
     h("label.field", h("span", "Life Points"), lp),
     h("label.field", h("span", "Starting hand"), hand),
     h("label.field", h("span", "Draws per turn"), draw),
@@ -133,6 +144,7 @@ function optionsForm({ host = true } = {}) {
     h("label.check", unofficial, "Allow unofficial cards (anime/custom)")
   );
   if (!host) el.hidden = true;
+  drawCap();
   return {
     el,
     /** Imposta le regole (es. quelle di chi sta cercando un duello nel matchmaking). */
@@ -144,6 +156,7 @@ function optionsForm({ host = true } = {}) {
       settings.lastBanlist = banlist.value;
       settings.lastTimer = timer.value;
       settings.lastBestOf = clampBestOf(bestOf.value);
+      if (pointsList()) settings.lastPointCap = capValue();
       return {
         bestOf: clampBestOf(bestOf.value),
         mode: mode.value,
@@ -154,13 +167,14 @@ function optionsForm({ host = true } = {}) {
         draw: Math.max(0, +draw.value || 0),
         allowUnofficial: unofficial.checked,
         timer: timer.value,
+        ...(pointsList() ? { pointCap: capValue() } : {}),
       };
     },
   };
 }
 
 function checkDeck(deck, options) {
-  const errors = validateDeck(deck, options.banlist ? banlistByName(options.banlist) : null, { allowUnofficial: options.allowUnofficial });
+  const errors = validateDeck(deck, options.banlist ? banlistByName(options.banlist) : null, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap });
   if (errors.length) {
     alertModal("Invalid Deck", errors.slice(0, 10).join("\n"));
     return false;
@@ -292,7 +306,7 @@ export function showLocalSetup(app, { vsCpu }) {
               onNextGame: async (old) => {
                 const p1 = old.cfg.me;
                 const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : meFirst;
-                const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, game: series.game };
+                const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, pointCap: options.pointCap, game: series.game };
                 // Formato con side deck: la schermata si apre sempre, anche con il Side Deck vuoto.
                 // Dal side deck ci si può arrendere: la partita finisce (nel Test Duel perde chi si arrende).
                 const sa = await openSideEditor(a, { ...side, who: vsCpu ? "" : "Player 1" });
@@ -376,7 +390,7 @@ async function playMatch(app, match, old = null) {
   };
   if (nextGame) {
     const opts = match.host ? match.options : match.lastOptions;
-    side = openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, game: match.series.game });
+    side = openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, pointCap: opts?.pointCap, game: match.series.game });
     const d = await Promise.race([side, opponentConceded.then(() => ({ opponent: true }))]);
     if (d.opponent || conceded) return endByConcede();
     if (d.surrendered) {
@@ -492,7 +506,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     const match = { mux, host, deck: getDeck(), options: host ? opts.read() : undefined };
     // Mazzo non valido (es. oltre il massimo di carte): non si gioca. L'host lo controlla con le sue regole,
     // l'ospite senza banlist (quella dell'host la controlla l'host).
-    const errors = validateDeck(match.deck, host && match.options.banlist ? banlistByName(match.options.banlist) : null, { allowUnofficial: host ? match.options.allowUnofficial : true });
+    const errors = validateDeck(match.deck, host && match.options.banlist ? banlistByName(match.options.banlist) : null, { allowUnofficial: host ? match.options.allowUnofficial : true, pointCap: host ? match.options.pointCap : undefined });
     if (errors.length) {
       setStatus(`Your Deck cannot be used: ${errors.slice(0, 3).join(" · ")}`, "error");
       link.close();
@@ -719,11 +733,11 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   let stopSeeks = null;
   const rulesNow = () => {
     const o = opts.read();
-    return { mode: o.mode, banlist: o.banlist || "", timer: o.timer, bestOf: o.bestOf, lp: o.lp, hand: o.hand, draw: o.draw, unofficial: o.allowUnofficial, ranked: !!settings.ranked };
+    return { mode: o.mode, banlist: o.banlist || "", timer: o.timer, bestOf: o.bestOf, lp: o.lp, hand: o.hand, draw: o.draw, unofficial: o.allowUnofficial, ranked: !!settings.ranked, ...(o.pointCap != null ? { pointCap: o.pointCap } : {}) };
   };
   const rulesText = (r) => [
     DUEL_MODES[r.mode]?.label ?? r.mode,
-    r.banlist || "No banlist",
+    r.banlist ? (r.pointCap != null ? `${r.banlist} (${r.pointCap} points)` : r.banlist) : "No banlist",
     TIMER_PRESETS[r.timer]?.label ?? "No timer",
     r.bestOf > 1 ? `best of ${r.bestOf}` : null,
     r.lp !== 8000 || r.hand !== 5 || r.draw !== 1 ? `${r.lp} LP, hand ${r.hand}, draw ${r.draw}` : null,
@@ -833,7 +847,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     if (!code) return;
     const rules = {
       mode: DUEL_MODES[o.mode]?.label ?? o.mode,
-      banlist: o.banlist || "No banlist",
+      banlist: o.banlist ? (o.pointCap != null ? `${o.banlist} (${o.pointCap} points)` : o.banlist) : "No banlist",
       timer: TIMER_PRESETS[o.timer]?.label ?? "No timer",
       bestOf: o.bestOf,
       ranked: !!settings.ranked,

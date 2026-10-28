@@ -140,7 +140,9 @@ export class Prompter {
         resolve(resp);
       };
       const handlers = new Map();
-      const menuItems = (list) => list.map((e) => ({ label: e.label, title: e.desc, glow: e.glow, onClick: () => done(e.response) }));
+      // e.choose: azione con una scelta in più prima della risposta (es. il modo di evocazione); null = annullata.
+      const pickEntry = (e) => (e.choose ? e.choose().then((r) => r && done(r)) : done(e.response));
+      const menuItems = (list) => list.map((e) => ({ label: e.label, title: e.desc, glow: e.glow, onClick: () => pickEntry(e) }));
       for (const [k, list] of byCard) {
         numberActivations(list);
         handlers.set(k, (ev, el) => this.view.openActionMenu(el, menuItems(list)));
@@ -170,7 +172,7 @@ export class Prompter {
           entries.map((e) =>
             h(
               "button.action-row",
-              { onclick: () => { m.close(); done(e.response); }, onmouseenter: () => this.view.hover(e.card.code) },
+              { onclick: () => { m.close(); e.choose ? e.choose().then((r) => r && done(r)) : done(e.response); }, onmouseenter: () => this.view.hover(e.card.code) },
               cardFace(e.card.code),
               h("div", h("b", cardName(e.card.code)), h("div.muted", `${e.label}${e.desc ? " — " + e.desc : ""}`), h("div.muted.small", this.where(e.card)))
             )
@@ -194,23 +196,29 @@ export class Prompter {
     add(msg.summons, IDLE.SUMMON, () => IDLE_LABELS[IDLE.SUMMON]);
     // La "Special Summon" offerta dalla carta nella zona Pendulum è la Pendulum Summon. Dall'Extra Deck si dice
     // quale evocazione (Xyz, Synchro, Link, Fusion); una carta con più procedure (es. Xyz normale e "puoi anche
-    // evocarla usando un mostro Xyz di Rango…") compare più volte: si numerano i modi.
+    // evocarla usando un mostro Xyz di Rango…") ha un solo pulsante e il modo si sceglie dopo.
     const cardKey = (c) => key(c.controller, c.location, c.sequence);
-    const spCount = new Map();
-    for (const c of msg.special_summons ?? []) spCount.set(cardKey(c), (spCount.get(cardKey(c)) ?? 0) + 1);
-    const spSeen = new Map();
-    add(msg.special_summons, IDLE.SPSUMMON, (card) => {
+    const ways = new Map(); // carta → indici in special_summons
+    (msg.special_summons ?? []).forEach((c, index) => {
+      if (!ways.has(cardKey(c))) ways.set(cardKey(c), []);
+      ways.get(cardKey(c)).push(index);
+    });
+    const spLabel = (card) => {
       if (card.location & LOC.SZONE) return "Pendulum Summon";
       const t = getCard(card.code)?.type ?? 0;
-      const base = card.location & LOC.EXTRA
+      return card.location & LOC.EXTRA
         ? t & TYPE.XYZ ? "Xyz Summon" : t & TYPE.SYNCHRO ? "Synchro Summon" : t & TYPE.LINK ? "Link Summon" : t & TYPE.FUSION ? "Fusion Summon" : IDLE_LABELS[IDLE.SPSUMMON]
         : IDLE_LABELS[IDLE.SPSUMMON];
-      const k = cardKey(card);
-      const n = spCount.get(k);
-      if (n < 2) return base;
-      const i = (spSeen.get(k) ?? 0) + 1;
-      spSeen.set(k, i);
-      return `${base} (way ${i} of ${n})`;
+    };
+    (msg.special_summons ?? []).forEach((card, index) => {
+      const list = ways.get(cardKey(card));
+      if (list[0] !== index) return;
+      const label = spLabel(card);
+      const response = { type: RESP.SELECT_IDLECMD, action: IDLE.SPSUMMON, index };
+      entries.push({
+        card, label, glow: "action", desc: list.length > 1 ? `${list.length} ways: you choose after` : "", response,
+        ...(list.length > 1 ? { choose: () => this.summonWay(card, label, list) } : {}),
+      });
     });
     add(msg.pos_changes, IDLE.REPOS, () => IDLE_LABELS[IDLE.REPOS]);
     add(msg.monster_sets, IDLE.MSET, () => IDLE_LABELS[IDLE.MSET]);
@@ -220,6 +228,23 @@ export class Prompter {
     if (msg.to_bp) phase.push({ label: "Battle Phase", response: { type: RESP.SELECT_IDLECMD, action: IDLE.TO_BP, index: 0 } });
     if (msg.to_ep) phase.push({ label: "End Phase", response: { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 } });
     return this.commandPrompt(entries, phase);
+  }
+
+  /** Modo di evocazione di una carta con più procedure: risposta del modo scelto, null = annullata. */
+  summonWay(card, label, indexes) {
+    // Il core non descrive le procedure: si mostra la frase del testo con il modo alternativo ("You can also…").
+    const alt = (getCard(card.code)?.desc ?? "").split(/(?<=[.)])\s+/).filter((x) => /you can also|can also be|instead/i.test(x));
+    const m = openModal({
+      title: `${label}: ${cardName(card.code)}`,
+      className: "prompt",
+      body: [
+        h("div.prompt-card", cardFace(card.code)),
+        h("p", "This card can be Summoned in more than one way. Which one?"),
+        alt.length ? h("p.muted.small", alt.join(" ")) : null,
+      ],
+      actions: [{ label: "Cancel", value: null }, ...indexes.map((index, i) => ({ label: `Way ${i + 1}`, value: index, primary: i === 0 }))],
+    });
+    return m.result.then((index) => (index == null ? null : { type: RESP.SELECT_IDLECMD, action: IDLE.SPSUMMON, index }));
   }
 
   battle(msg) {

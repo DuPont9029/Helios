@@ -239,10 +239,20 @@
 .sheet-head .field { margin: 0; }
 .sheet-tools { display: flex; flex-wrap: wrap; gap: 6px; }
 .sheet-starters { display: flex; flex-direction: column; gap: 10px; }
-.sheet-starter { display: flex; flex-direction: column; gap: 4px; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); }
-.sheet-starter-head { display: flex; align-items: center; gap: 12px; padding-bottom: 4px; border-bottom: 1px solid var(--line); }
-.sheet-starter-head .card { width: 44px; }
-.sheet-combo { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 4px 0 4px 10px; }
+/* Come le schede delle combo, nei colori degli spreadsheet: rosso scuro e celeste. */
+.sheet-starter { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); }
+.sheet-starter:hover { border-color: var(--line-strong); }
+.sheet-starter-head { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: linear-gradient(120deg, rgba(150, 18, 36, 0.32), rgba(10, 12, 20, 0.6) 55%, rgba(56, 198, 255, 0.14)); border-bottom: 1px solid var(--line); }
+.sheet-starter-head .card { width: 48px; }
+.sheet-starter-names { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sheet-starter-head .cc-label b { background: rgba(217, 35, 56, 0.3); color: #ffb3bb; }
+.sheet-combo { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 12px; }
+.sheet-combo + .sheet-combo { border-top: 1px solid var(--line); }
+.sheet-card .cc-banner { background: linear-gradient(120deg, rgba(150, 18, 36, 0.32), rgba(10, 12, 20, 0.6) 50%, rgba(56, 198, 255, 0.16)); }
+.sheet-card .cc-side .cc-label b { background: rgba(217, 35, 56, 0.3); color: #ffb3bb; }
+.sheet-card .cc-side.end .cc-label b { background: rgba(56, 198, 255, 0.2); color: var(--accent-soft); }
+.sheet-card .cc-dot { background: var(--red); }
+.sheet-card-notes { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sheet-combo .combo-info b { font-size: 15px; }
 .sheet-need { position: relative; width: 58px; }
 .sheet-need.short { outline: 2px solid var(--danger); outline-offset: 1px; }
@@ -328,9 +338,13 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .cc-label { display: flex; align-items: center; gap: 6px; font: 700 10px var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .cc-label b { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: rgba(56, 198, 255, 0.2); color: var(--accent-soft); font-size: 11px; }
 .cc-side.end .cc-label b { background: rgba(255, 210, 58, 0.2); color: #ffe08a; }
-.cc-faces { display: flex; gap: 4px; align-items: center; min-height: 78px; }
-.cc-face .card { width: 54px; }
-.cc-more { display: grid; place-items: center; width: 54px; height: 78px; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); font: 700 14px var(--mono); color: var(--muted); }
+/* Le carte si stringono per restare nella loro metà: prima sbordavano sotto il numero dei passi. */
+.cc-faces { display: flex; gap: 4px; align-items: center; min-height: 78px; width: 100%; min-width: 0; }
+.cc-side.end .cc-faces { justify-content: flex-end; }
+.cc-face { flex: 0 1 54px; min-width: 0; }
+.cc-face .card { width: 100%; }
+.cc-more { display: grid; place-items: center; flex: 0 1 54px; min-width: 0; aspect-ratio: 59 / 86; background: rgba(0, 0, 0, 0.45); border: 1px solid var(--line); font: 700 14px var(--mono); color: var(--muted); }
+.cc-mid { position: relative; z-index: 1; }
 .cc-mid .cc-pill { display: inline-block; padding: 5px 12px; border-radius: 999px; background: rgba(6, 7, 11, 0.85); border: 1px solid var(--line-strong); font: 700 12px var(--mono); white-space: nowrap; }
 .cc-body { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px 12px; }
 .cc-title { display: flex; align-items: center; gap: 8px; font-size: 15px; min-width: 0; }
@@ -419,3 +433,12 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .online-manual > .online-pane + .online-pane { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
 .pane-head { margin: 0 0 8px; font: 700 15px var(--display); letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent-soft); }
 .online-social > .pane-head { margin-top: 26px; padding-top: 18px; border-top: 1px solid var(--line); }
+
+/* Stato di partenza del Trainer: carte bandite coperte e fase di partenza */
+.banished-chip { display: inline-flex; align-items: center; gap: 4px; cursor: default; }
+.banished-chip.down { border-style: dashed; color: var(--muted); }
+.chip-btn { padding: 0 2px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; }
+.chip-btn .icon { font-size: 15px; }
+.chip-btn:hover { color: var(--accent-soft); }
+.setup-phase-field { margin: 0 0 4px; }
+.setup-phase { width: auto; }

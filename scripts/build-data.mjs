@@ -160,6 +160,36 @@ async function masterDuelBanlist() {
   }
 }
 
+// Genesys (TCG e OCG): niente Forbidden & Limited List, ogni carta ha dei punti (quasi tutte 0) e il mazzo non può
+// superare un tetto (100, chi organizza può sceglierne un altro); vietati Link e Pendulum. Punti da YGOPRODeck
+// (API pubblica); se non risponde il build continua senza.
+const GENESYS = [
+  { format: "genesys", field: "genesys_points", name: "Genesys", region: "TCG" },
+  { format: "genesys ocg", field: "genesys_ocg_points", name: "Genesys OCG", region: "OCG" },
+];
+async function genesysLists() {
+  const out = [];
+  for (const g of GENESYS) {
+    try {
+      const r = await fetch(`https://db.ygoprodeck.com/api/v7/cardinfo.php?format=${encodeURIComponent(g.format)}&misc=yes`, { headers: { "user-agent": "Helios data build (github.com/DuPont9029/Helios)" } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const points = {};
+      for (const c of (await r.json()).data ?? []) {
+        const p = c.misc_info?.[0]?.[g.field];
+        if (!(p > 0)) continue;
+        // Anche gli artwork alternativi (stessa carta, altro codice).
+        for (const id of new Set([c.id, ...(c.card_images ?? []).map((i) => i.id)])) points[String(id)] = p;
+      }
+      if (!Object.keys(points).length) throw new Error("no points");
+      console.log(`  ${g.name}: ${Object.keys(points).length} cards with points`);
+      out.push({ name: g.name, file: g.format.replace(" ", "-"), whitelist: false, cards: {}, points, cap: 100, region: g.region, noTypes: ["Link", "Pendulum"] });
+    } catch (e) {
+      console.warn(`  [banlist] ${g.name} not available (${e.message}): skipped`);
+    }
+  }
+  return out;
+}
+
 async function buildBanlists() {
   const dir = path.join(VENDOR, "LFLists");
   const files = fs.readdirSync(dir).filter((f) => f.endsWith(".lflist.conf")).sort();
@@ -167,6 +197,8 @@ async function buildBanlists() {
   // Master Duel subito dopo TCG e OCG.
   const md = await masterDuelBanlist();
   if (md) lists.splice(lists.filter((l) => /TCG|OCG/.test(l.file)).length, 0, md);
+  // Genesys subito dopo (o dopo TCG e OCG senza Master Duel).
+  lists.splice(lists.filter((l) => /TCG|OCG|masterduel/.test(l.file)).length, 0, ...(await genesysLists()));
   fs.writeFileSync(path.join(OUT, "banlists.json"), JSON.stringify(lists));
   console.log(`banlists.json: ${lists.length} banlist`);
 }

@@ -372,6 +372,8 @@ input[type="range"] { accent-color: var(--accent); }
 .limit { position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font: 700 11px var(--font); background: #c8263e; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 3px #000; }
 .limit.l1 { background: #e07a10; }
 .limit.l2 { background: #d6b20a; color: #222; }
+/* Genesys: punti della carta */
+.limit.points { width: auto; min-width: 18px; padding: 0 4px; border-radius: 9px; background: #3d6fd8; font-size: 10px; }
 .validity { border-radius: 8px; padding: 8px 12px; border: 1px solid var(--line-strong); background: none; cursor: pointer; font-weight: 700; }
 .validity.ok { color: var(--ok); border-color: var(--ok); }
 .validity.bad { color: var(--gold); border-color: var(--gold); }
@@ -511,6 +513,20 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
 .paste-area { min-height: 200px; resize: vertical; font: 12px/1.4 var(--mono); }
 .sleeve-box { display: flex; gap: 14px; align-items: center; }
 .sleeve-preview { width: 70px; flex: none; }
+/* Impostazioni con upload: rubrica delle scelte precedenti */
+.prev-choices { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.prev-choices-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.prev-choice { position: relative; }
+.prev-choice-use { display: block; padding: 2px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--line); border-radius: 4px; cursor: pointer; color: var(--text); }
+.prev-choice-use:hover { border-color: var(--line-strong); }
+.prev-choice.on .prev-choice-use { border-color: var(--accent); }
+.prev-choice-del { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px; padding: 0; border-radius: 50%; border: 1px solid var(--line-strong); background: #1a1c24; color: var(--muted); font-size: 11px; line-height: 1; cursor: pointer; display: none; }
+.prev-choice:hover .prev-choice-del, .prev-choice-del:focus-visible { display: block; }
+.prev-choice-del:hover { color: #ff8a8a; }
+.prev-sleeve { width: 34px; background-size: cover; background-position: center; }
+.prev-gems { display: flex; gap: 2px; }
+.prev-gems img { width: 24px; height: 24px; object-fit: contain; }
+.prev-source { display: block; max-width: 260px; padding: 2px 6px; font: 12px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sleeve-side { display: flex; flex-direction: column; gap: 8px; }
 
 /* ------------------------------------------------------------------ editor: bozza, badge regione, riordino */

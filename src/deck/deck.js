@@ -219,6 +219,30 @@ export function cardLimit(banlist, code) {
   return banlist.whitelist ? 0 : 3;
 }
 
+// ------------------------------------------------------------- Genesys
+// Banlist a punti (Genesys, da build-data): { points: { codice: punti }, cap, noTypes }. Ogni copia conta, in
+// Main, Extra e Side Deck; il tetto si può cambiare nelle regole del duello (pointCap).
+
+/** Punti di una carta in una banlist a punti (0 se non ne ha o la banlist non è a punti). */
+export function cardPoints(banlist, code) {
+  if (!banlist?.points) return 0;
+  const c = getCard(code);
+  return banlist.points[String(code)] ?? (c?.alias ? banlist.points[String(c.alias)] : 0) ?? 0;
+}
+
+/** Punti del mazzo (null se la banlist non è a punti). */
+export function deckPoints(deck, banlist) {
+  if (!banlist?.points) return null;
+  return [...deck.main, ...deck.extra, ...(deck.side ?? [])].reduce((n, code) => n + cardPoints(banlist, code), 0);
+}
+
+const NO_TYPES = { Link: TYPE.LINK, Pendulum: TYPE.PENDULUM };
+/** Tipo di mostro vietato dalla banlist (es. Link e Pendulum in Genesys), altrimenti null. */
+export function bannedType(banlist, c) {
+  for (const t of banlist?.noTypes ?? []) if (NO_TYPES[t] && c?.type & NO_TYPES[t]) return t;
+  return null;
+}
+
 // ------------------------------------------------------------- formato TCG/OCG
 // ot di EDOPro: 0x1 OCG, 0x2 TCG. Una carta con solo uno dei due bit esiste solo in quella regione.
 export const OT = { OCG: 0x1, TCG: 0x2 };
@@ -235,6 +259,7 @@ export function cardRegion(c) {
 
 /** Formato di una banlist dedotto dal nome: "TCG", "OCG" o null (Rush, nessuna banlist...). */
 export function banlistFormat(banlist) {
+  if (banlist?.region) return banlist.region;
   const n = banlist?.name ?? "";
   if (/TCG|Traditional|Worlds|GOAT|Speed/i.test(n)) return "TCG";
   if (/OCG/i.test(n)) return "OCG";
@@ -248,7 +273,7 @@ const baseCode = (code) => {
 };
 
 /** Restituisce l'elenco dei problemi del mazzo (vuoto = valido). */
-export function validateDeck(deck, banlist, { allowUnofficial = false } = {}) {
+export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap } = {}) {
   const errors = [];
   if (deck.main.length < 40) errors.push(`Main Deck: ${deck.main.length}/40 cards minimum`);
   if (deck.main.length > 60) errors.push(`Main Deck: ${deck.main.length}/60 cards maximum`);
@@ -266,6 +291,8 @@ export function validateDeck(deck, banlist, { allowUnofficial = false } = {}) {
     if (!allowUnofficial && c.source === 1) errors.push(`${c.name}: unofficial card`);
     const region = cardRegion(c);
     if (format && region && region !== format) errors.push(`${c.name} is ${region}-only`);
+    const banned = bannedType(banlist, c);
+    if (banned) errors.push(`${c.name}: ${banned} Monsters are not allowed in ${banlist.name}`);
     const k = baseCode(code);
     counts.set(k, (counts.get(k) ?? 0) + 1);
   }
@@ -275,6 +302,9 @@ export function validateDeck(deck, banlist, { allowUnofficial = false } = {}) {
     const limit = Math.min(3, cardLimit(banlist, code));
     if (n > limit) errors.push(`${getCard(code)?.name}: ${n} copies (maximum ${limit})`);
   }
+  const points = deckPoints(deck, banlist);
+  const cap = pointCap ?? banlist?.cap;
+  if (points != null && points > cap) errors.push(`${banlist.name}: ${points} points (maximum ${cap})`);
   return [...new Set(errors)];
 }
 

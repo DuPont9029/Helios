@@ -320,7 +320,8 @@ export class DuelSession {
         // Combo Trainer: il pulsante "Back" interrompe l'attesa della scelta e fa tornare indietro.
         const back = this.trainer ? new Promise((r) => (this.trainer.onBack = () => r({ trainerBack: true }))) : null;
         // Auto-play (esportazione video): il trainer sceglie da solo; undefined = tocca al giocatore.
-        let auto = this.trainer?.autoRespond?.(prompt);
+        // Combo Trainer: prima si arriva alla fase di partenza della combo (es. Battle Phase), poi l'auto-play.
+        let auto = this.trainer?.phaseRespond?.(prompt) ?? this.trainer?.autoRespond?.(prompt);
         if (auto === undefined) {
           for (;;) {
             // Auto-play acceso mentre si aspetta la scelta: si smette di aspettare e sceglie il trainer.

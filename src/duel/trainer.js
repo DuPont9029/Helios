@@ -232,8 +232,10 @@ export function detailResponse(d, prompt, me) {
  * Indice della carta del passo nell'elenco: con l'effetto indicato (desc) se il passo lo specifica, con il
  * modo di evocazione (way) se la carta ne ha più d'uno; altrimenti la prima con quel codice. -1 se non c'è.
  */
-function pick(list = [], step, used = null) {
-  const same = list.map((c, i) => [c, i]).filter(([c]) => c.code === step.code);
+function pick(list = [], step, used = null, excluded = null) {
+  let same = list.map((c, i) => [c, i]).filter(([c]) => c.code === step.code);
+  // Auto-play: effetti già provati per questo passo che non portavano alle sue scelte.
+  if (!step.desc && excluded?.size) same = same.filter(([c]) => !excluded.has(descOf(c)));
   if (!same.length) return -1;
   if (step.desc) {
     const exact = same.find(([c]) => descOf(c) === step.desc);
@@ -250,7 +252,7 @@ function pick(list = [], step, used = null) {
 }
 
 /** Risposta che esegue il passo `step` (auto-play); null se ora non si può. */
-function stepResponse(step, prompt, used = null) {
+function stepResponse(step, prompt, used = null, excluded = null) {
   if (prompt.type === MSG.SELECT_IDLECMD) {
     if (step.kind === "endphase") return prompt.to_ep ? { type: RESP.SELECT_IDLECMD, action: IDLE.TO_EP, index: 0 } : null;
     if (step.kind === "pendulum") {
@@ -259,7 +261,7 @@ function stepResponse(step, prompt, used = null) {
     }
     const lists = step.kind === "set" ? [IDLE.MSET, IDLE.SSET] : Object.keys(IDLE_KIND).map(Number).filter((a) => IDLE_KIND[a] === step.kind);
     for (const action of lists) {
-      const index = pick(prompt[IDLE_LIST[action]], step, used);
+      const index = pick(prompt[IDLE_LIST[action]], step, used, excluded);
       if (index >= 0) return { type: RESP.SELECT_IDLECMD, action, index };
     }
     return null;
@@ -267,11 +269,11 @@ function stepResponse(step, prompt, used = null) {
   if (prompt.type === MSG.SELECT_BATTLECMD) {
     if (step.kind === "endphase") return prompt.to_ep ? { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_EP, index: 0 } : null;
     if (step.kind !== "activate") return null;
-    const index = pick(prompt.chains, step, used);
+    const index = pick(prompt.chains, step, used, excluded);
     return index >= 0 ? { type: RESP.SELECT_BATTLECMD, action: BATTLE.ACTIVATE, index } : null;
   }
   if (prompt.type === MSG.SELECT_CHAIN) {
-    const index = step.kind === "activate" ? pick(prompt.selects, step, used) : -1;
+    const index = step.kind === "activate" ? pick(prompt.selects, step, used, excluded) : -1;
     return index >= 0 ? { type: RESP.SELECT_CHAIN, index } : null;
   }
   return null;
@@ -490,6 +492,7 @@ export class ComboTrainer {
     }
     const act = actionOf(prompt, response);
     if (act?.kind === "activate") (this.usedEffects ??= new Set()).add(`${act.code}:${act.desc}`);
+    if (this.autoTry && act && !("desc" in this.autoTry)) this.autoTry.desc = act.desc;
     if (act) {
       const want = !this.interrupted && this.combo.steps[this.next];
       const match = sameAction(act, want);
@@ -638,10 +641,12 @@ export class ComboTrainer {
     this.onAutoChange?.(false);
   }
 
+  phaseRespond(prompt) { return phaseResponse(this.combo, prompt, this.me); }
+
   autoRespond(prompt) {
     if (!this.autoplay || this.interrupted || prompt.player !== this.me) return undefined;
     const want = this.expectedDetail();
-    if (want && detailKind(prompt.type) === want.t) return detailResponse(want, prompt, this.me) ?? undefined;
+    if (want && detailKind(prompt.type) === want.t) return detailResponse(want, prompt, this.me) ?? this.autoDeadEnd(want);
     // Effetto innescato che è il passo successivo: si attiva.
     const step = !this.done && this.combo.steps[this.next];
     if (prompt.type === MSG.SELECT_EFFECTYN && step?.kind === "activate" && step.code === prompt.code) return { type: RESP.SELECT_EFFECTYN, yes: true };
@@ -650,11 +655,17 @@ export class ComboTrainer {
       // si passa in catena e si aspettano le scelte.
       if (this.active && prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
       if (this.done) {
+        // Ultimo passo fatto ma la catena non è ancora chiusa: si passa finché non si torna alla Main Phase
+        // ("Combo complete" in onPrompt), altrimenti la finestra della catena restava aperta.
+        if (prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
         this.stopAuto();
         return undefined;
       }
-      const r = stepResponse(this.combo.steps[this.next], prompt, this.usedEffects);
-      if (r) return r;
+      const r = stepResponse(this.combo.steps[this.next], prompt, this.usedEffects, this.autoExcluded?.get(this.next));
+      if (r) {
+        this.autoTry = { step: this.next };
+        return r;
+      }
       // In catena e nelle finestre di battaglia si passa finché non si può fare il passo.
       if (prompt.type === MSG.SELECT_CHAIN && !prompt.forced) return { type: RESP.SELECT_CHAIN, index: null };
       if (prompt.type === MSG.SELECT_BATTLECMD && prompt.to_m2) return { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_M2, index: 0 };
@@ -663,6 +674,29 @@ export class ComboTrainer {
       return undefined;
     }
     return null; // dettaglio non previsto: sceglie l'IA
+  }
+
+  /**
+   * Auto-play: la scelta attesa non si può fare (es. combo registrata senza l'effetto preciso e attivato l'altro
+   * effetto della carta). Si torna a prima dell'attivazione e si prova un altro effetto; se non ce ne sono,
+   * l'auto-play si ferma e lo dice (prima la finestra restava aperta con l'auto-play acceso).
+   */
+  autoDeadEnd(want) {
+    const step = this.combo.steps[this.active?.step];
+    const t = this.autoTry;
+    if (step?.kind === "activate" && !step.desc && t?.step === this.active.step && t.desc && this.chosenMark) {
+      this.autoExcluded ??= new Map();
+      if (!this.autoExcluded.has(t.step)) this.autoExcluded.set(t.step, new Set());
+      this.autoExcluded.get(t.step).add(t.desc);
+      this.autoTry = null;
+      this.rewindTo = this.chosenMark;
+      this.active = null;
+      this.notify(`Auto-play: another effect of "${cardName(step.code)}" is tried for step ${t.step + 1}.`, "info");
+      return { trainerBack: true };
+    }
+    this.stopAuto();
+    this.notify(`Auto-play stopped: "${detailText(want)}" is not possible now. Continue yourself.`, "error");
+    return undefined;
   }
 
   /**
@@ -735,6 +769,7 @@ export class ComboRecorder {
   onPrompt() {}
   check() { return null; }
   autoRespond() { return undefined; }
+  phaseRespond(prompt) { return phaseResponse(this.combo, prompt, this.me); }
 
   save() {
     return {
@@ -834,13 +869,29 @@ export function comboToCode(c) {
 const DETAIL_TYPES = new Set(["cards", "pick", "zone", "pos", "yesno", "option"]);
 const ZONE_KEYS = /^(m[0-6]|s[0-4]|f)$/;
 
+/** Fase in cui inizia la combo (stato di partenza). Battle Phase e Main Phase 2 solo andando per secondi. */
+export const START_PHASES = { main1: "Main Phase 1", battle: "Battle Phase", main2: "Main Phase 2" };
+
+/**
+ * Risposta che porta il duello alla fase di partenza della combo (dalla Main Phase 1 alla Battle Phase, poi alla
+ * Main Phase 2), undefined se si è già lì. Non è un passo della combo: si fa da sé, anche registrando.
+ */
+export function phaseResponse(combo, prompt, me) {
+  const phase = combo.setup?.phase;
+  if (combo.first || prompt.player !== me || !(phase === "battle" || phase === "main2")) return undefined;
+  if (prompt.type === MSG.SELECT_IDLECMD && prompt.to_bp) return { type: RESP.SELECT_IDLECMD, action: IDLE.TO_BP, index: 0 };
+  if (phase === "main2" && prompt.type === MSG.SELECT_BATTLECMD && prompt.to_m2) return { type: RESP.SELECT_BATTLECMD, action: BATTLE.TO_M2, index: 0 };
+  return undefined;
+}
+
 /** Stato di partenza valido (vedi combos.js): solo codici interi e zone note. */
 export function cleanSetup(s) {
   if (!s || typeof s !== "object") return undefined;
   const codes = (a) => (Array.isArray(a) ? a.filter((x) => Number.isInteger(x)).slice(0, 40) : []);
   const field = (a) => (Array.isArray(a) ? a.filter((x) => x && Number.isInteger(x.code) && ZONE_KEYS.test(x.zone)).map((x) => ({ code: x.code, zone: x.zone, pos: ["atk", "def", "set"].includes(x.pos) ? x.pos : "atk" })) : []);
-  const side = (x = {}, opp) => ({ field: field(x.field), gy: codes(x.gy), banished: codes(x.banished), deckTop: codes(x.deckTop), ...(opp ? { hand: codes(x.hand), extra: codes(x.extra) } : {}) });
-  return { me: side(s.me, false), opp: side(s.opp, true) };
+  // banishedDown: carte bandite coperte (banished: quelle scoperte).
+  const side = (x = {}, opp) => ({ field: field(x.field), gy: codes(x.gy), banished: codes(x.banished), banishedDown: codes(x.banishedDown), deckTop: codes(x.deckTop), ...(opp ? { hand: codes(x.hand), extra: codes(x.extra) } : {}) });
+  return { me: side(s.me, false), opp: side(s.opp, true), ...(START_PHASES[s.phase] && s.phase !== "main1" ? { phase: s.phase } : {}) };
 }
 
 /** Legge un codice condiviso; restituisce la combo (senza id) o lancia un errore leggibile. */
@@ -999,7 +1050,7 @@ export function cleanCards(x) {
 
 const tally = (codes) => codes.reduce((m, c) => m.set(c, (m.get(c) ?? 0) + 1), new Map());
 const repeat = (m) => [...m].flatMap(([code, n]) => Array(n).fill(code));
-const sideCodes = (x = {}) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.hand ?? []), ...(x.extra ?? []), ...(x.deckTop ?? [])];
+const sideCodes = (x = {}) => [...(x.field ?? []).map((f) => f.code), ...(x.gy ?? []), ...(x.banished ?? []), ...(x.banishedDown ?? []), ...(x.hand ?? []), ...(x.extra ?? []), ...(x.deckTop ?? [])];
 
 /** Carte indicate da una scelta precisa. */
 export function detailCodes(d) {

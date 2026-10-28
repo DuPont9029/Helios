@@ -18,9 +18,11 @@ permissions:
   pages: write
   id-token: write
 
+# Un push o un avvio a mano sostituisce la pubblicazione in corso; il controllo programmato delle banlist
+# invece aspetta il suo turno, altrimenti potrebbe annullare il deploy di un merge senza poi ripubblicare.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 jobs:
   # Ultimo commit di ProjectIgnis/LFLists e se va pubblicato: sempre, tranne nel controllo ogni 3 ore

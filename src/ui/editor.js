@@ -8,7 +8,7 @@ import { settings, artUrl } from "../data/settings.js";
 import { BASE_READY, baseDecks, hideBaseDeck, restoreBaseDecks, hiddenBaseDecks } from "../data/base-content.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
-  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT,
+  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType,
 } from "../deck/deck.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
@@ -224,7 +224,7 @@ const LONG_PRESS = 450;
  * { surrendered: true } se il giocatore abbandona la partita da qui.
  * La promessa ha .close(value): chiude la schermata dall'esterno (es. l'avversario si è arreso).
  */
-export function openSideEditor(deck, { banlist = null, allowUnofficial = false, game = 2, who = "", canSurrender = true } = {}) {
+export function openSideEditor(deck, { banlist = null, allowUnofficial = false, pointCap, game = 2, who = "", canSurrender = true } = {}) {
   let finish;
   const promise = new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
@@ -238,7 +238,7 @@ export function openSideEditor(deck, { banlist = null, allowUnofficial = false, 
       layer.remove();
       resolve(v);
     };
-    showEditor(host, { side: { deck, banlist, allowUnofficial, game, who, canSurrender, onDone: finish } });
+    showEditor(host, { side: { deck, banlist, allowUnofficial, pointCap, game, who, canSurrender, onDone: finish } });
   });
   promise.close = (v) => finish?.(v);
   return promise;
@@ -604,7 +604,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     runSearch();
   });
   const validity = h("button.validity", { onclick: () => {
-    const errs = validateDeck(deck, banlist);
+    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
     alertModal(errs.length ? "Deck issues" : "Valid deck", errs.length ? errs.join("\n") : "The deck follows the rules and the selected banlist.");
   } });
   const saveBtn = h("button.btn.primary.save-btn", { title: "Save the deck (Ctrl+S)", onclick: () => save() });
@@ -759,7 +759,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     validity,
     h("button.btn.primary", {
       onclick: () => {
-        const errs = validateDeck(deck, banlist, { allowUnofficial: side.allowUnofficial });
+        const errs = validateDeck(deck, banlist, { allowUnofficial: side.allowUnofficial, pointCap: side.pointCap });
         if (errs.length) return alertModal("Invalid Deck", errs.slice(0, 8).join("\n"));
         side.onDone(cloneDeck(deck));
       },
@@ -875,6 +875,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   }
 
   const limitBadge = (code) => {
+    // Genesys: Link e Pendulum vietati, i punti della carta in un'etichetta.
+    const banned = bannedType(banlist, getCard(code));
+    if (banned) return h("div.limit.l0", { title: `${banned} Monsters are not allowed in ${banlist.name}` }, "✕");
+    const pts = cardPoints(banlist, code);
+    if (pts) return h("div.limit.points", { title: `${pts} points in ${banlist.name}` }, pts);
     const l = cardLimit(banlist, code);
     return l < 3 ? h(`div.limit.l${l}`, l === 0 ? "✕" : l) : null;
   };
@@ -965,6 +970,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     if (side && deck[part].length >= MAX[part]) return toast(`${PART_NAME[part]} Deck is full`, { kind: "error" });
     const limit = Math.min(3, cardLimit(banlist, code));
     if (limit === 0) return toast(`${c.name} is forbidden in the selected banlist`, { kind: "error" });
+    const banned = bannedType(banlist, c);
+    if (banned) return toast(`${banned} Monsters are not allowed in ${banlist.name}`, { kind: "error" });
     if (countCopies(code) >= limit) return toast(`Maximum ${limit} copies of ${c.name}`, { kind: "error" });
     remember(code);
     change(() => deck[part].splice(at ?? deck[part].length, 0, code));
@@ -1112,10 +1119,13 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       );
       clear(grid).append(...codes.map((code, index) => deckCard(code, p, index)));
     }
-    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial });
+    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
     if (side) swapsEl.textContent = `Swapped ${swapped()} / ${SIDE_SWAPS}`;
     if (pick) pickCount.textContent = `${deck.hand.length} / ${pick.max}`;
-    validity.textContent = errs.length ? `⚠ ${errs.length} issues` : "✓ Valid";
+    // Banlist a punti (Genesys): totale del mazzo e tetto accanto alla validità.
+    const pts = deckPoints(deck, banlist);
+    const cap = side?.pointCap ?? banlist?.cap;
+    validity.textContent = (errs.length ? `⚠ ${errs.length} issues` : "✓ Valid") + (pts != null ? ` · ${pts}/${cap} pts` : "");
     validity.title = errs.length ? `${errs.slice(0, 12).join("\n")}\n\nThis Deck cannot be used in Duels with rules until it is fixed.` : "The deck follows the rules and the selected banlist";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
     refreshState();
@@ -1131,7 +1141,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const fLevel = h("input.input", { placeholder: "Lv.", type: "number", min: 0, max: 13 });
   const fAtk = h("input.input", { placeholder: "ATK ≥", type: "number", min: 0, step: 100 });
   const fDef = h("input.input", { placeholder: "DEF ≥", type: "number", min: 0, step: 100 });
-  const fLimit = h("select.select", h("option", { value: "" }, "Any status"), h("option", { value: "0" }, "Forbidden"), h("option", { value: "1" }, "Limited"), h("option", { value: "2" }, "Semi-Limited"), h("option", { value: "legal" }, "Legal only"));
+  const fLimit = h("select.select", h("option", { value: "" }, "Any status"), h("option", { value: "0" }, "Forbidden"), h("option", { value: "1" }, "Limited"), h("option", { value: "2" }, "Semi-Limited"), h("option", { value: "legal" }, "Legal only"), h("option", { value: "points" }, "With points (Genesys)"));
   const fFormat = h("select.select.format-filter", h("option", { value: "" }, "Any format"), h("option", { value: "TCG" }, "TCG legal"), h("option", { value: "OCG" }, "OCG legal"));
   const fUnoff = h("input", { type: "checkbox" });
   // Pulsanti colorati per tipo e attributo (pilotano i select nascosti fType e fAttr).
@@ -1198,8 +1208,10 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (atk != null && !(c.atk >= atk)) return false;
       if (def != null && (c.type & TYPE.LINK || !(c.def >= def))) return false;
       if (lim) {
-        const l = cardLimit(banlist, c.code);
-        if (lim === "legal" ? l === 0 : l !== +lim) return false;
+        const l = bannedType(banlist, c) ? 0 : cardLimit(banlist, c.code);
+        if (lim === "points") {
+          if (!cardPoints(banlist, c.code)) return false;
+        } else if (lim === "legal" ? l === 0 : l !== +lim) return false;
       }
       if (text && !c.search.includes(text)) return false;
       return true;

@@ -28,30 +28,44 @@ export function renderSheets(panel, ctx, sheetId, mode = "view") {
   if (sheet) return mode === "edit" ? renderSheet(panel, ctx, sheet, go) : renderSheetView(panel, ctx, sheet, go);
   ctx.setView({ sheetId: null });
   const open = (s) => go(s, "view");
+  // Schede come quelle delle combo (banner con starter → numero di combo → decklist), nei colori degli
+  // spreadsheet: rosso scuro e celeste.
+  const faces = (codes, max) => [...codes.slice(0, max).map((code) => h("div.cc-face", { title: cardName(code) }, cardFace(code))), codes.length > max ? h("div.cc-more", `+${codes.length - max}`) : null];
   const list = ctx.store.sheets.map((s) => {
-    const combos = s.combos.map((id) => ctx.store.combos.find((c) => c.id === id)).filter(Boolean);
-    const starters = new Set(combos.map((c) => starterKey(c))).size;
+    const { combos, groups } = sheetCombos(ctx, s);
+    const starters = [...groups.values()].map((g) => g[0].hand[0]).filter(Boolean);
+    const need = sheetCards(combos);
+    const sample = s.sample?.main ?? [];
     return h(
-      "div.combo-row.sheet-row",
-      h("div.combo-hand", (s.sample?.main ?? combos[0]?.hand ?? []).slice(0, 4).map((code) => cardFace(code))),
+      "div.cc-card.sheet-card",
       h(
-        "div.combo-info",
-        h("b", s.name),
-        h("div.muted.small", [plural(combos.length, "combo"), plural(starters, "starter"), s.sample ? "sample decklist" : ""].filter(Boolean).join(" · "))
+        "div.cc-banner",
+        h("div.cc-side", h("div.cc-label", "Starters", h("b", groups.size)), h("div.cc-faces", starters.length ? faces(starters, 3) : h("span.muted.small", "No combos yet"))),
+        h("div.cc-mid", h("span.cc-pill", plural(combos.length, "combo"))),
+        h("div.cc-side.end", h("div.cc-label", "Sample deck", h("b", sample.length || "—")), h("div.cc-faces", sample.length ? faces(sample, 3) : h("span.muted.small", "No sample decklist")))
       ),
       h(
-        "div.combo-actions",
-        h("button.btn.primary", { onclick: () => open(s) }, icon("table_view"), " Open"),
-        h("button.btn", { onclick: () => go(s, "edit") }, icon("edit"), " Edit"),
-        h("button.btn", { title: "Share the spreadsheet with its combos", onclick: () => exportSheet(ctx, s) }, icon("ios_share"), " Export"),
-        h("button.btn.danger", {
-          title: "Delete the spreadsheet (its combos stay in the Trainer)",
-          onclick: async () => {
-            if (!(await confirmModal("Delete spreadsheet", `Delete "${s.name}"? Its combos are not deleted.`, "Delete", "Cancel", { danger: true }))) return;
-            ctx.store.sheets = ctx.store.sheets.filter((x) => x.id !== s.id);
-            ctx.save();
-          },
-        }, icon("delete"))
+        "div.cc-body",
+        h("div.cc-title", h("span.cc-dot"), h("b", s.name)),
+        s.notes ? h("div.muted.small.sheet-card-notes", s.notes) : null,
+        h("div.cc-stats",
+          h("span", icon("view_list"), h("b", combos.length), " Combos"),
+          h("span", icon("flag"), h("b", groups.size), " Starters"),
+          h("span", icon("style"), h("b", need.main.length + need.extra.length), " Cards")),
+        h(
+          "div.cc-actions",
+          h("button.btn.primary", { onclick: () => open(s) }, icon("table_view"), " Open"),
+          h("button.btn", { onclick: () => go(s, "edit") }, icon("edit"), " Edit"),
+          h("button.btn", { title: "Share the spreadsheet with its combos", onclick: () => exportSheet(ctx, s) }, icon("ios_share"), " Export"),
+          h("button.btn.danger", {
+            title: "Delete the spreadsheet (its combos stay in the Trainer)",
+            onclick: async () => {
+              if (!(await confirmModal("Delete spreadsheet", `Delete "${s.name}"? Its combos are not deleted.`, "Delete", "Cancel", { danger: true }))) return;
+              ctx.store.sheets = ctx.store.sheets.filter((x) => x.id !== s.id);
+              ctx.save();
+            },
+          }, icon("delete"))
+        )
       )
     );
   });
@@ -130,7 +144,7 @@ function sheetCombos(ctx, sheet) {
 const comboTitle = (c) => (c.parent ? `${c.name} — ${c.branch || "Variant"}` : c.name);
 const comboInfo = (c) => [c.first ? "Going first" : "Going second", plural(c.steps.length, "step"), c.interrupts.length ? plural(c.interrupts.length, "interruption") : ""].filter(Boolean).join(" · ");
 const starterHead = (list) =>
-  h("div.sheet-starter-head", h("div.combo-hand", list[0].hand.map((code) => h("div", { title: cardName(code) }, cardFace(code)))), h("span.muted.small", list[0].hand.length ? `Starter: ${list[0].hand.map(cardName).join(", ")}` : "No starting hand"));
+  h("div.sheet-starter-head", h("div.combo-hand", list[0].hand.map((code) => h("div", { title: cardName(code) }, cardFace(code)))), h("div.sheet-starter-names", h("div.cc-label", "Starter", h("b", list.length), list.length === 1 ? "combo" : "combos"), h("span.small", list[0].hand.length ? list[0].hand.map(cardName).join(", ") : "No starting hand")));
 const deckSummary = (list) => h("div.decklist-summary", h("span", h("b", list.main.length), " Main"), h("span", h("b", list.extra.length), " Extra"), list.side ? h("span", h("b", list.side.length), " Side") : null);
 
 /** Carte necessarie dello spreadsheet nel deck builder in sola lettura (in rosso quelle che mancano nella sample). */
@@ -299,7 +313,7 @@ function renderSheet(panel, ctx, sheet, go) {
   const starters = [...groups.values()].map((list) =>
     h(
       "div.sheet-starter",
-      h("div.sheet-starter-head", h("div.combo-hand", list[0].hand.map((code) => h("div", { title: cardName(code) }, cardFace(code)))), h("span.muted.small", list[0].hand.length ? `Starter: ${list[0].hand.map(cardName).join(", ")}` : "No starting hand")),
+      h("div.sheet-starter-head", h("div.combo-hand", list[0].hand.map((code) => h("div", { title: cardName(code) }, cardFace(code)))), h("div.sheet-starter-names", h("div.cc-label", "Starter", h("b", list.length), list.length === 1 ? "combo" : "combos"), h("span.small", list[0].hand.length ? list[0].hand.map(cardName).join(", ") : "No starting hand"))),
       list.map(comboLine)
     )
   );
