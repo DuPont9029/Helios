@@ -80,6 +80,8 @@
 - [x] permettere di editare carte nel cimitero e bandite sia face down che face up nel trainer quando si edita il board state \[implementato, testare\]
 - [x] per i mostri che si possono evocare dall'extradeck in più di un modo far apparire un solo bottone es: synchro summon e far scegliere il modo dopo. \[implementato, testare\]
 - [ ] \*supporti per banlist customizzate (da aggiungere quando si aggiunge il drafting)
+- [ ] \* queue standard
+- [ ] \
 
 
 

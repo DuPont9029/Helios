@@ -949,6 +949,9 @@ export class DuelView {
       case MSG.SHUFFLE_DECK:
         this.board.flash(m.player, LOC.DECK, 0, "flash-shuffle", 500);
         return;
+      case MSG.SHUFFLE_SET_CARD:
+        for (const c of m.cards) this.board.flash(c.from.controller, c.from.location, c.from.sequence, "flash-shuffle", 500);
+        return this.wait(300);
       case MSG.CARD_HINT:
         return;
       default:

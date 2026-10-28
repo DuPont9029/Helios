@@ -14,7 +14,7 @@ import { openSideEditor } from "./editor.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
-import { findMatch, watchSeeks, queueOf } from "../net/matchmaking.js";
+import { findMatch, watchSeeks, queueOf, MM_PROTO } from "../net/matchmaking.js";
 import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
 import { relayStatus, socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
@@ -858,7 +858,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
       rows.length
         ? h("ul.friend-list", rows.map(([q, g]) => h("li.friend-row",
             h(`span.presence-dot.${q === mine ? "online" : "offline"}`),
-            h("div.friend-info", { title: g.players.map((p) => p.name).join(", ") }, h("b", `${g.players.length} player${g.players.length === 1 ? "" : "s"}`), h("span.muted.small", ` ${rulesText(g.rules)}${sameData(g) ? "" : " · other data version"}`)),
+            h("div.friend-info", { title: g.players.map((p) => p.name + (p.proto === MM_PROTO ? "" : p.proto < MM_PROTO ? " (older Helios: needs to reload)" : " (newer Helios: reload to play with them)")).join(", ") }, h("b", `${g.players.length} player${g.players.length === 1 ? "" : "s"}`), h("span.muted.small", ` ${rulesText(g.rules)}${sameData(g) ? "" : " · other data version"}${g.players.some((p) => p.proto !== MM_PROTO) ? " · other Helios version" : ""}`)),
             q === mine
               ? h("span.muted.small", "Your rules")
               : h("button.btn.small", { disabled: !sameData(g) || !!search, title: sameData(g) ? "Use these rules (the Ranked checkbox too)" : "They use another version of the card data", onclick: () => { opts.set(g.rules); settings.ranked = g.rules.ranked; rankedBox.checked = g.rules.ranked; toast("Rules set: press Find a Duel"); watchQueues(); } }, "Use these rules"))))
