@@ -1,0 +1,90 @@
+/* Coaching: spettatore (scheda Coach), finestra della segnalazione, report unito (src/ui/coaching.js). */
+
+/* Gravità: colori comuni a badge, scelte e report. */
+.sev-inaccuracy { --sev: #e8c547; }
+.sev-mistake { --sev: #ff8a3d; }
+.sev-blunder { --sev: #ff3b4e; }
+.sev-badge {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font: 700 12px var(--mono);
+  color: #0b0b0b; background: var(--sev, var(--muted));
+}
+.report-mini { display: inline-flex; gap: 4px; }
+
+/* Attesa del duello dell'amico */
+.watch-wait { max-width: 520px; margin: 18vh auto 0; display: grid; gap: 12px; justify-items: start; padding: 20px; }
+.watch-wait .row { display: flex; gap: 8px; }
+
+/* Amici che guardano (controlli del duello del giocatore) */
+.duel-watchers { font: 500 12px var(--mono); color: var(--accent-soft); text-align: center; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.duel-watchers .icon { font-size: 16px; }
+
+/* Spettatore: i comandi per rispondere al core non servono */
+.duel-screen.spectating .chain-mode, .duel-screen.spectating .duel-controls > .check:not(.anim-speed), .duel-float.spectating .chain-mode { display: none; }
+
+/* Scheda "Coach" dello spettatore */
+.coach-panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; padding: 8px; overflow: hidden; }
+.coach-panel > p { margin: 0; }
+.coach-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.watch-live { font: 600 11px var(--mono); color: var(--muted); }
+.watch-live.on { color: var(--danger); }
+.watch-live.catching { color: var(--star); }
+.coach-general:empty { display: none; }
+.coach-general, .coach-actions { display: flex; flex-direction: column; gap: 3px; }
+.coach-actions { flex: 1; min-height: 0; overflow-y: auto; }
+.coach-row {
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 6px; text-align: left; cursor: pointer;
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-left: 3px solid transparent; font: inherit; font-size: 12px;
+}
+.coach-row:hover { border-color: var(--line-strong); }
+.coach-row.flagged { border-left-color: var(--sev); background: color-mix(in srgb, var(--sev) 12%, var(--panel-2)); }
+.coach-when { flex: none; width: 46px; font: 500 10px var(--mono); color: var(--muted); }
+.coach-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.coach-row-text small { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-flag { flex: none; color: var(--muted); opacity: 0; }
+.coach-flag .icon { font-size: 16px; }
+.coach-row:hover .coach-flag { opacity: 1; color: var(--accent); }
+.coach-count { text-align: center; }
+
+/* Azione segnalata (finestra e report): immagini delle carte, testo, scelte */
+.coach-act { display: flex; align-items: flex-start; gap: 10px; padding: 8px; background: var(--panel-2); border: 1px solid var(--line); }
+.coach-act.general { align-items: center; color: var(--muted); }
+.coach-thumbs { display: flex; gap: 3px; flex: none; }
+.coach-thumb { display: block; width: 34px; line-height: 0; }
+.coach-thumb .card { width: 34px; }
+.coach-thumbs.big .coach-thumb, .coach-thumbs.big .coach-thumb .card { width: 52px; }
+.coach-act-text { min-width: 0; display: grid; gap: 2px; }
+.coach-detail { font-size: 12px; color: var(--muted); }
+.coach-detail::before { content: "↳ "; }
+
+/* Finestra della segnalazione */
+.modal.coach-note { width: min(620px, 100%); }
+.coach-note .modal-body { display: grid; gap: 10px; }
+.coach-where { font: 600 12px var(--mono); color: var(--accent-soft); text-transform: uppercase; letter-spacing: 0.06em; }
+.sev-choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.sev-choice {
+  display: grid; gap: 2px; justify-items: start; padding: 8px; text-align: left; cursor: pointer; font: inherit;
+  color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-top: 3px solid var(--sev);
+}
+.sev-choice b { font: 700 16px var(--mono); color: var(--sev); }
+.sev-choice small { color: var(--muted); font-size: 11px; }
+.sev-choice.on { background: color-mix(in srgb, var(--sev) 22%, var(--panel-2)); border-color: var(--sev); }
+.coach-text { width: 100%; resize: vertical; font: inherit; }
+.coach-error { margin: 0; color: var(--danger); font-size: 13px; }
+
+/* Pulsante del report sul risultato del duello (il livello fx-layer non riceve clic: lo riattiviamo qui) */
+.coach-result { position: absolute; left: 50%; bottom: 4%; transform: translateX(-50%); z-index: 2; pointer-events: auto; max-width: 90%; }
+
+/* Report unito */
+.coach-report { display: grid; gap: 10px; }
+.report-head { display: grid; gap: 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.report-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.sev-count { padding: 2px 8px; font-size: 13px; border: 1px solid var(--sev); color: var(--sev); }
+.report-game { margin: 6px 0 0; font: 600 15px var(--display); text-transform: uppercase; color: var(--accent-soft); }
+.report-item { display: grid; gap: 6px; padding: 10px; border: 1px solid var(--line); border-left: 4px solid var(--sev); background: var(--panel); }
+.report-when { font: 600 11px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.report-notes { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.report-notes li { padding: 6px 8px; background: var(--panel-2); }
+.report-notes p { margin: 4px 0 0; white-space: pre-wrap; }
+.report-better { color: var(--accent-soft); }
+.report-note-head { display: flex; align-items: center; gap: 6px; }
+.coach-reports .friend-row .icon { color: var(--accent); }

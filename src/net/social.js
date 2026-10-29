@@ -7,6 +7,7 @@
 // - Presenza: ogni minuto un evento con lo stato ("online", "in duello"), firmato da una chiave di presenza
 //   diversa da quella del giocatore e cifrato con essa. La chiave segreta di presenza la ricevono solo gli
 //   amici (con l'amicizia): solo loro sanno di chi è e la leggono. Rimuovendo un amico la chiave cambia.
+//   In duello la presenza porta anche le chiavi per guardarlo da spettatori (vedi spectate.js).
 import { SimplePool } from "nostr-tools/pool";
 import { finalizeEvent, getPublicKey, generateSecretKey } from "nostr-tools/pure";
 import { wrapEvent, unwrapEvent } from "nostr-tools/nip59";
@@ -168,7 +169,7 @@ function seen(id) {
   return false;
 }
 
-const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set(), direct: new Set() };
+const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set(), direct: new Set(), watch: new Set() };
 /** Inviti ricevuti da un amico: fn({ id, from, name, room, rules, expires }). */
 export const onInvite = (fn) => (handlers.invite.add(fn), () => handlers.invite.delete(fn));
 /** Risposte ai nostri inviti: fn({ id, from, accept, reason }). */
@@ -263,11 +264,24 @@ function receive(wrap) {
     case "invite-cancel":
       if (isFriend(from) && typeof m.id === "string") emit(handlers.cancel, { id: m.id, from });
       return;
+    // Spettatori (spectate.js, duel/coaching.js): un amico guarda il nostro duello, smette o segnala un errore.
+    case "watch-hello":
+    case "watch-bye":
+    case "watch-note":
+      if (isFriend(from) && typeof m.id === "string" && m.id.length <= 40) emit(handlers.watch, { ...m, from, name, at });
+      return;
     default:
       // Matchmaking con sconosciuti (matchmaking.js): solo messaggi recenti, il resto lo controlla lui.
       if (typeof m.t === "string" && m.t.startsWith("mm-") && at > now() - 120) emit(handlers.direct, { ...m, from, name, at, relay: seenOn(wrap.id)[0] ?? null });
   }
 }
+
+/** Messaggi degli amici che guardano i nostri duelli: fn({ t: "watch-hello"|"watch-bye"|"watch-note", id, from, name, ... }). */
+export const onWatchMessage = (fn) => (handlers.watch.add(fn), () => handlers.watch.delete(fn));
+/** Messaggio a un amico che stiamo guardando (solo amici). */
+export const sendWatch = (pk, msg) => (isFriend(pk) ? sendTo(pk, msg) : Promise.resolve(0));
+/** Evento già firmato (es. dalla chiave usa e getta di un duello trasmesso agli spettatori). */
+export const publishEvent = (ev) => publish(ev);
 
 /** Messaggi "mm-*" da qualunque giocatore (matchmaking): fn({ t, from, name, at, ... }). */
 export const onDirect = (fn) => (handlers.direct.add(fn), () => handlers.direct.delete(fn));
@@ -363,6 +377,7 @@ const live = new Map();
 let presenceSub = null;
 let heartbeatTimer = 0;
 let statusOf = () => "online";
+let watchOf = () => null;
 
 const presencePk = (skHex) => getPublicKey(fromHex(skHex));
 const presenceKey = (skHex) => nip44.v2.utils.getConversationKey(fromHex(skHex), presencePk(skHex));
@@ -378,7 +393,9 @@ async function heartbeat(status = statusOf()) {
   }
   state.lastStatus = status;
   const p = state.presenceSk;
-  const content = nip44.v2.encrypt(JSON.stringify({ status, name: cleanName(settings.name), at: now() }), presenceKey(p));
+  // In duello: chiavi per guardarlo (solo gli amici leggono la presenza).
+  const watch = status === "duel" ? watchOf() : null;
+  const content = nip44.v2.encrypt(JSON.stringify({ status, name: cleanName(settings.name), at: now(), ...(watch ? { watch } : {}) }), presenceKey(p));
   const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", PRESENCE_D], ["expiration", String(now() + 3 * 3600)]], content }, fromHex(p));
   await publish(ev);
 }
@@ -399,7 +416,8 @@ function subscribePresence() {
         const p = JSON.parse(nip44.v2.decrypt(ev.content, presenceKey(f.presence)));
         const at = Math.min(Number(p.at) || 0, ev.created_at, now() + 60);
         if ((live.get(f.pk)?.at ?? 0) > at) return;
-        live.set(f.pk, { status: ["online", "duel", "offline"].includes(p.status) ? p.status : "online", at });
+        const status = ["online", "duel", "offline"].includes(p.status) ? p.status : "online";
+        live.set(f.pk, { status, at, watch: status === "duel" ? cleanWatch(p.watch) : null });
         if (p.name && cleanName(p.name) !== f.name) {
           f.name = cleanName(p.name);
           persist();
@@ -410,13 +428,21 @@ function subscribePresence() {
   });
 }
 
-/** Stato di un amico: "online", "duel", "offline" (con lastSeen in secondi) o "pending" (richiesta mandata). */
+/** Chiavi di un duello da guardare (spectate.js): { id, pk, key } o null. */
+function cleanWatch(w) {
+  return w && /^[0-9a-f]{16}$/.test(w.id ?? "") && HEX64.test(w.pk ?? "") && HEX64.test(w.key ?? "") ? { id: w.id, pk: w.pk, key: w.key } : null;
+}
+
+/**
+ * Stato di un amico: "online", "duel", "offline" (con lastSeen in secondi) o "pending" (richiesta mandata).
+ * In duello, watch = chiavi per guardarlo (null se non si può: spettatori non ammessi o client vecchio).
+ */
 export function presenceOf(f) {
   if (f.status !== "friend") return { status: "pending" };
   const p = live.get(f.pk);
   if (!p) return { status: "offline", lastSeen: null };
   if (p.status === "offline" || now() - p.at > ONLINE_FOR_S) return { status: "offline", lastSeen: p.at };
-  return { status: p.status };
+  return { status: p.status, watch: p.watch ?? null };
 }
 
 // ---------------------------------------------------------------- inviti
@@ -468,10 +494,11 @@ export const onlineCount = () => state.friends.filter((f) => ["online", "duel"].
 
 /**
  * Collega amici e presenza ai relay (all'avvio e a ogni cambio di identità).
- * status(): "online" o "duel", letto a ogni battito.
+ * status(): "online" o "duel", letto a ogni battito; watch(): chiavi del duello da guardare o null.
  */
-export function startSocial({ status } = {}) {
+export function startSocial({ status, watch } = {}) {
   if (status) statusOf = status;
+  if (watch) watchOf = watch;
   stopSocial();
   state = load();
   persist();

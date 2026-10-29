@@ -198,7 +198,8 @@ const DUEL_WIDTH = 1180;
 
 // ---------------------------------------------------------------- amici e inviti (src/net/social.js)
 
-const inDuel = () => !!app.root.querySelector(":scope > .duel-screen");
+// Chi guarda il duello di un amico (ui/coaching.js) non è in duello: resta "online" e riceve gli inviti.
+const inDuel = () => !!app.root.querySelector(":scope > .duel-screen:not(.spectating)");
 const activeDeckName = () => {
   const decks = loadDecks();
   return (decks.find((d) => d.id === settings.lastDeck) ?? decks[0])?.name ?? "none";
@@ -289,7 +290,8 @@ async function boot() {
       prune();
     });
     if (location.hash === "#ai-vs-ai") return aiVsAi();
-    startSocial({ status: () => (inDuel() ? "duel" : "online") });
+    // In duello la presenza porta le chiavi per guardarlo (solo gli amici la leggono, vedi net/spectate.js).
+    startSocial({ status: () => (inDuel() ? "duel" : "online"), watch: () => app.current?.broadcast?.info() ?? null });
     home();
   } catch (e) {
     console.error(e);
