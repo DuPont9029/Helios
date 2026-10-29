@@ -11,10 +11,13 @@ import { applySleeves } from "../data/sleeve.js";
 import { recordGame, seriesLabel } from "./series.js";
 import { h } from "../ui/dom.js";
 import { STANDALONE, loadArchive } from "../data/bundle.js";
+import { EngineClient } from "./engine-client.js";
 import { rateLimit } from "../net/guard.js";
-
-// Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
-const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).default : null;
+import { settings } from "../data/settings.js";
+import { Broadcast } from "../net/spectate.js";
+import { statusChanged } from "../net/social.js";
+import { startReportGame, endReportGame, closeReport, onReportChange } from "./coaching.js";
+import { coachResultButton } from "../ui/coaching.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -30,37 +33,6 @@ const AUTOPLAY = (() => {
     return false;
   }
 })();
-
-class EngineClient {
-  constructor() {
-    this.worker = InlineWorker ? new InlineWorker() : new Worker(new URL("./worker.js", import.meta.url), { type: "module" });
-    this.pending = new Map();
-    this.nextId = 1;
-    this.worker.onmessage = (e) => {
-      const { id, result, error } = e.data;
-      const p = this.pending.get(id);
-      this.pending.delete(id);
-      if (error) p?.reject(new Error(error));
-      else p?.resolve(result);
-    };
-    this.worker.onerror = (e) => {
-      for (const p of this.pending.values()) p.reject(new Error(e.message || "Engine worker error"));
-      this.pending.clear();
-    };
-  }
-
-  call(cmd, args) {
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, cmd, args });
-    });
-  }
-
-  terminate() {
-    this.worker.terminate();
-  }
-}
 
 /** Coda dei messaggi in arrivo dall'avversario. */
 class Inbox {
@@ -152,6 +124,54 @@ export class DuelSession {
     this.clock = preset ? new DuelClock(preset) : null;
     if (this.clock) this.tick = setInterval(() => this.renderClock(), 200);
     if (p2p) this.bindLink(cfg.mux);
+    // Amici spettatori: duelli contro la CPU e online (non il duello di prova né il Combo Trainer), se il
+    // giocatore lo permette (Settings → Profile → Friends).
+    const watchable = !this.trainer && !cfg.reveal && cfg.controllers.some((c) => c === "ai" || c === "remote") && settings.allowSpectators !== false;
+    if (watchable) this.startBroadcast(p2p ? "Online Duel" : "Vs CPU");
+  }
+
+  // ---------------------------------------------------------------- spettatori
+
+  /** Il duello va sui relay per gli amici che lo guardano (net/spectate.js); le loro note vanno nel report. */
+  startBroadcast(mode) {
+    const { cfg } = this;
+    const series = cfg.match ?? null;
+    // Un report per partita: al meglio di N tutti i duelli finiscono nello stesso.
+    const report = series ? (series.reportId ??= crypto.randomUUID().slice(0, 18)) : crypto.randomUUID().slice(0, 18);
+    this.broadcast = new Broadcast({ duel: cfg.duel, names: cfg.names, me: cfg.me, mode, match: series?.bestOf > 1 ? series : null, report });
+    this.reportId = report;
+    startReportGame({ report, stream: this.broadcast.id, game: series?.game ?? 1, names: [cfg.names[cfg.me], cfg.names[1 - cfg.me]], mode });
+    // Chi guarda adesso (le note restano nascoste fino alla fine della partita).
+    const watching = new Map();
+    this.offReport = onReportChange((r, change, w) => {
+      if (r?.id !== report || !w?.pk) return;
+      if (change === "watcher") {
+        this.broadcast.activate();
+        if (!watching.has(w.pk) && !this.over) toast(`${w.name} is watching your Duel`, { ms: 3500 });
+        watching.set(w.pk, w.name);
+      } else if (change === "watcher-left") watching.delete(w.pk);
+      else return;
+      this.view.setWatchers([...watching.values()]);
+    });
+  }
+
+  /** Risposte definitive agli spettatori: una summon annullabile ("Back") parte solo quando avviene. */
+  cast() {
+    this.broadcast?.update(this.history, this.pending ? this.pending.histLen : this.history.length);
+  }
+
+  /** Fine del duello per gli spettatori e per il report (testi dal punto di vista di chi gioca). */
+  endBroadcast({ winner, reason, why, over }) {
+    if (!this.broadcast || this.broadcastEnded) return;
+    this.broadcastEnded = true;
+    const me = this.cfg.names[this.cfg.me];
+    const opp = this.cfg.names[1 - this.cfg.me];
+    // Per gli spettatori "You" e "Your opponent" diventano i nomi.
+    const neutral = why ? why.replace(/\bYour opponent\b/g, opp).replace(/\bYou\b/g, me) : "";
+    this.broadcast.end({ winner, reason, sub: neutral || undefined });
+    const outcome = winner === this.cfg.me ? "Victory" : winner === 0 || winner === 1 ? "Defeat" : "Draw";
+    endReportGame(this.broadcast.id, why ? `${outcome} · ${why}` : outcome, over);
+    if (over) this.view.overlay.append(coachResultButton(this.reportId));
   }
 
   // ---------------------------------------------------------------- timer
@@ -258,6 +278,8 @@ export class DuelSession {
 
   async start(container) {
     container.append(this.view.el);
+    // Gli amici vedono subito che si può guardare il duello (anche nella rivincita, sulla stessa schermata).
+    if (this.broadcast) statusChanged();
     // Il collegamento può essersi chiuso durante l'accordo (es. rivincita abbandonata).
     if (this.mux?.closed) return this.finish({ winner: null, text: "Connection lost", rematch: false });
     this.view.setStatus("Starting engine...");
@@ -425,6 +447,7 @@ export class DuelSession {
       }
       this.seq++;
       this.history.push(response);
+      this.cast();
       res = await this.engine.call("respond", { response });
     }
   }
@@ -434,6 +457,7 @@ export class DuelSession {
     const p = this.pending;
     this.pending = null;
     if (this.mux) for (const out of p.outbox) this.send(out);
+    this.cast();
   }
 
   /** "Back" durante la scelta della zona: si ricostruisce lo stato di prima della summon. */
@@ -469,6 +493,7 @@ export class DuelSession {
   finish({ winner, reason, text, sub, rematch = true }) {
     if (this.over) return;
     this.over = true;
+    const why = [text, sub].filter(Boolean).join(" · ");
     this.rankedEnd(winner, rematch);
     this.winner = winner; // indice del core del vincitore (2 o null = pareggio): serve alla rivincita
     clearTimeout(this.timeout);
@@ -496,6 +521,8 @@ export class DuelSession {
       }
     }
     this.view.showResult({ winner, reason, text, sub });
+    // Report del coaching: si legge a partita finita (al meglio di N: dopo l'ultimo duello, o uscendo).
+    this.endBroadcast({ winner, reason, why, over: !series || series.over || !rematch });
     this.inbox.push({ t: "end" });
     if (rematch && this.mux && this.cfg.onRematch && !this.mux.closed) this.showRematch({ nextGame });
     else if (!this.mux && nextGame && this.cfg.onNextGame) this.showNextGame();
@@ -649,6 +676,10 @@ export class DuelSession {
       )
     );
     this.view.overlay.append(panel);
+    if (this.broadcast) {
+      closeReport(this.broadcast.id);
+      this.view.overlay.append(coachResultButton(this.reportId));
+    }
   }
 
   /** La negoziazione della rivincita è fallita: resta la schermata del risultato con il motivo. */
@@ -668,6 +699,8 @@ export class DuelSession {
   async leave() {
     if (!this.over && !(await confirmModal("Leave the Duel?", this.cfg.ranked ? "You will lose the current Duel (ranked: it counts as a loss)." : "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
     if (!this.over) this.cfg.ranked?.resign(); // classificata: chi esce perde
+    if (!this.over) this.endBroadcast({ winner: 1 - this.cfg.me, why: "You left the Duel", over: true });
+    else if (this.broadcast) closeReport(this.broadcast.id);
     this.send({ t: "bye" });
     this.destroy();
     this.cfg.onExit?.();
@@ -676,6 +709,8 @@ export class DuelSession {
   /** keepLink: il collegamento resta aperto per la rivincita. */
   destroy({ keepLink = false } = {}) {
     this.over = true;
+    this.broadcast?.close();
+    this.offReport?.();
     if (this.onPageHide) removeEventListener("pagehide", this.onPageHide);
     this.offClose?.();
     this.clearSleeves?.();

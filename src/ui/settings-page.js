@@ -124,6 +124,7 @@ function profileSection(field, area) {
         }, "New profile")),
       h("h4", "Friends"),
       h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
+      h("label.check", h("input", { type: "checkbox", checked: settings.allowSpectators !== false, onchange: (e) => (settings.allowSpectators = e.target.checked) }), "Let my friends watch my Duels (Vs CPU and online) and report my mistakes"),
       field("Nostr relays (one per line)", area("eloRelays"), `Used for friends, invites and the ranking. Empty = ${eloRelays().length} public relays. Friends must share at least one relay.`)
     );
   };

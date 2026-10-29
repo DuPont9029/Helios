@@ -23,7 +23,8 @@ const PHASES = [
 
 export class DuelView {
   /**
-   * @param opts { me, names, reveal, onSurrender, onChat (null = chat disattivata), onLeave }
+   * @param opts { me, names, reveal, onSurrender, onChat (null = chat disattivata), onLeave,
+   *   sideTab: { id, label, el } scheda in più accanto a Log e Chat, aperta all'inizio (es. le note dello spettatore) }
    */
   constructor(opts) {
     this.opts = opts;
@@ -170,6 +171,8 @@ export class DuelView {
     this.matchEl = h("div.match-info", { hidden: true });
     this.actionBar = h("div.action-bar");
     this.statusEl = h("div.duel-status");
+    // Amici che guardano il duello (vedi setWatchers).
+    this.watchersEl = h("div.duel-watchers", { hidden: true });
     this.logEl = h("div.log");
     this.chatLog = h("div.chat-log");
     const chatInput = h("input.input.chat-input", {
@@ -191,6 +194,11 @@ export class DuelView {
     if (this.opts.trainerEl) {
       panes.combo = this.opts.trainerEl;
       tabList.unshift(["combo", "Combo"]);
+    }
+    const extra = this.opts.sideTab;
+    if (extra) {
+      panes[extra.id] = extra.el;
+      tabList.unshift([extra.id, extra.label]);
     }
     for (const [id, label] of tabList) {
       tabs.append(
@@ -253,7 +261,7 @@ export class DuelView {
     this.promptDock = h("div.prompt-dock");
     this.el = h(
       "div.duel-screen",
-      h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.combo ?? null, panes.log, panes.chat)),
+      h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.combo ?? null, extra ? panes[extra.id] : null, panes.log, panes.chat)),
       (this.main = h(
         "div.duel-main",
         h("div.hud-top", this.lpEls[1].el, this.board.handEls[1]),
@@ -268,6 +276,7 @@ export class DuelView {
         this.matchEl,
         this.phaseEl,
         this.statusEl,
+        this.watchersEl,
         this.actionBar,
         h("div.spacer"),
         this.chainMode,
@@ -361,6 +370,13 @@ export class DuelView {
   setMatchInfo(series) {
     this.matchEl.hidden = !series;
     if (series) this.matchEl.textContent = seriesLabel(series);
+  }
+
+  /** Amici che guardano il duello (nomi): l'occhio con il numero, i nomi al passaggio del mouse. */
+  setWatchers(names) {
+    this.watchersEl.hidden = !names.length;
+    this.watchersEl.title = names.length ? `Watching: ${names.join(", ")}` : "";
+    this.watchersEl.replaceChildren(h("span.icon", { "aria-hidden": "true" }, "visibility"), ` ${names.length} watching`);
   }
 
   setStatus(text) {
@@ -563,6 +579,8 @@ export class DuelView {
   get speed() {
     // Auto-play del Trainer (minSpeed = 1): la combo va guardata, quindi le animazioni restano almeno a
     // velocità normale anche se il giocatore le ha spente.
+    // Spettatore che recupera il duello già giocato: niente animazioni finché non arriva al punto attuale.
+    if (this.instant) return 0;
     return Math.max(settings.animSpeed, this.minSpeed ?? 0);
   }
 
