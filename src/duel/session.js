@@ -18,6 +18,8 @@ import { Broadcast } from "../net/spectate.js";
 import { statusChanged } from "../net/social.js";
 import { startReportGame, endReportGame, closeReport, onReportChange } from "./coaching.js";
 import { coachResultButton } from "../ui/coaching.js";
+import { StatsRecorder } from "./duel-stats.js";
+import { COACHING } from "../data/features.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -84,6 +86,9 @@ export class DuelSession {
    *   sleeves: [immagine del giocatore 0, del giocatore 1] (data URL o null),
    *   pendulums: [gemme Pendulum del giocatore 0, del giocatore 1] ({ red, blue, side } o null = gemme predefinite),
    *   mux: LinkMux (solo P2P),
+   *   practice: true = giocata di prova (dal report del coaching): niente spettatori né report,
+   *   prefix: risposte da rigiocare subito senza animazioni (la prova parte da quel momento del duello),
+   *   sideTab: scheda in più accanto a Log e Chat (vedi DuelView),
    *   onRematch(session): solo P2P, chiamata (in modo sincrono) quando entrambi hanno chiesto la rivincita,
    *   onExit()
    * }
@@ -116,7 +121,10 @@ export class DuelSession {
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
       onSurrender: () => this.surrender(),
       onLeave: () => this.leave(),
+      sideTab: cfg.sideTab ?? null,
     });
+    // La giocata di prova non è un duello per gli amici (la presenza resta "online").
+    if (cfg.practice) this.view.el.classList.add("practice");
     this.view.startLP = cfg.duel.lp;
     if (cfg.match?.bestOf > 1) this.view.setMatchInfo(cfg.match);
     this.clearSleeves = applySleeves(cfg.sleeves);
@@ -126,8 +134,10 @@ export class DuelSession {
     if (p2p) this.bindLink(cfg.mux);
     // Amici spettatori: duelli contro la CPU e online (non il duello di prova né il Combo Trainer), se il
     // giocatore lo permette (Settings → Profile → Friends).
-    const watchable = !this.trainer && !cfg.reveal && cfg.controllers.some((c) => c === "ai" || c === "remote") && settings.allowSpectators !== false;
+    const watchable = !this.trainer && !cfg.practice && !cfg.reveal && cfg.controllers.some((c) => c === "ai" || c === "remote") && settings.allowSpectators !== false;
     if (watchable) this.startBroadcast(p2p ? "Online Duel" : "Vs CPU");
+    // Statistiche per il report (e passi della giocata di prova).
+    if ((this.broadcast && COACHING) || cfg.practice) this.stats = new StatsRecorder(cfg.me, { base: cfg.prefix?.length ?? 0, onChange: cfg.onStats });
   }
 
   // ---------------------------------------------------------------- spettatori
@@ -170,8 +180,10 @@ export class DuelSession {
     const neutral = why ? why.replace(/\bYour opponent\b/g, opp).replace(/\bYou\b/g, me) : "";
     this.broadcast.end({ winner, reason, sub: neutral || undefined });
     const outcome = winner === this.cfg.me ? "Victory" : winner === 0 || winner === 1 ? "Defeat" : "Draw";
-    endReportGame(this.broadcast.id, why ? `${outcome} · ${why}` : outcome, over);
-    if (over) this.view.overlay.append(coachResultButton(this.reportId));
+    // Il duello resta nel report: si rigioca sul campo dai momenti segnalati, con le statistiche.
+    const replay = { duel: this.cfg.duel, me: this.cfg.me, names: this.cfg.names, history: this.history.slice(), stats: this.stats?.result(this.cfg.duel.lp) ?? null };
+    endReportGame(this.broadcast.id, why ? `${outcome} · ${why}` : outcome, over, replay);
+    if (over && COACHING) this.view.overlay.append(coachResultButton(this.reportId));
   }
 
   // ---------------------------------------------------------------- timer
@@ -290,6 +302,7 @@ export class DuelSession {
       let res = await this.engine.call("start", this.cfg.duel);
       this.view.setStatus("");
       this.view.lp = [this.cfg.duel.lp, this.cfg.duel.lp];
+      if (this.cfg.prefix?.length) res = await this.fastForward(this.cfg.prefix);
       await this.loop(res);
     } catch (err) {
       if (this.over) return;
@@ -299,11 +312,26 @@ export class DuelSession {
     }
   }
 
+  /** Giocata di prova: si arriva senza animazioni al momento scelto del duello (prefix = risposte date fin lì). */
+  async fastForward(prefix) {
+    const res = await this.engine.call("replay", { duel: this.cfg.duel, responses: prefix });
+    this.history = prefix.slice();
+    this.seq = prefix.length;
+    this.view.render(res.snapshot);
+    this.view.syncChain(res.snapshot.chain ?? []);
+    if (this.stats) {
+      this.stats.turn = res.snapshot.turn;
+      this.stats.lp = res.snapshot.players.map((p) => p.lp);
+    }
+    return { ...res, messages: [] };
+  }
+
   async loop(res) {
     for (;;) {
       if (this.over) return;
       for (const l of res.logs) console.warn("[script]", l.text);
       await this.view.playMessages(res.messages);
+      this.stats?.messages(res.messages, this.history.length, res.snapshot);
       this.trainer?.onMessages(res.messages);
       if (this.over) return;
       // Combo Trainer: "Back" premuto mentre il duello non aspettava il giocatore (animazioni, avversario).
@@ -332,6 +360,7 @@ export class DuelSession {
       // Flag di test: il giocatore locale viene pilotato dall'IA (localStorage "ygoweb.autoplay").
       if (who === "local" && AUTOPLAY) who = "ai";
       let response;
+      let thought = null; // tempo per decidere (statistiche del report)
       if (who === "local") {
         if (this.cfg.reveal) this.view.setStatus(`${this.cfg.names[prompt.player]}'s move`);
         const asked = performance.now();
@@ -387,7 +416,9 @@ export class DuelSession {
         }
         this.view.prompter.back = null;
         this.view.prompter.summoning = false;
-        this.stopClock(prompt.player, performance.now() - asked >= AUTO_RESPONSE_MS);
+        const took = performance.now() - asked;
+        this.stopClock(prompt.player, took >= AUTO_RESPONSE_MS);
+        if (took >= AUTO_RESPONSE_MS) thought = took;
         this.view.setStatus("");
         if (this.over) return;
         if (response?.back) {
@@ -445,6 +476,7 @@ export class DuelSession {
       if (prompt.type === MSG.SELECT_IDLECMD && response?.action === IDLE.SPSUMMON && prompt.special_summons?.[response.index]?.location & LOC.SZONE) {
         this.view.pendulumSummon = true;
       }
+      this.stats?.response(this.history.length, prompt, response, res.snapshot, thought);
       this.seq++;
       this.history.push(response);
       this.cast();
@@ -478,6 +510,7 @@ export class DuelSession {
     const res = await this.engine.call("replay", { duel: this.cfg.duel, responses: this.history.slice(0, mark.histLen) });
     this.history.length = mark.histLen;
     this.seq = mark.seq;
+    this.stats?.rewind(mark.histLen);
     this.view.logRewind(mark.logMark);
     if (mark.trainer) this.trainer?.restore?.(mark.trainer);
     this.view.pendulumSummon = false;
@@ -678,7 +711,7 @@ export class DuelSession {
     this.view.overlay.append(panel);
     if (this.broadcast) {
       closeReport(this.broadcast.id);
-      this.view.overlay.append(coachResultButton(this.reportId));
+      if (COACHING) this.view.overlay.append(coachResultButton(this.reportId));
     }
   }
 
@@ -697,7 +730,7 @@ export class DuelSession {
   }
 
   async leave() {
-    if (!this.over && !(await confirmModal("Leave the Duel?", this.cfg.ranked ? "You will lose the current Duel (ranked: it counts as a loss)." : "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
+    if (!this.over && !this.cfg.practice && !(await confirmModal("Leave the Duel?", this.cfg.ranked ? "You will lose the current Duel (ranked: it counts as a loss)." : "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
     if (!this.over) this.cfg.ranked?.resign(); // classificata: chi esce perde
     if (!this.over) this.endBroadcast({ winner: 1 - this.cfg.me, why: "You left the Duel", over: true });
     else if (this.broadcast) closeReport(this.broadcast.id);
