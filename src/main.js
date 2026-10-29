@@ -17,6 +17,7 @@ import { toast, openModal } from "./ui/modal.js";
 import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
 import { showHdpc } from "./ui/hdpc.js";
+import { initCoaching } from "./ui/coaching.js";
 import { version } from "../package.json";
 
 // PWA: Helios si può installare come app sul desktop (manifest + service worker in public/).
@@ -199,7 +200,7 @@ const DUEL_WIDTH = 1180;
 // ---------------------------------------------------------------- amici e inviti (src/net/social.js)
 
 // Chi guarda il duello di un amico (ui/coaching.js) non è in duello: resta "online" e riceve gli inviti.
-const inDuel = () => !!app.root.querySelector(":scope > .duel-screen:not(.spectating)");
+const inDuel = () => !!app.root.querySelector(":scope > .duel-screen:not(.spectating):not(.practice)");
 const activeDeckName = () => {
   const decks = loadDecks();
   return (decks.find((d) => d.id === settings.lastDeck) ?? decks[0])?.name ?? "none";
@@ -292,6 +293,8 @@ async function boot() {
     if (location.hash === "#ai-vs-ai") return aiVsAi();
     // In duello la presenza porta le chiavi per guardarlo (solo gli amici la leggono, vedi net/spectate.js).
     startSocial({ status: () => (inDuel() ? "duel" : "online"), watch: () => app.current?.broadcast?.info() ?? null });
+    // Report del coaching: dal duello rigiocato si torna alla pagina dei report.
+    initCoaching(app, () => showOnline(app, { tab: "social" }));
     home();
   } catch (e) {
     console.error(e);

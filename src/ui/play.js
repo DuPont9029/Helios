@@ -20,6 +20,7 @@ import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
 import { relayStatus, socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
 import { unpackSignal } from "../net/peer.js";
 import { watchFriend, reportsBox } from "./coaching.js";
+import { COACHING } from "../data/features.js";
 import { clipboardWatchable, copyText, watchClipboard } from "../net/clipboard.js";
 import "../styles/play.css";
 
@@ -957,7 +958,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     return h("li.friend-row",
       h(`span.presence-dot.${dot}`, { title: label }),
       h("div.friend-info", h("b", f.name), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
-      watch ? h("button.btn.small", { title: `Watch ${f.name}'s Duel and report their mistakes`, onclick: () => watchFriend(app, f, watch) }, icon("visibility"), " Watch") : null,
+      watch ? h("button.btn.small", { title: COACHING ? `Watch ${f.name}'s Duel and report their mistakes` : `Watch ${f.name}'s Duel`, onclick: () => watchFriend(app, f, watch) }, icon("visibility"), " Watch") : null,
       f.status === "friend" ? h("button.btn.small.primary", { disabled: !canInvite, title: canInvite ? "Invite to a Duel with the rules on the left" : "You can invite a friend when they are online", onclick: () => inviteFriend(f) }, icon("swords"), " Invite") : null,
       h("button.btn.small.ghost", { title: "Rename", onclick: async () => { const n = await promptModal("Rename friend", "Name", f.name); if (n?.trim()) renameFriend(f.pk, n); } }, icon("edit")),
       h("button.btn.small.ghost", { title: "Remove from friends", onclick: async () => { if (await confirmModal("Remove friend", `Remove ${f.name} from your friends? They will no longer see when you are online.`, "Remove", "Cancel", { danger: true })) removeFriend(f.pk); } }, icon("person_remove"))
@@ -984,7 +985,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         : null,
       h("div.card-box", h("h3", `Friends (${friends.filter((f) => f.status === "friend").length})`),
         sorted.length ? h("ul.friend-list", sorted.map(friendRow)) : h("p.muted.small", "No friends yet: send your friend code to someone, or add a recent opponent below.")),
-      reportsBox(),
+      COACHING ? reportsBox() : null,
       recent.length
         ? h("div.card-box", h("h3", "Recent opponents"),
             h("ul.friend-list", recent.map((r) => h("li.friend-row",

@@ -15,7 +15,10 @@ import { watchStream } from "../net/spectate.js";
 import { sendWatch, presenceOf, onSocialChange, socialState } from "../net/social.js";
 import { toHex } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
-import { SEVERITIES, severityOf, describeAction, phaseShort, getReport, listReports, deleteReport, hasContent, onReportChange, mergedReport, severityCount, reportMarkdown } from "../duel/coaching.js";
+import { SEVERITIES, severityOf, describeAction, phaseShort, getReport, listReports, deleteReport, hasContent, onReportChange, severityCount, reportMarkdown } from "../duel/coaching.js";
+import { ReviewSession, openPractice, statsSection, lessonsSection, logSection, mistakesSection, exportPdf } from "./coach-review.js";
+import { gamesOf, gameSummary } from "../duel/coach-insights.js";
+import { COACHING } from "../data/features.js";
 import "../styles/coaching.css";
 
 // Più risposte di così ancora da rigiocare: lo spettatore recupera senza animazioni.
@@ -38,9 +41,10 @@ function actionBlock(action, { big = false } = {}) {
 
 /**
  * Nota su un'azione (o generale, action = null). note: quella già scritta (modifica).
- * Restituisce { note } (salvata), { deleted: true } o null (annullata).
+ * canShow: duello finito, la giocata giusta si può mostrare sul campo ({ note, show: true }).
+ * Restituisce { note } (salvata), { note, show: true }, { deleted: true } o null (annullata).
  */
-function editNote({ player, action, where, note = null }) {
+function editNote({ player, action, where, note = null, canShow = false }) {
   let severity = note?.severity ?? "mistake";
   const sevBtns = SEVERITIES.map((s) =>
     h(`button.sev-choice.sev-${s.id}`, { type: "button", title: s.hint, onclick: () => { severity = s.id; paint(); } }, h("b", s.mark), h("span", s.label), h("small", s.hint)));
@@ -51,6 +55,21 @@ function editNote({ player, action, where, note = null }) {
   const better = h("textarea.input.coach-text", { rows: 4, maxLength: 2000, placeholder: `The play ${player} should have made instead` });
   better.value = note?.better ?? "";
   const err = h("p.coach-error", { hidden: true });
+  let line = note?.line ?? null;
+  const lineEl = h("div.coach-line");
+  const paintLine = () => {
+    if (!action) return;
+    clear(lineEl).append(
+      line
+        ? h("div.coach-line-saved", icon("check_circle"), ` Play shown on the field: ${line.steps.length || line.responses.length} step${(line.steps.length || line.responses.length) === 1 ? "" : "s"}`,
+            canShow ? h("button.btn.small", { type: "button", onclick: () => m.close({ note: collect(), show: true }) }, "Record again") : null,
+            h("button.btn.small.ghost", { type: "button", onclick: () => { line = null; paintLine(); } }, "Remove"))
+        : canShow
+          ? h("button.btn", { type: "button", onclick: () => m.close({ note: collect(), show: true }) }, icon("sports_esports"), ` Show the better play on the field`)
+          : h("p.muted.small", `When the Duel is over you can also show the better play on the field, from this moment: ${player} watches it in the report.`)
+    );
+  };
+  const collect = () => ({ severity, wrong: wrong.value.trim(), better: better.value.trim(), line });
   const m = openModal({
     title: note ? "Edit your note" : action ? "Report a mistake" : "General note",
     className: "coach-note",
@@ -60,6 +79,7 @@ function editNote({ player, action, where, note = null }) {
       h("div.field", h("span", "How serious?"), h("div.sev-choices", sevBtns)),
       h("label.field", h("span", action ? "What went wrong (optional)" : "What went wrong"), wrong),
       h("label.field", h("span", `What should ${player} have done?`), better),
+      lineEl,
       err,
       h("p.muted.small", `${player} sees your notes only after the Duel, in one report with the notes of the other friends watching.`),
     ],
@@ -70,16 +90,17 @@ function editNote({ player, action, where, note = null }) {
         label: "Save",
         primary: true,
         onClick: (close) => {
-          if (!better.value.trim() && !(wrong.value.trim() && !action)) {
+          if (!better.value.trim() && !line && !(wrong.value.trim() && !action)) {
             err.hidden = false;
-            err.textContent = `Write what ${player} should have done.`;
+            err.textContent = `Write what ${player} should have done${canShow ? ", or show it on the field" : ""}.`;
             return better.focus();
           }
-          close({ note: { severity, wrong: wrong.value.trim(), better: better.value.trim() } });
+          close({ note: collect() });
         },
       },
     ],
   });
+  paintLine();
   setTimeout(() => (action ? better : wrong).focus(), 40);
   return m.result.then((v) => v ?? null);
 }
@@ -156,7 +177,8 @@ class WatchSession {
       separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: null,
       onLeave: () => this.leave(),
-      sideTab: { id: "coach", label: "Coach", el: this.panel() },
+      // Coaching spento (data/features.js): si guarda e basta, la scheda resta fuori dalla schermata.
+      sideTab: COACHING ? { id: "coach", label: "Coach", el: this.panel() } : (this.panel(), null),
     });
     // Chi guarda non risponde al core: niente comandi della catena né Auto-place (anche sopra le finestre).
     this.view.el.classList.add("spectating");
@@ -289,11 +311,35 @@ class WatchSession {
   async noteOn(a) {
     const old = [...this.notes.values()].find((n) => n.seq === a.seq);
     const action = { text: a.text, codes: a.codes, details: a.details };
-    const r = await editNote({ player: this.player, action, where: this.where(a.turn, a.phase), note: old });
+    const r = await editNote({ player: this.player, action, where: this.where(a.turn, a.phase), note: old, canShow: !!this.over });
     if (!r || this.closed) return;
-    if (r.deleted) this.remove(old);
-    else this.save({ ...(old ?? { id: toHex(crypto.getRandomValues(new Uint8Array(6))) }), seq: a.seq, turn: a.turn, phase: a.phase, action, ...r.note });
-    this.paintAction(a);
+    if (r.deleted) return (this.remove(old), this.paintAction(a));
+    const note = { ...(old ?? { id: toHex(crypto.getRandomValues(new Uint8Array(6))) }), seq: a.seq, turn: a.turn, phase: a.phase, action, ...r.note };
+    if (!r.show) {
+      this.save(note);
+      return this.paintAction(a);
+    }
+    // A duello finito: la giocata giusta sul campo, dallo stesso momento (il giocatore contro la CPU).
+    if (note.better || note.wrong || note.line) this.save(note);
+    openPractice({
+      root: this.container,
+      hide: [this.view.el, this.view.floatBar],
+      duel: this.cfg.duel,
+      me: this.cfg.me,
+      names: this.cfg.names,
+      prefix: this.responses.slice(0, a.seq),
+      title: `Show the better play · Turn ${a.turn}`,
+      hint: `Play ${this.player}'s cards the way they should have been played; the CPU answers for the opponent. Then save: ${this.player} watches it on the field in the report.`,
+      notes: note.better || note.wrong ? [{ ...note, name: "Your note" }] : [],
+      record: true,
+      onDone: (line) => {
+        if (line && !this.closed) {
+          this.save({ ...note, line });
+          toast(`Play saved and sent to ${this.player}`);
+        }
+        this.paintAction(a);
+      },
+    });
   }
 
   async addGeneral() {
@@ -319,8 +365,8 @@ class WatchSession {
     note.at = Date.now();
     this.notes.set(note.id, note);
     this.paintCount();
-    const { id, seq, turn, phase, action, severity, wrong, better, at } = note;
-    const n = await sendWatch(this.friend.pk, { t: "watch-note", id: this.info.id, note: { id, seq, turn, phase, action, severity, wrong, better, at } });
+    const { id, seq, turn, phase, action, severity, wrong, better, line, at } = note;
+    const n = await sendWatch(this.friend.pk, { t: "watch-note", id: this.info.id, note: { id, seq, turn, phase, action, severity, wrong, better, line: line ?? null, at } });
     if (!n) toast("The note was not sent: the Nostr relays did not answer. Open it and save it again.", { kind: "error", ms: 6000 });
   }
 
@@ -345,7 +391,8 @@ class WatchSession {
     const next = h("button.btn.primary", { hidden: true, onclick: () => this.onWatchNext?.(this.nextInfo) }, icon("visibility"), " Watch the next Duel");
     const panel = h(
       "div.rematch-panel",
-      h("div.rematch-status", n ? `Your ${n} note${n === 1 ? " was" : "s were"} sent to ${this.player}: the report opens for them when the match is over.` : `You can still add notes from the Coach tab: ${this.player} gets them in the report.`),
+      COACHING && h("div.rematch-status", n ? `Your ${n} note${n === 1 ? " was" : "s were"} sent to ${this.player}: the report opens for them when the match is over.` : `You can still add notes from the Coach tab: ${this.player} gets them in the report.`,
+        h("br"), `Now you can also show the better plays on the field: open an action in the Coach tab → "Show the better play on the field".`),
       h("div.rematch-actions", h("button.btn", { onclick: () => this.leave() }, "Leave"), next)
     );
     this.view.overlay.append(panel);
@@ -414,49 +461,90 @@ export function coachResultButton(id) {
   return btn;
 }
 
-/** Il report unito di una partita (solo a partita finita). */
-export function showReport(r) {
+// L'app (per aprire il duello rigiocato a tutto schermo) e la pagina a cui tornare dopo (vedi initCoaching).
+let coachApp = null;
+let backToReports = null;
+
+/** Da main.js: app e ritorno alla pagina dei report (Online → Friends & Ranking). */
+export function initCoaching(app, back) {
+  coachApp = app;
+  backToReports = back;
+}
+
+/** Il duello del report sul campo, dal momento seq (note: guarda la giocata mostrata da quello spettatore). */
+function openReview(r, gameNo, seq, note = null, tab = "mistakes", practice = false) {
+  const game = r.games.find((g) => g.game === gameNo);
+  if (!game?.replay || !coachApp) return toast("This Duel cannot be replayed (it was played with an older version)", { kind: "error" });
+  const app = coachApp;
+  app.onLeave?.();
+  app.onLeave = null;
+  app.current?.destroy?.();
+  const root = clear(app.root);
+  const session = new ReviewSession({
+    report: r,
+    game,
+    at: seq,
+    note,
+    onExit: () => {
+      app.current = null;
+      backToReports?.();
+      showReport(getReport(r.id) ?? r, tab);
+    },
+  });
+  app.current = session;
+  session.start(root).then(() => practice && !session.closed && session.practice());
+}
+
+const REPORT_TABS = [
+  ["lessons", "Lessons", "school"],
+  ["mistakes", "Mistakes", "flag"],
+  ["stats", "Statistics", "monitoring"],
+  ["log", "Duel log", "list"],
+];
+
+/** Il report unito di una partita (solo a partita finita): note, statistiche, lezioni, registro del duello. */
+export function showReport(r, tab = "lessons") {
   if (!r) return;
   if (!r.over) return toast("The report opens when the match is over", { kind: "error" });
+  const head = h("div.report-head");
+  const tabsEl = h("div.report-tabs", { role: "tablist" });
   const body = h("div.coach-report");
+  let m = null;
+  // Dal report al campo: la finestra si chiude, il duello rigiocato si apre a tutto schermo.
+  const go = (practice) => (game, seq, note) => {
+    m?.close(true);
+    openReview(r, game, seq, note, tab, practice);
+  };
+  const opts = { onSee: go(false), onTry: go(true) };
   const paint = () => {
     const count = severityCount(r);
-    const groups = mergedReport(r);
-    let game = 0;
-    clear(body).append(
-      h("div.report-head",
-        h("div", h("b", `${r.names[0]} vs ${r.names[1]}`), h("span.muted", ` · ${r.mode} · ${new Date(r.at).toLocaleString("en-GB")}`)),
-        h("div.muted.small", [...r.games].sort((a, b) => a.game - b.game).map((g) => `${r.games.length > 1 ? `Game ${g.game}: ` : ""}${g.result ?? "—"}`).join(" · ")),
-        h("div.muted.small", `Watched by ${r.watchers.map((w) => w.name).join(", ") || "nobody"}`),
-        h("div.report-sum", SEVERITIES.map((s) => h(`span.sev-count.sev-${s.id}`, h("b", count[s.id]), ` ${s.label}${count[s.id] === 1 ? "" : "s"}`)))),
-      ...(groups.length ? [] : [h("p.muted", "No mistakes were reported.")]),
-      ...groups.flatMap((g) => {
-        const out = [];
-        if (r.games.length > 1 && g.game !== game) out.push(h("h3.report-game", `Game ${(game = g.game)}`));
-        out.push(h(`section.report-item.sev-${g.worst}`,
-          h("div.report-when", `Turn ${g.turn}${g.phase ? ` · ${g.phase}` : ""}`),
-          actionBlock(g.action, { big: true }),
-          h("ul.report-notes", g.notes.map((n) => h("li",
-            h("div.report-note-head", severityBadge(n.severity, { label: true }), h("span.muted.small", ` by ${n.name}`)),
-            n.wrong ? h("p", h("span.muted", "What went wrong: "), n.wrong) : null,
-            n.better ? h("p.report-better", h("span.muted", "Better play: "), n.better) : null)))));
-        return out;
-      })
-    );
+    const acc = gamesOf(r).map(gameSummary).filter((x) => x.accuracy != null);
+    clear(head).append(
+      h("div", h("b", `${r.names[0]} vs ${r.names[1]}`), h("span.muted", ` · ${r.mode} · ${new Date(r.at).toLocaleString("en-GB")}`)),
+      h("div.muted.small", [...r.games].sort((a, b) => a.game - b.game).map((g) => `${r.games.length > 1 ? `Game ${g.game}: ` : ""}${g.result ?? "—"}`).join(" · ")),
+      h("div.muted.small", `Watched by ${r.watchers.map((w) => w.name).join(", ") || "nobody"}`),
+      h("div.report-sum",
+        SEVERITIES.map((sv) => h(`span.sev-count.sev-${sv.id}`, h("b", count[sv.id]), ` ${sv.label}${count[sv.id] === 1 ? "" : "s"}`)),
+        acc.length ? h("span.report-acc", { title: "Actions not flagged by the coaches" }, "Accuracy ", h("b", `${Math.round((acc.reduce((t, x) => t + x.accuracy, 0) / acc.length) * 100)}%`)) : null));
+    clear(tabsEl).append(...REPORT_TABS.map(([id, label, ic]) => h(`button.report-tab${id === tab ? ".on" : ""}`, { role: "tab", onclick: () => ((tab = id), paint()) }, icon(ic), ` ${label}`)));
+    const section = tab === "stats" ? statsSection(r, opts) : tab === "log" ? logSection(r, opts) : tab === "mistakes" ? mistakesSection(r, opts) : lessonsSection(r, opts);
+    clear(body).append(...section);
   };
   paint();
   const off = onReportChange((x) => (x?.id === r.id ? paint() : null));
   const file = `coaching-${r.names[0]}-vs-${r.names[1]}-${new Date(r.at).toISOString().slice(0, 10)}.md`.replace(/[^\w.-]+/g, "_");
-  openModal({
+  m = openModal({
     title: "Coaching report",
     className: "wide coach-report-modal",
-    body: [body],
+    body: [head, tabsEl, body],
     actions: [
+      { label: "Export PDF", onClick: () => exportPdf(r).catch((e) => toast(`PDF export failed: ${e.message}`, { kind: "error" })) },
       { label: "Copy text", onClick: () => copyText(reportMarkdown(r)).then((ok) => toast(ok ? "Report copied" : "Copy failed")) },
       { label: "Download .md", onClick: () => download(file, reportMarkdown(r), "text/markdown") },
       { label: "Close", primary: true, value: true },
     ],
-  }).result.then(off);
+  });
+  m.result.then(off);
 }
 
 /** Elenco dei report (pagina Online → Friends & Ranking). */

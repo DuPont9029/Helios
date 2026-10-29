@@ -88,3 +88,112 @@
 .report-better { color: var(--accent-soft); }
 .report-note-head { display: flex; align-items: center; gap: 6px; }
 .coach-reports .friend-row .icon { color: var(--accent); }
+
+/* Giocata mostrata sul campo (finestra della nota) */
+.coach-line:empty { display: none; }
+.coach-line-saved { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; color: var(--accent-soft); font-size: 13px; }
+.coach-line-saved .icon { font-size: 18px; }
+
+/* Report: schede, riepilogo */
+.modal.coach-report-modal { width: min(1040px, 100%); }
+.report-acc { margin-left: auto; padding: 2px 8px; font-size: 13px; border: 1px solid var(--accent); color: var(--accent-soft); }
+.report-acc b { color: var(--text); }
+.report-tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 8px 0 10px; overflow-x: auto; }
+.report-tab {
+  display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; cursor: pointer; white-space: nowrap;
+  font: 600 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted);
+  background: none; border: 0; border-bottom: 2px solid transparent;
+}
+.report-tab .icon { font-size: 16px; }
+.report-tab:hover { color: var(--text); }
+.report-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.report-sub { margin: 14px 0 6px; font: 600 13px var(--display); text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-soft); }
+.practice-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* Statistiche */
+.coach-report { --you: #3987e5; --opp: #d95926; }
+.stat-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.stat-tile { display: grid; gap: 2px; padding: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.stat-label { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.stat-tile b { font-size: 20px; color: var(--text); }
+.stat-sub { font-size: 11px; color: var(--muted); }
+.stat-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.stat-table th, .stat-table td { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+.stat-table th { font: 600 11px var(--mono); color: var(--muted); }
+.stat-table th:first-child, .stat-table td:first-child { text-align: left; color: var(--muted); }
+.chart { margin: 4px 0; padding: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.chart figcaption { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; font-size: 13px; }
+.chart-legend { display: inline-flex; gap: 12px; font-size: 12px; color: var(--muted); }
+.chart-legend i { display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 2px; }
+.chart-legend i.you { background: var(--you); }
+.chart-legend i.opp { background: var(--opp); }
+.chart-plot { position: relative; }
+.chart-svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart-svg .axis text { font: 10px var(--mono); fill: var(--muted); }
+.chart-svg .grid { stroke: rgba(255, 255, 255, 0.07); }
+.chart-svg .base { stroke: rgba(255, 255, 255, 0.3); }
+.chart-svg .line { fill: none; stroke-width: 2; stroke-linejoin: round; }
+.chart-svg .line.you, .chart-svg .dot.you { stroke: var(--you); }
+.chart-svg .line.opp, .chart-svg .dot.opp { stroke: var(--opp); }
+.chart-svg .dot { fill: var(--panel-2); stroke-width: 2; }
+.chart-svg .direct { font: 11px var(--mono); fill: var(--text); }
+.chart-svg .bar.you { fill: var(--you); }
+.chart-svg .bar.opp { fill: var(--opp); }
+.chart-svg .hit { fill: transparent; }
+.chart-svg .guide { stroke: rgba(255, 255, 255, 0.35); stroke-dasharray: 3 3; pointer-events: none; }
+.chart-tip {
+  position: absolute; top: 0; transform: translateX(-50%); pointer-events: none; z-index: 2; min-width: 120px;
+  padding: 6px 8px; font-size: 12px; background: rgba(10, 11, 16, 0.95); border: 1px solid var(--line-strong); white-space: nowrap;
+}
+.hbar-list { display: grid; gap: 4px; }
+.hbar { display: grid; grid-template-columns: 120px 1fr 32px; gap: 8px; align-items: center; font-size: 12px; }
+.hbar-label { color: var(--muted); }
+.hbar-track { height: 10px; background: rgba(255, 255, 255, 0.04); }
+.hbar-track i { display: block; height: 100%; background: var(--you); border-radius: 0 4px 4px 0; }
+.hbar-v { text-align: right; font-variant-numeric: tabular-nums; }
+.slow-list, .obs-list, .lesson-list, .line-steps, .practice-list { margin: 0; padding-left: 20px; display: grid; gap: 6px; }
+.slow-list li, .lesson-list li { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.lesson-list li { display: grid; gap: 4px; padding: 8px; background: var(--panel); border-left: 3px solid var(--sev); }
+.lesson-list p { margin: 0; white-space: pre-wrap; }
+.lesson-act { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.slow-ms { font: 700 13px var(--mono); color: var(--accent-soft); min-width: 48px; }
+.obs-list li { line-height: 1.45; }
+.line-steps { font-size: 12px; padding: 6px 6px 6px 26px; background: rgba(56, 198, 255, 0.06); border-left: 2px solid var(--accent); }
+.line-steps li { display: flex; align-items: center; gap: 6px; }
+.used-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.used-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.used-card { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; }
+.used-card .coach-thumb, .used-card .coach-thumb .card { width: 44px; }
+
+/* Registro del duello */
+.log-list { display: grid; gap: 2px; }
+.review-turn { margin-top: 8px; padding: 3px 0; font: 600 11px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-soft); border-bottom: 1px solid var(--line); }
+.log-row { display: flex; align-items: center; gap: 6px; padding: 3px 4px; font-size: 12px; }
+.log-row.popp { opacity: 0.75; }
+.log-row .coach-thumb, .log-row .coach-thumb .card { width: 26px; }
+.review-ms { flex: none; font: 500 10px var(--mono); color: var(--muted); }
+.log-note { margin: 0 0 4px 52px; padding: 4px 8px; font-size: 12px; border-left: 3px solid var(--sev); background: color-mix(in srgb, var(--sev) 10%, var(--panel-2)); }
+
+/* Duello rigiocato (scheda "Review") e giocata di prova */
+.review-panel .coach-head { flex-wrap: wrap; }
+.review-where { font: 500 11px var(--mono); color: var(--muted); }
+.review-ctl { display: flex; gap: 4px; flex-wrap: wrap; }
+.review-ctl .btn .icon { font-size: 18px; }
+.review-notes { display: grid; gap: 6px; max-height: 40%; overflow-y: auto; }
+.review-notes:empty { display: none; }
+.review-note { display: grid; gap: 4px; padding: 6px 8px; font-size: 12px; background: color-mix(in srgb, var(--sev) 12%, var(--panel-2)); border-left: 3px solid var(--sev); }
+.review-note p { margin: 0; white-space: pre-wrap; }
+.review-branch { display: grid; gap: 6px; padding: 8px; font-size: 12px; background: rgba(56, 198, 255, 0.08); border: 1px solid var(--accent); }
+.review-branch p { margin: 0; white-space: pre-wrap; }
+.review-list .coach-row.popp { opacity: 0.7; }
+.review-list .coach-row.current { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.practice-panel { gap: 10px; }
+.practice-notes { display: grid; gap: 6px; }
+.practice-note { display: flex; gap: 6px; align-items: flex-start; font-size: 12px; white-space: pre-wrap; }
+.practice-steps { flex: 1; min-height: 0; overflow-y: auto; }
+.practice-list { font-size: 12px; }
+.practice-list li { display: flex; align-items: center; gap: 6px; }
+.practice-list li.popp { color: var(--muted); }
+/* Rigiocando o provando, la scheda laterale ha più spazio del dettaglio della carta */
+.duel-side:has(.review-panel, .practice-panel) .detail-panel { flex-basis: 32%; }
+.duel-side:has(.review-panel, .practice-panel) .side-tabs { flex-basis: 68%; }

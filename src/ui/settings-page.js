@@ -11,6 +11,7 @@ import { statusChanged } from "../net/social.js";
 import { eloRelays } from "../net/elo.js";
 import { uploadHistory, rememberUpload, forgetUpload } from "../data/uploads.js";
 import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
+import { COACHING } from "../data/features.js";
 
 /** Copia un testo segreto: prima si conferma. */
 async function copySecret(title, message, text) {
@@ -124,7 +125,7 @@ function profileSection(field, area) {
         }, "New profile")),
       h("h4", "Friends"),
       h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
-      h("label.check", h("input", { type: "checkbox", checked: settings.allowSpectators !== false, onchange: (e) => (settings.allowSpectators = e.target.checked) }), "Let my friends watch my Duels (Vs CPU and online) and report my mistakes"),
+      h("label.check", h("input", { type: "checkbox", checked: settings.allowSpectators !== false, onchange: (e) => (settings.allowSpectators = e.target.checked) }), `Let my friends watch my Duels (Vs CPU and online)${COACHING ? " and report my mistakes" : ""}`),
       field("Nostr relays (one per line)", area("eloRelays"), `Used for friends, invites and the ranking. Empty = ${eloRelays().length} public relays. Friends must share at least one relay.`)
     );
   };

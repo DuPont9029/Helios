@@ -63,16 +63,39 @@ export function describeAction(prompt, response, me) {
 const str = (v, max) => String(v ?? "").replace(/\r/g, "").slice(0, max);
 const int = (v, min, max) => (Number.isInteger(v) && v >= min && v <= max ? v : null);
 
+// Giocata mostrata dallo spettatore (a duello finito, sul campo): risposte al core dal momento segnalato.
+const LINE_MAX = 300;
+const LINE_JSON_MAX = 15000; // i messaggi tra amici restano piccoli (vedi social.js)
+
+/** Giocata pulita: { from, responses, steps: [{ at (indice in responses), p, text, codes, details }] } o null. */
+export function cleanLine(l) {
+  if (!l || typeof l !== "object") return null;
+  const from = int(l.from, 0, 1e6);
+  const list = l.responses;
+  if (from == null || !Array.isArray(list) || !list.length || list.length > LINE_MAX) return null;
+  if (!list.every((r) => r && typeof r === "object" && !Array.isArray(r))) return null;
+  if (JSON.stringify(list).length > LINE_JSON_MAX) return null;
+  const steps = Array.isArray(l.steps) ? l.steps.slice(0, 60).filter((x) => x && typeof x === "object" && int(x.at, 0, list.length - 1) != null).map((x) => ({
+    at: x.at,
+    p: x.p === 1 ? 1 : 0,
+    text: str(x.text, 300),
+    codes: Array.isArray(x.codes) ? nums(x.codes).slice(0, 6) : [],
+    details: Array.isArray(x.details) ? x.details.slice(0, 6).map((d) => str(d, 200)) : [],
+  })) : [];
+  return { from, responses: list, steps };
+}
+
 /**
  * Segnalazione pulita (arriva dalla rete): { id, game, seq, turn, phase, action: { text, codes, details }, severity,
- * wrong, better, at }. seq = indice della risposta dell'azione nel duello (uguale per tutti gli spettatori,
+ * wrong, better, line, at }. line = la giocata giusta mostrata sul campo (vedi cleanLine), o null. seq = indice della risposta dell'azione nel duello (uguale per tutti gli spettatori,
  * il duello è deterministico), null = nota generale sul momento (turn/phase).
  */
 export function cleanNote(n) {
   if (!n || typeof n !== "object" || typeof n.id !== "string" || !/^[0-9a-z]{1,24}$/.test(n.id)) return null;
   const better = str(n.better, 2000).trim();
   const wrong = str(n.wrong, 1000).trim();
-  if (!better && !wrong) return null;
+  const line = cleanLine(n.line);
+  if (!better && !wrong && !line) return null;
   const a = n.action && typeof n.action === "object" ? n.action : null;
   return {
     id: n.id,
@@ -88,6 +111,7 @@ export function cleanNote(n) {
     severity: severityOf(n.severity).id,
     wrong,
     better,
+    line,
     at: Number.isFinite(n.at) ? n.at : Date.now(),
   };
 }
@@ -96,10 +120,12 @@ export function cleanNote(n) {
 
 const KEY = "ygoweb.coaching";
 const MAX_REPORTS = 60;
+// Duelli da rigiocare (mazzi, seed, risposte, statistiche): pesano, si tengono solo nei report più recenti.
+const MAX_REPLAYS = 20;
 const DAY = 24 * 3600 * 1000;
 
 /**
- * { reports: [{ id, at, names: [io, avversario], mode, games: [{ game, stream, result }], over,
+ * { reports: [{ id, at, names: [io, avversario], mode, games: [{ game, stream, result, replay }], over,
  *   watchers: [{ pk, name }], notes: [{ from, name, ...cleanNote }] }], streams: { idDuello: idReport } }
  */
 function load() {
@@ -119,9 +145,20 @@ function save() {
   store.reports = store.reports.filter(keep).slice(0, MAX_REPORTS);
   const ids = new Set(store.reports.map((r) => r.id));
   for (const [s, r] of Object.entries(store.streams)) if (!ids.has(r)) delete store.streams[s];
-  try {
-    localStorage.setItem(KEY, JSON.stringify(store));
-  } catch { /* storage pieno */ }
+  store.reports.slice(MAX_REPLAYS).forEach(dropReplays);
+  // Storage pieno: via i duelli da rigiocare, dal report più vecchio.
+  for (let i = store.reports.length; i >= 0; i--) {
+    try {
+      localStorage.setItem(KEY, JSON.stringify(store));
+      return;
+    } catch {
+      if (i > 0) dropReplays(store.reports[i - 1]);
+    }
+  }
+}
+
+function dropReplays(r) {
+  for (const g of r.games) delete g.replay;
 }
 
 const listeners = new Set();
@@ -166,12 +203,16 @@ export function startReportGame({ report, stream, game = 1, names, mode }) {
   changed(r, "start");
 }
 
-/** Fine di un duello (result: testo, es. "Victory"); over = la partita è finita, il report si può leggere. */
-export function endReportGame(stream, result, over) {
+/**
+ * Fine di un duello (result: testo, es. "Victory"); over = la partita è finita, il report si può leggere.
+ * replay: { duel, me, names, history, stats } per rigiocare il duello dal report (vedi ui/coach-review.js).
+ */
+export function endReportGame(stream, result, over, replay = null) {
   const r = getReport(store.streams[stream]);
   if (!r) return;
   const g = r.games.find((x) => x.stream === stream);
   if (g) g.result = result;
+  if (g && replay) g.replay = replay;
   if (over) r.over = true;
   changed(r, "end");
 }
@@ -272,6 +313,7 @@ export function reportMarkdown(r) {
       lines.push(`- **${s.label} (${s.mark})** by ${n.name}`);
       if (n.wrong) lines.push(`  - What went wrong: ${n.wrong.replace(/\n/g, " ")}`);
       if (n.better) lines.push(`  - Better play: ${n.better.replace(/\n/g, " ")}`);
+      if (n.line) lines.push(`  - Shown on the field: ${n.line.steps.map((x) => x.text).join(" → ") || `${n.line.responses.length} choices`}`);
     }
     lines.push("");
   }
