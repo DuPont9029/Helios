@@ -281,7 +281,7 @@ export class Prompter {
       body: [
         h(
           "div.activate-q",
-          h("div.activate-card", { onmouseenter: () => this.view.hover(msg.code), onclick: () => this.view.hover(msg.code) }, cardFace(msg.code)),
+          h("div.activate-card", { onmouseenter: () => this.view.hover(msg.code), onclick: () => this.view.peekCard(msg.code, true) }, cardFace(msg.code)),
           h("div.activate-text", h("b", cardName(msg.code)), h("span", text))
         ),
         DECLINE_HINT("No"),

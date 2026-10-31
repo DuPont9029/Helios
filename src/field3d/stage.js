@@ -105,6 +105,120 @@ export class FieldStage {
     this.camera.lookAt(ox, 0, oz);
     this.camera.far = height + 500;
     this.camera.updateProjectionMatrix();
+    this.placeLogButton();
+  }
+
+  // ---------------------------------------------------------------- pulsante Log/Chat nel campo
+
+  /**
+   * Pulsante di Log e Chat dentro il campo: un esagono piccolo sul bordo sinistro, a metà altezza, che si accende
+   * solo al passaggio del mouse (o appena di più con messaggi da leggere). onVisible(false): niente spazio ai lati
+   * del tabellone (schermo stretto), la pagina mostra il suo pulsante.
+   */
+  setLogButton({ onClick, onVisible }) {
+    const icon = document.createElement("canvas");
+    icon.width = icon.height = 256;
+    const x = icon.getContext("2d");
+    const g = x.createRadialGradient(128, 128, 20, 128, 128, 128);
+    g.addColorStop(0, "rgba(20,40,70,0.95)");
+    g.addColorStop(1, "rgba(6,10,20,0.95)");
+    x.fillStyle = g;
+    x.beginPath();
+    for (let k = 0; k < 6; k++) {
+      const a = Math.PI / 6 + (k * Math.PI) / 3;
+      x[k ? "lineTo" : "moveTo"](128 + Math.cos(a) * 124, 128 + Math.sin(a) * 124);
+    }
+    x.closePath();
+    x.fill();
+    x.strokeStyle = x.fillStyle = "#9ae2ff";
+    x.lineWidth = 10;
+    x.lineJoin = "round";
+    x.beginPath();
+    x.roundRect(62, 66, 132, 92, 18);
+    x.stroke();
+    x.beginPath();
+    x.moveTo(92, 156);
+    x.lineTo(80, 192);
+    x.lineTo(120, 156);
+    x.fill();
+    for (const y of [94, 114, 134]) x.fillRect(84, y - 4, y === 134 ? 56 : 88, 8);
+    const tex = new THREE.CanvasTexture(icon);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const group = new THREE.Group();
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(2.6, 6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false }));
+    disc.rotation.x = -Math.PI / 2;
+    disc.rotation.z = Math.PI; // la destra dello schermo è -x
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x38c6ff, toneMapped: false, transparent: true, opacity: 0.8 });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(2.75, 2.9, 6), ringMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.05;
+    // Numero dei messaggi da leggere: un pallino rosso con la cifra.
+    const badgeCanvas = document.createElement("canvas");
+    badgeCanvas.width = badgeCanvas.height = 64;
+    const badgeTex = new THREE.CanvasTexture(badgeCanvas);
+    badgeTex.colorSpace = THREE.SRGBColorSpace;
+    const badge = new THREE.Mesh(new THREE.CircleGeometry(1, 24), new THREE.MeshBasicMaterial({ map: badgeTex, transparent: true, toneMapped: false }));
+    badge.rotation.x = -Math.PI / 2;
+    badge.rotation.z = Math.PI;
+    badge.position.set(-2, 0.1, 2);
+    badge.visible = false;
+    group.add(disc, ring, badge);
+    this.scene.add(group);
+    this.logButton = { group, disc, ringMat, badge, badgeCanvas, badgeTex, onClick, onVisible, unread: 0, hover: false, visible: null };
+    this.placeLogButton();
+  }
+
+  setLogUnread(n) {
+    const b = this.logButton;
+    if (!b) return;
+    b.unread = n;
+    b.badge.visible = n > 0;
+    const x = b.badgeCanvas.getContext("2d");
+    x.clearRect(0, 0, 64, 64);
+    x.fillStyle = "#ff3b4e";
+    x.beginPath();
+    x.arc(32, 32, 30, 0, Math.PI * 2);
+    x.fill();
+    x.fillStyle = "#fff";
+    x.font = "700 36px sans-serif";
+    x.textAlign = "center";
+    x.textBaseline = "middle";
+    x.fillText(n > 9 ? "9+" : String(n), 32, 34);
+    b.badgeTex.needsUpdate = true;
+  }
+
+  /** Sul bordo sinistro della vista, a metà altezza, sollevato sopra le decorazioni del campo. */
+  placeLogButton() {
+    const b = this.logButton;
+    if (!b || !this.anchors) return;
+    const y = 20;
+    const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const halfW = (this.camera.position.y - y) * t * this.camera.aspect;
+    const x = this.camera.position.x + halfW - 4.5; // lo schermo ha la sinistra a +x
+    // Serve spazio a sinistra del tabellone (la Zona Banditi dell'avversario è a x ≈ 25.6).
+    const visible = x > 33;
+    b.group.position.set(x, y, 0);
+    b.group.visible = visible;
+    if (visible !== b.visible) {
+      b.visible = visible;
+      b.onVisible?.(visible);
+    }
+  }
+
+  /** Il pulsante di Log/Chat è sotto il puntatore? */
+  overLogButton(clientX, clientY) {
+    const b = this.logButton;
+    if (!b?.group.visible) return false;
+    b.hover = this.rayAt(clientX, clientY).intersectObject(b.disc).length > 0;
+    return b.hover;
+  }
+
+  /** Raggio dalla telecamera attraverso un punto dello schermo. */
+  rayAt(clientX, clientY) {
+    const box = this.canvas.getBoundingClientRect();
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(((clientX - box.left) / box.width) * 2 - 1, -((clientY - box.top) / box.height) * 2 + 1), this.camera);
+    return ray;
   }
 
   /** Inquadratura libera (anteprima nelle impostazioni): il campo visto dal lato del giocatore. */
@@ -165,10 +279,12 @@ export class FieldStage {
 
   /** Clic sul pavimento (fuori da zone e carte): la creatura del campo fa la sua animazione. */
   tap(clientX, clientY) {
+    if (this.overLogButton(clientX, clientY)) {
+      this.logButton.onClick?.();
+      return true;
+    }
     if (!this.field) return false;
-    const box = this.canvas.getBoundingClientRect();
-    const ray = new THREE.Raycaster();
-    ray.setFromCamera(new THREE.Vector2(((clientX - box.left) / box.width) * 2 - 1, -((clientY - box.top) / box.height) * 2 + 1), this.camera);
+    const ray = this.rayAt(clientX, clientY);
     let best = null;
     for (const b of this.field.tapBoxes()) {
       const c = new THREE.Vector3(...b.off);
@@ -191,6 +307,11 @@ export class FieldStage {
     requestAnimationFrame(this.frame);
     const dt = Math.min(this.clock.getDelta(), 1 / 15);
     if (!this.field || document.hidden) return;
+    const b = this.logButton;
+    if (b) {
+      b.ringMat.color.setRGB(0.22, 0.78, 1).multiplyScalar(b.hover ? 2.4 : b.unread ? 1 : 0.7);
+      b.group.scale.setScalar(b.hover ? 1.08 : 1);
+    }
     this.field.update(dt, { particles: this.fx, animations: true });
     if (this.fx) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
