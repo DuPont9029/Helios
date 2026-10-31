@@ -24,7 +24,9 @@ const KIND = 30078; // NIP-78: dati di un'applicazione (non compaiono nei feed s
 export const START_RATING = 1500;
 const K = 32;
 const PER_PAIR_PER_DAY = 5;
-const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://offchain.pub", "wss://relay.snort.social"];
+// Amici, inviti, matchmaking e classifica passano da qui: più relay sani = meno messaggi persi. offchain.pub non
+// risponde più (ottobre 2026); damus e nos.lol a volte cadono o limitano, restano per i client delle versioni prima.
+const DEFAULT_RELAYS = ["wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net", "wss://relay.snort.social", "wss://nostr.mom", "wss://nostr.oxtr.dev"];
 const OUTBOX = "ygoweb.eloOutbox";
 
 /** Relay usati per la classifica (Settings → eloRelays, uno per riga, sostituisce quelli predefiniti). */
