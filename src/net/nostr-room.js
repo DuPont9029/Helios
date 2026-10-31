@@ -8,6 +8,13 @@ import { encode, decode, routeOf } from "./peer.js";
 import { relayChannel } from "./nostr-relay-link.js";
 
 const APP_ID = "helios-ygo";
+// Trystero segnala "could not connect" anche quando la connessione sta per riuscire (es. le due offerte partite
+// insieme: una si scarta). Prima di passare ai relay (molto più lenti) si aspetta ancora un po' l'avversario.
+const JOIN_ERROR_GRACE_MS = 4000;
+// Da quando si sa che l'avversario è nella stanza (vedi relayChannel, onPresent): WebRTC di solito si collega in
+// 1-2 s, anche passando dal TURN; se non ce la fa entro così si passa ai relay senza aspettare l'errore di Trystero
+// (che arriva dopo più di 20 s).
+const WEBRTC_DEADLINE_MS = 12000;
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // come i codici del server: niente 0/O e 1/I
 export const NOSTR_CODE_LENGTH = 8;
 
@@ -81,6 +88,8 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
   let waitTimer = 0;
   let fallback = null; // canale sui relay (ripiego)
   let fallbackTimer = 0;
+  let graceTimer = 0;
+  let deadlineTimer = 0;
 
   const ready = new Promise((resolve, reject) => {
     onStatus("Connecting to the decentralized network (Nostr relays)...");
@@ -94,7 +103,18 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
       clearTimeout(fallbackTimer);
       fallbackTimer = setTimeout(() => !link && reject(new Error("The direct connection failed and the Nostr relays did not connect the two players either. Try again.")), 30000);
     };
-    relayChannel(code, { onPeer: () => toRelays("Direct connection not possible: your opponent is connecting through the Nostr relays...") }).then((ch) => {
+    const giveUpWebRTC = () => {
+      if (link || cancelled || !fallback) return;
+      fallback.request();
+      toRelays("Direct connection not possible: connecting through the Nostr relays (slower)...");
+    };
+    relayChannel(code, {
+      onPeer: () => toRelays("Direct connection not possible: your opponent is connecting through the Nostr relays..."),
+      onPresent: () => {
+        if (link || cancelled || deadlineTimer) return;
+        deadlineTimer = setTimeout(giveUpWebRTC, WEBRTC_DEADLINE_MS);
+      },
+    }).then((ch) => {
       if (cancelled) return ch.close();
       fallback = ch;
       ch.ready.then((l) => {
@@ -113,11 +133,18 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
           code,
           {
             onJoinError: (e) => {
-              // WebRTC non si collega (es. nessun TURN): si passa ai relay invece di rinunciare.
-              if (fallback && !link && /could not connect|SDP|ICE|TURN/i.test(String(e.error))) {
-                fallback.request();
-                toRelays("Direct connection not possible: connecting through the Nostr relays (slower)...");
-              } else if (!link) reject(new Error(`Unable to join the Room: ${e.error}`));
+              console.warn("Trystero:", e.error);
+              if (link || cancelled || graceTimer) return;
+              // WebRTC non si collega (es. nessun TURN): si passa ai relay invece di rinunciare, ma solo se
+              // l'avversario non arriva nemmeno nei secondi successivi (l'errore può essere un falso allarme).
+              if (/could not connect|SDP|ICE|TURN|handshake/i.test(String(e.error))) {
+                onStatus("Direct connection is taking longer than usual...");
+                graceTimer = setTimeout(() => {
+                  if (link || cancelled) return;
+                  if (!fallback) return reject(new Error(`Unable to join the Room: ${e.error}`));
+                  giveUpWebRTC();
+                }, JOIN_ERROR_GRACE_MS);
+              } else reject(new Error(`Unable to join the Room: ${e.error}`));
             },
           }
         );
@@ -129,6 +156,8 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
         troom.onPeerJoin = (peerId) => {
           if (link || cancelled) return; // stanza da 2 giocatori: gli altri si ignorano
           clearTimeout(waitTimer);
+          clearTimeout(graceTimer);
+          clearTimeout(deadlineTimer);
           link = new TrysteroLink(troom, action, peerId);
           fallback?.close();
           onStatus("Connected!");
@@ -153,6 +182,8 @@ export function connectViaNostr({ room = null, iceServers, forceRelay = false, o
       cancelled = true;
       clearTimeout(waitTimer);
       clearTimeout(fallbackTimer);
+      clearTimeout(graceTimer);
+      clearTimeout(deadlineTimer);
       if (!(link && fallback && link.ch === fallback)) fallback?.close();
       if (link) link.close();
       else troom?.leave().catch(() => {});

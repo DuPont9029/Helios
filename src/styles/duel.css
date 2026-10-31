@@ -111,10 +111,13 @@
 /* Carte dell'avversario (lato in alto): girate verso di lui, come sul tavolo. */
 .zone .card.theirs { transform: rotate(180deg); }
 .zone .card.theirs.defense { transform: rotate(270deg); }
-.zone .card.facedown { filter: brightness(0.82); }
+/* Coperte e negate: il filtro va sull'immagine, non sulla carta. Sulla carta lo sovrascriverebbe l'impulso delle
+   carte selezionabili (glow-pulse anima "filter": la carta negata tornava a colori a ogni impulso) e ingrigirebbe
+   anche il contorno e la spunta della scelta dei materiali. */
+.zone .card.facedown > * { filter: brightness(0.82); }
 .zone .card.facedown:not(.back) { opacity: 0.85; }
 .zone .card.facedown:not(.back)::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.18) 0 4px, transparent 4px 8px); }
-.zone .card.negated { filter: grayscale(0.9) brightness(0.85); }
+.zone .card.negated > * { filter: grayscale(0.9) brightness(0.85); }
 .pile-top { box-shadow: calc(var(--stack, 0) * 1px) calc(var(--stack, 0) * 1px) 0 #111, calc(var(--stack, 0) * 2px) calc(var(--stack, 0) * 2px) 0 #000 !important; }
 .zone-badge {
   position: absolute; z-index: 2; font: 700 11px var(--font); padding: 1px 6px; border-radius: 10px;

@@ -298,6 +298,8 @@ export function relayStatus() {
   const norm = (u) => u.replace(/\/+$/, "");
   return relays().map((url) => ({ url, connected: [...st].some(([u, ok]) => ok && norm(u) === norm(url)) }));
 }
+/** Connessioni ai relay di amici e matchmaking (null se non avviate): le riusa il ripiego dei duelli sui relay. */
+export const sharedPool = () => pool;
 /** Iscrizione ai relay (null se non collegati): restituisce { close() }. */
 export const subscribeRelays = (filter, onevent) => (pool ? pool.subscribeMany(relays(), filter, { onevent }) : null);
 
