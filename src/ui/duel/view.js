@@ -34,7 +34,9 @@ export class DuelView {
     this.selectHint = null;
     this.lp = [0, 0];
     this.onPileActions = null;
-    this.detail = createDetailPanel();
+    // Finestra della carta: compare tenendo premuta una carta (o cliccando un nome nel registro), non sempre.
+    this.peek = createDetailPanel();
+    this.hoverCode = 0;
     this.board = new Board({
       me: this.me,
       reveal: this.reveal,
@@ -102,6 +104,19 @@ export class DuelView {
       this.stage.setAnchors({ center: this.board.centerEl, left: zones.get(key(this.me, LOC.MZONE, 5)), right: zones.get(key(this.me, LOC.MZONE, 6)) });
       await this.stage.load(choice.base, choice.id, choice.sides);
       if (this.destroyed) return;
+      // Log e Chat: pulsante nel campo, sul bordo sinistro (senza spazio ai lati resta quello normale).
+      this.stage.setLogButton({
+        onClick: () => this.toggleDrawer(true),
+        onVisible: (v) => this.main.classList.toggle("log3d", v),
+      });
+      this.stage.setLogUnread(this.unread);
+      let last = 0;
+      this.main.addEventListener("mousemove", (e) => {
+        const now = performance.now();
+        if (now - last < 80) return;
+        last = now;
+        this.main.classList.toggle("over-log", !e.target.closest(".zone, .card, button, .hand, .lp") && !!this.stage?.overLogButton(e.clientX, e.clientY));
+      });
       for (let p = 0; p < 2; p++) if (this.lp[p]) this.stage.syncLP(this.board.side(p), this.lp[p], this.startLP);
       this.main.classList.remove("loading3d");
       this.main.dataset.field = choice.name;
@@ -143,10 +158,64 @@ export class DuelView {
     this.paintChainMode();
   }
 
+  /** Carta sotto il puntatore (per la finestra della carta tenendo premuto). */
   hover(code) {
-    this.detail.show(code);
-    // Con una finestra aperta il pannello a sinistra è coperto: la stessa carta nel pannello sopra le finestre.
-    this.floatDetail?.show(code);
+    if (code) this.hoverCode = code;
+  }
+
+  /** Finestra della carta. sticky: resta finché non si clicca altrove (es. un nome nel registro). */
+  peekCard(code, sticky = false) {
+    if (!code) return;
+    this.peek.show(code);
+    this.peekEl.classList.add("show");
+    this.peekSticky = sticky;
+  }
+
+  hidePeek() {
+    this.peekEl?.classList.remove("show");
+    this.peekSticky = false;
+  }
+
+  /**
+   * Tenendo premuta una carta (sul campo, in mano, nelle finestre delle scelte) compare la sua finestra; lasciando
+   * sparisce. Il clic che segue non vale come azione sulla carta.
+   */
+  bindPeek() {
+    const cardAt = (t) => {
+      const face = t.closest?.(".card[data-code]");
+      const code = Number(face?.dataset.code) || 0;
+      if (code) return code;
+      return t.closest?.(".pick-card, .action-row, .announce-row, .activate-card, .lingering-card") ? this.hoverCode : 0;
+    };
+    this.peekDown = (e) => {
+      if (this.peekSticky) this.hidePeek();
+      if (e.button > 0) return;
+      const t = e.target;
+      if (!(this.el.contains(t) || t.closest?.(".modal-backdrop, .action-menu, .duel-float"))) return;
+      const code = cardAt(t);
+      if (!code) return;
+      clearTimeout(this.peekTimer);
+      this.peekTimer = setTimeout(() => {
+        this.peekCard(code);
+        this.swallowClick = true;
+      }, 300);
+    };
+    this.peekUp = () => {
+      clearTimeout(this.peekTimer);
+      if (!this.peekSticky) this.hidePeek();
+    };
+    this.peekClick = (e) => {
+      if (!this.swallowClick) return;
+      this.swallowClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    this.peekKey = (e) => e.key === "Escape" && this.hidePeek();
+    document.addEventListener("pointerdown", this.peekDown, true);
+    document.addEventListener("pointerup", this.peekUp, true);
+    document.addEventListener("pointercancel", this.peekUp, true);
+    document.addEventListener("click", this.peekClick, true);
+    document.addEventListener("keydown", this.peekKey);
   }
 
   build() {
@@ -239,10 +308,9 @@ export class DuelView {
       this.floatTrainer
     );
     document.body.append(this.floatBar);
-    // Dettaglio della carta sopra le finestre del duello (scelte, catena...): si vede solo con una finestra aperta.
-    this.floatDetail = createDetailPanel();
-    this.floatDetailEl = h("div.duel-float-detail", this.floatDetail.el);
-    document.body.append(this.floatDetailEl);
+    // Finestra della carta (tenendo premuta una carta): sopra tutto, anche sopra le finestre delle scelte.
+    this.peekEl = h("div.card-peek", this.peek.el);
+    document.body.append(this.peekEl);
     if (this.opts.trainerEl) {
       const sync = () => {
         const st = this.opts.trainerEl.querySelector(".trainer-status");
@@ -259,34 +327,80 @@ export class DuelView {
     this.overlay = h("div.fx-layer");
     // Richieste compatte (catena, "usare l'effetto?"): non coprono il campo, che resta cliccabile.
     this.promptDock = h("div.prompt-dock");
+    // Scelte sul campo (materiali, zona...): testo e conferma sopra la mano, sempre visibili finché servono.
+    this.pickBar = h("div.pick-bar", { hidden: true });
+    // Medaglione al centro (turno e fase, vedi setTurn): cliccato apre le azioni di fase e l'auto-place.
+    this.phaseBtns = h("div.center-phases");
+    this.centerMenu = h("div.center-menu", { hidden: true },
+      this.phaseBtns,
+      h("label.check.center-autoplace", h("input", { type: "checkbox", checked: settings.autoPlace, onchange: (e) => (settings.autoPlace = e.target.checked) }), "Auto-place"));
+    this.medallionEl = h("div.medallion-slot");
+    this.board.centerEl.append(this.medallionEl, this.centerMenu);
+    this.medallionEl.addEventListener("click", (e) => {
+      e.stopPropagation();
+      this.toggleMenu(this.centerMenu);
+    });
+    this.centerMenu.addEventListener("click", (e) => e.stopPropagation());
+
+    // Log e Chat: in un cassetto a sinistra, aperto dal pulsante nel campo 3D (o da questo, senza campo 3D).
+    this.unread = 0;
+    this.logBtnBadge = h("b.log-btn-badge", { hidden: true });
+    this.logBtn = h("button.log-btn", { title: "Log and Chat", onclick: () => this.toggleDrawer(true) }, h("span.icon", { "aria-hidden": "true" }, "forum"), this.logBtnBadge);
+    this.drawer = h("aside.duel-drawer",
+      h("div.drawer-head", tabs, h("button.drawer-close", { title: "Close", onclick: () => this.toggleDrawer(false) }, h("span.icon", { "aria-hidden": "true" }, "close"))),
+      panes.combo ?? null, extra ? panes[extra.id] : null, panes.log, panes.chat);
+    // Combo Trainer o scheda in più (spettatore): il cassetto parte aperto, lì ci sono i passi.
+    if (this.opts.trainerEl || extra) this.drawer.classList.add("open");
+
+    // In basso a destra: catena sempre a portata di mano e impostazioni (animazioni, schermo intero, resa, uscita).
+    this.settingsMenu = h("div.settings-menu", { hidden: true },
+      h("label.anim-speed", h("span", "Animations"), h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
+      fullscreenButton("btn", "Fullscreen"),
+      this.opts.onSurrender && h("button.btn.danger", { onclick: () => { this.toggleMenu(null); this.opts.onSurrender(); } }, "Surrender"),
+      h("button.btn.duel-leave", { onclick: () => { this.toggleMenu(null); this.opts.onLeave?.(); } }, "Leave"));
+    this.settingsMenu.addEventListener("click", (e) => e.stopPropagation());
+    const gear = h("button.gear-btn", { title: "Settings", onclick: (e) => { e.stopPropagation(); this.toggleMenu(this.settingsMenu); } }, h("span.icon", { "aria-hidden": "true" }, "settings"));
+    this.dock = h("div.duel-dock", this.chainMode, gear, this.settingsMenu);
+    // A destra, a metà altezza: partita al meglio di N, stato (chi sta scegliendo) e amici che guardano.
+    this.info = h("div.duel-info", this.matchEl, this.statusEl, this.watchersEl);
+    this.closeMenus = () => this.toggleMenu(null);
+    document.addEventListener("click", this.closeMenus);
+
     this.el = h(
       "div.duel-screen",
-      h("div.duel-side", this.detail.el, h("div.side-tabs", tabs, panes.combo ?? null, extra ? panes[extra.id] : null, panes.log, panes.chat)),
       (this.main = h(
         "div.duel-main",
         h("div.hud-top", this.lpEls[1].el, this.board.handEls[1]),
         h("div.field-wrap", this.board.el),
         h("div.hud-bottom", this.board.handEls[0], this.lpEls[0].el),
         this.overlay,
-        this.promptDock
+        this.promptDock,
+        this.pickBar,
+        this.info,
+        this.dock,
+        this.logBtn
       )),
-      h(
-        "div.duel-controls",
-        this.turnEl,
-        this.matchEl,
-        this.phaseEl,
-        this.statusEl,
-        this.watchersEl,
-        this.actionBar,
-        h("div.spacer"),
-        this.chainMode,
-        h("label.check", h("input", { type: "checkbox", checked: settings.autoPlace, onchange: (e) => (settings.autoPlace = e.target.checked) }), "Auto-place"),
-        h("label.check.anim-speed", "Animations", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) })),
-        fullscreenButton("btn", "Fullscreen"),
-        this.opts.onSurrender && h("button.btn.danger", { onclick: () => this.opts.onSurrender() }, "Surrender"),
-        h("button.btn.duel-leave", { onclick: () => this.opts.onLeave?.() }, "Leave")
-      )
+      this.drawer
     );
+    this.bindPeek();
+  }
+
+  /** Apre un menu (medaglione o impostazioni) e chiude l'altro; null li chiude entrambi. */
+  toggleMenu(menu) {
+    for (const m of [this.centerMenu, this.settingsMenu]) m.hidden = m === menu ? !m.hidden : true;
+  }
+
+  /** Cassetto di Log e Chat. */
+  toggleDrawer(open) {
+    this.drawer.classList.toggle("open", open);
+    if (open) this.setUnread(0);
+  }
+
+  setUnread(n) {
+    this.unread = n;
+    this.logBtnBadge.hidden = !n;
+    this.logBtnBadge.textContent = n;
+    this.stage?.setLogUnread?.(n);
   }
 
   // ---------------------------------------------------------------- HUD
@@ -343,8 +457,8 @@ export class DuelView {
     // Medaglione al centro del campo (turno + fase) e bagliore dal lato di chi è di turno.
     const short = { "Main Phase 1": "Main 1", "Main Phase 2": "Main 2", "Draw Phase": "Draw", "Standby Phase": "Standby", "Battle Phase": "Battle", "Damage Step": "Damage", "End Phase": "End" };
     const name = PHASE_NAMES[phase] ?? "";
-    clear(this.board.centerEl).append(
-      turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
+    clear(this.medallionEl).append(
+      turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, { title: "Phase actions and Auto-place" }, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
     );
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
@@ -385,12 +499,25 @@ export class DuelView {
   }
 
   /** Barra azioni: pulsanti di fase + "tutte le azioni" + testo guida. */
+  /**
+   * Comandi della richiesta in corso. Con un testo (scelte sul campo: materiali, zona...) stanno nella barra sopra la
+   * mano; senza (fasi: Battle Phase, End Phase, All actions) nel menu del medaglione, che si accende.
+   */
   setActionBar(cfg) {
-    clear(this.actionBar);
-    if (!cfg) return;
-    if (cfg.text) this.actionBar.append(h("div.action-hint", cfg.text));
-    for (const b of cfg.buttons ?? []) this.actionBar.append(h(`button.btn.phase-btn${b.ghost ? ".ghost" : ".primary"}`, { onclick: b.onClick, disabled: !!b.disabled }, b.label));
-    if (cfg.all) this.actionBar.append(h("button.btn.ghost", { onclick: cfg.all }, "All actions"));
+    clear(this.pickBar);
+    clear(this.phaseBtns);
+    this.pickBar.hidden = true;
+    this.board.centerEl.classList.remove("has-actions");
+    if (!cfg) return void (this.centerMenu.hidden = true);
+    const btn = (b, cls) => h(`button.btn.${cls}${b.ghost ? ".ghost" : ".primary"}`, { onclick: () => { this.toggleMenu(null); b.onClick(); }, disabled: !!b.disabled }, b.label);
+    if (cfg.text) {
+      this.pickBar.append(h("div.action-hint", cfg.text), ...(cfg.buttons ?? []).map((b) => btn(b, "pick-btn")));
+      this.pickBar.hidden = false;
+      return;
+    }
+    this.phaseBtns.append(...(cfg.buttons ?? []).map((b) => btn(b, "phase-btn")));
+    if (cfg.all) this.phaseBtns.append(btn({ label: "All actions", ghost: true, onClick: cfg.all }, "phase-btn"));
+    this.board.centerEl.classList.toggle("has-actions", !!(cfg.buttons?.length || cfg.all));
   }
 
   openActionMenu(anchor, items) {
@@ -554,7 +681,7 @@ export class DuelView {
       typeof p === "string"
         ? p
         : p.code
-          ? h("span.log-card", { title: "Show card", onclick: () => this.hover(p.code) }, cardName(p.code))
+          ? h("span.log-card", { title: "Show card", onclick: () => this.peekCard(p.code, true) }, cardName(p.code))
           : "a card"
     );
   }
@@ -572,6 +699,7 @@ export class DuelView {
     this.chatLog.append(h(`div.chat-line${mine ? ".mine" : ""}`, h("b", name + ": "), text));
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
     if (!mine && this.chatLog.parentElement.hidden) this.chatTab.classList.add("unread");
+    if (!mine && !this.drawer.classList.contains("open")) this.setUnread(this.unread + 1);
   }
 
   // ---------------------------------------------------------------- animazioni
@@ -852,7 +980,7 @@ export class DuelView {
           ? items.map((x) =>
               h(
                 "div.lingering-row",
-                x.code ? h("div.lingering-card", { onmouseenter: () => this.hover(x.code), onclick: () => this.hover(x.code) }, cardFace(x.code)) : h("div.lingering-icon", h("span.icon", "auto_awesome")),
+                x.code ? h("div.lingering-card", { onmouseenter: () => this.hover(x.code), onclick: () => this.peekCard(x.code, true) }, cardFace(x.code)) : h("div.lingering-icon", h("span.icon", "auto_awesome")),
                 h("div", x.code ? h("b", cardName(x.code)) : null, h("div", descString(BigInt(x.desc)) || "Effect active"))
               )
             )
@@ -1004,7 +1132,14 @@ export class DuelView {
     this.lingeringModal?.close();
     this.trainerObserver?.disconnect();
     this.floatBar.remove();
-    this.floatDetailEl?.remove();
+    this.peekEl?.remove();
+    clearTimeout(this.peekTimer);
+    document.removeEventListener("pointerdown", this.peekDown, true);
+    document.removeEventListener("pointerup", this.peekUp, true);
+    document.removeEventListener("pointercancel", this.peekUp, true);
+    document.removeEventListener("click", this.peekClick, true);
+    document.removeEventListener("keydown", this.peekKey);
+    document.removeEventListener("click", this.closeMenus);
     // Finestre del duello rimaste aperte (anche ridotte): non devono restare né ricomparire dopo l'uscita.
     this.modalObserver.disconnect();
     for (const b of this.modals) b.remove();

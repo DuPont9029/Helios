@@ -258,7 +258,35 @@ export class Field {
       onProgress && onProgress(++done / sides.length);
     }));
     f.sides.sort((a, b) => (a.name === 'near' ? -1 : 1));
+    f.addMirrors();
     return f;
+  }
+
+  /**
+   * Il duello è a tutto schermo e lo schermo è più largo dell'ambiente del campo: ai lati l'ambiente continua con
+   * copie specchiate (oltre il bordo, così la giunzione non si vede). Solo la scena statica, con geometrie e materiali
+   * condivisi: niente particelle, mesh con le ossa o linee.
+   */
+  addMirrors() {
+    const box = new THREE.Box3();
+    for (const s of this.sides) box.expandByObject(s.root);
+    const edge = Math.max(Math.abs(box.min.x), Math.abs(box.max.x));
+    if (!Number.isFinite(edge) || edge <= 0) return;
+    this.mirrors = new THREE.Group();
+    for (const dir of [-1, 1]) {
+      const m = new THREE.Group();
+      m.scale.x = -1;
+      m.position.x = 2 * edge * dir;
+      for (const s of this.sides) {
+        const c = s.root.clone(true);
+        const drop = [];
+        c.traverse((o) => { if (o.isSkinnedMesh || o.isPoints || o.isSprite || o.isLine) drop.push(o); });
+        drop.forEach((o) => o.removeFromParent());
+        m.add(c);
+      }
+      this.mirrors.add(m);
+    }
+    this.group.add(this.mirrors);
   }
 
   update(dt, opts) {

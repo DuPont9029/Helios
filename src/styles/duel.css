@@ -1,18 +1,15 @@
 /* ------------------------------------------------------------------ layout duello */
-/* Tela fissa 1180×860, uguale su ogni dispositivo (main.js la scala con lo zoom e la centra):
-   --vh/--vw qui dentro sono quelli della tela, non della finestra. */
-#app:has(> .duel-screen) { display: grid; place-items: center; overflow: hidden; }
+/* A tutto schermo: il campo occupa tutta la finestra (main.js la scala con lo zoom); i comandi stanno sopra il campo:
+   Log e Chat in un cassetto a sinistra, azioni di fase nel medaglione al centro, catena e impostazioni in basso a
+   destra, la carta in grande solo tenendola premuta. */
+#app:has(> .duel-screen) { overflow: hidden; }
 .duel-screen {
-  --vh: 8.6px; --vw: 11.8px;
   --lp-w: 300px; /* larghezza riservata a LP + timer accanto alla mano */
+  --dock-w: 290px; /* catena e impostazioni in basso a destra, accanto alla mano */
   --hand-w: 340px; /* spazio per le carte in mano: oltre, le carte si sovrappongono */
-  width: 1180px; height: 860px; box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(230px, 280px) 1fr 200px;
-  gap: 10px;
-  padding: 10px;
+  position: relative; width: calc(var(--vw) * 100); height: calc(var(--vh) * 100); box-sizing: border-box; overflow: hidden;
   /* Campo piatto visto dall'alto: 5 righe di zone + le due mani devono stare nell'altezza dello schermo. */
-  --zh: min(calc((calc(var(--vh) * 100) - 110px) / 7.3), calc((calc(var(--vw) * 100) - 540px) / 7.6));
+  --zh: min(calc((calc(var(--vh) * 100) - 110px) / 7.3), calc((calc(var(--vw) * 100) - 160px) / 7.6));
   --cw: calc(var(--zh) / 1.46 * 0.9);
 }
 .duel-screen.shake { animation: shake 0.35s; }
@@ -20,9 +17,27 @@
   20% { transform: translate(-6px, 2px); } 40% { transform: translate(5px, -3px); }
   60% { transform: translate(-3px, 2px); } 80% { transform: translate(2px, -1px); }
 }
-.duel-side { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.duel-side .detail-panel { flex: 1 1 58%; }
-.side-tabs { flex: 1 1 42%; min-height: 0; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+/* Log e Chat (e la combo del Trainer): cassetto a sinistra, sopra il campo */
+.duel-drawer {
+  position: absolute; left: 0; top: 0; bottom: 0; z-index: 40; width: min(360px, 42%); display: flex; flex-direction: column;
+  background: rgba(10, 12, 18, 0.94); border-right: 1px solid var(--line-strong); backdrop-filter: blur(8px);
+  transform: translateX(-102%); transition: transform 0.22s ease; box-shadow: 10px 0 40px rgba(0, 0, 0, 0.5);
+}
+.duel-drawer.open { transform: none; }
+.drawer-head { display: flex; align-items: stretch; border-bottom: 1px solid var(--line); }
+.drawer-head .tabs { flex: 1; border-bottom: 0; }
+.drawer-close { flex: none; width: 46px; background: none; border: 0; color: var(--text); cursor: pointer; }
+.drawer-close:hover { color: var(--accent); }
+.duel-drawer > :not(.drawer-head) { flex: 1; min-height: 0; }
+/* pulsante di Log e Chat quando il campo 3D non ha spazio ai lati (o senza campo 3D) */
+.log-btn {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%); z-index: 6; width: 44px; height: 44px; display: grid; place-items: center;
+  border-radius: 50%; border: 1px solid var(--line-strong); background: rgba(0, 0, 0, 0.55); color: var(--accent-soft); cursor: pointer;
+}
+.log-btn:hover { border-color: var(--accent); color: #fff; }
+.duel-main.log3d .log-btn { display: none; }
+.log-btn-badge { position: absolute; right: -4px; top: -4px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font: 700 11px/18px var(--font); }
+.duel-main.over-log { cursor: pointer; }
 .log, .chat { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
 .chat { padding: 0; }
 .chat-log { flex: 1; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
@@ -47,14 +62,13 @@
 .log-card { cursor: pointer; }
 
 .duel-main {
-  position: relative; min-width: 0; min-height: 0;
+  position: absolute; inset: 0; min-width: 0; min-height: 0;
   display: grid; grid-template-rows: auto 1fr auto;
   border-radius: 0; overflow: hidden;
   background:
     radial-gradient(ellipse 70% 50% at 0% 0%, rgba(185, 28, 40, 0.28), transparent 70%),
     radial-gradient(ellipse 70% 50% at 100% 100%, rgba(20, 80, 220, 0.28), transparent 70%),
     linear-gradient(180deg, #0b0c12, #050507);
-  border: 1px solid var(--line-strong);
 }
 .duel-main::before {
   content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.35;
@@ -66,7 +80,7 @@
 .hud-top, .hud-bottom { position: relative; z-index: 3; display: flex; align-items: center; justify-content: center; }
 /* LP e timer stanno nell'angolo (posizione assoluta): la mano usa lo spazio che resta, senza coprirli. */
 .hud-top { min-height: calc(var(--cw) * 1.1 + 10px); padding: 6px var(--lp-w) 0 12px; }
-.hud-bottom { min-height: calc(var(--cw) * 1.75 + 12px); padding: 0 12px 6px var(--lp-w); align-items: flex-end; }
+.hud-bottom { min-height: calc(var(--cw) * 1.75 + 12px); padding: 0 var(--dock-w) 6px var(--lp-w); align-items: flex-end; }
 
 /* ------------------------------------------------------------------ campo */
 .field-wrap { position: relative; display: grid; place-items: center; min-height: 0; z-index: 1; }
@@ -223,22 +237,59 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 @keyframes lp-pop { from { opacity: 0; transform: translateY(10px); } 15% { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-20px); } }
 
 /* ------------------------------------------------------------------ controlli */
-.duel-controls { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; min-height: 0; overflow: auto; }
 .turn-counter { font: 700 24px var(--display); text-align: center; letter-spacing: 0.06em; text-transform: uppercase; color: #ff6b7a; }
 .turn-counter.mine { color: var(--accent); }
 .phase-track { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; }
 .phase-pip { text-align: center; font: 700 11px var(--mono); padding: 5px 0; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--muted); }
 .phase-pip.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); box-shadow: 0 0 10px rgba(56, 198, 255, 0.5); }
-.duel-status { font-size: 12px; color: var(--muted); min-height: 18px; text-align: center; }
+/* a destra, a metà altezza: partita, stato e spettatori */
+.duel-info { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); z-index: 5; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; max-width: 220px; pointer-events: none; }
+.duel-status { font-size: 12px; color: var(--muted); min-height: 18px; text-align: right; text-shadow: 0 1px 4px #000; }
+.duel-status:empty { display: none; }
 .duel-status.waiting::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: var(--gold); animation: blink 1s infinite; }
 @keyframes blink { 50% { opacity: 0.2; } }
-.action-bar { display: flex; flex-direction: column; gap: 6px; }
-.action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px; border: 1px dashed rgba(56, 198, 255, 0.5); }
-.phase-btn { font: 700 16px var(--display); letter-spacing: 0.05em; text-transform: uppercase; padding: 11px; }
-.duel-controls input[type="range"] { width: 100%; }
+.action-hint { font-size: 13px; color: var(--accent); text-align: center; padding: 6px 10px; }
+.phase-btn { font: 700 15px var(--display); letter-spacing: 0.05em; text-transform: uppercase; padding: 10px 14px; }
 /* partita al meglio di N */
-.match-info { text-align: center; padding: 5px 4px; border: 1px solid var(--line-gold); color: var(--accent-soft); font: 700 11px var(--mono); letter-spacing: 0; white-space: nowrap; }
+.match-info { text-align: center; padding: 5px 8px; border: 1px solid var(--line-gold); color: var(--accent-soft); background: rgba(0, 0, 0, 0.55); font: 700 11px var(--mono); letter-spacing: 0; white-space: nowrap; }
 .match-info[hidden] { display: none; }
+/* scelte sul campo: testo e conferma sopra la mia mano */
+.pick-bar {
+  position: absolute; left: 50%; bottom: calc(var(--cw) * 1.75 + 18px); transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 8px;
+  padding: 6px; background: rgba(8, 10, 16, 0.9); border: 1px solid var(--accent); box-shadow: 0 0 20px rgba(56, 198, 255, 0.35); max-width: 92%;
+}
+.pick-bar[hidden] { display: none; }
+.pick-btn { padding: 8px 14px; }
+/* medaglione al centro: si accende quando ci sono azioni di fase; cliccato apre il menu */
+.field-center { position: relative; z-index: 12; }
+.medallion-slot { cursor: pointer; }
+.field-center.has-actions .medallion { box-shadow: 0 0 0 3px rgba(56, 198, 255, 0.85), 0 0 26px rgba(56, 198, 255, 0.75); animation: actions-pulse 1.6s ease-in-out infinite; }
+@keyframes actions-pulse { 50% { box-shadow: 0 0 0 3px rgba(56, 198, 255, 0.5), 0 0 12px rgba(56, 198, 255, 0.4); } }
+.center-menu, .settings-menu {
+  position: absolute; z-index: 30; display: flex; flex-direction: column; gap: 8px; min-width: 220px; padding: 12px;
+  background: rgba(10, 12, 18, 0.95); border: 1px solid var(--line-strong); border-top: 3px solid var(--accent); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+}
+.center-menu[hidden], .settings-menu[hidden] { display: none; }
+.center-menu { top: calc(100% + 8px); left: 50%; transform: translateX(-50%); }
+.center-phases { display: flex; flex-direction: column; gap: 6px; }
+.center-phases:empty { display: none; }
+.center-autoplace { font-size: 13px; }
+/* in basso a destra: catena e impostazioni */
+.duel-dock { position: absolute; right: 14px; bottom: 12px; z-index: 9; display: flex; align-items: center; gap: 10px; }
+.duel-dock .chain-mode { flex-direction: row; align-items: center; gap: 8px; padding: 5px 6px 5px 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--line); }
+.duel-dock .chain-btn { padding: 6px 10px; }
+.gear-btn { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.6); color: var(--accent); cursor: pointer; font-size: 24px; }
+.gear-btn:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(56, 198, 255, 0.6); }
+.settings-menu { right: 0; bottom: calc(100% + 10px); }
+.settings-menu .anim-speed { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.settings-menu input[type="range"] { width: 100%; }
+/* finestra della carta: tenendo premuta una carta, sopra tutto */
+.card-peek { position: fixed; left: 50%; top: 50%; z-index: 300; width: min(640px, 92vw); max-height: 86vh; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scale(0.97); transition: opacity 0.12s, transform 0.12s; }
+.card-peek.show { opacity: 1; transform: translate(-50%, -50%); pointer-events: auto; }
+.card-peek .detail-panel { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; max-height: 86vh; padding: 14px; background: rgba(8, 10, 16, 0.96); border-top: 3px solid var(--accent); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); }
+.card-peek .detail-card .card { width: 100%; }
+.card-peek .detail-scroll { overflow: auto; }
+@media (max-width: 640px) { .card-peek .detail-panel { grid-template-columns: 1fr; } }
 /* modo della catena: tre pulsanti esclusivi, colorato solo quello attivo adesso */
 .chain-mode { display: flex; flex-direction: column; gap: 4px; }
 .chain-label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
@@ -249,7 +300,6 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 }
 .chain-btn:hover { color: #fff; border-color: var(--accent); }
 .chain-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); }
-.duel-controls .check { font-size: 12px; flex-wrap: wrap; }
 
 /* ------------------------------------------------------------------ selezioni */
 .selectable { cursor: pointer; }
@@ -520,25 +570,16 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 /* Auto-play del Trainer: il duello non accetta clic (campo, mano, comandi, pannello della combo); restano
    l'interruttore e la pausa dell'auto-play, la velocità delle animazioni, lo schermo intero, lo scorrimento
    dei pannelli e "Leave". */
-.duel-screen.autoplaying .duel-main,
-.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.anim-speed):not(.fs-btn),
+.duel-screen.autoplaying .duel-main > :not(.duel-dock),
+.duel-screen.autoplaying .duel-dock .chain-mode,
+.duel-screen.autoplaying .settings-menu .btn.danger,
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto),
 .duel-float.autoplaying .chain-mode { pointer-events: none; }
-.duel-screen.autoplaying .duel-controls > :not(.duel-leave):not(.anim-speed):not(.fs-btn):not(.spacer),
+.duel-screen.autoplaying .duel-dock .chain-mode,
+.duel-screen.autoplaying .settings-menu .btn.danger,
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto) { opacity: 0.45; }
-
-/* Carta selezionata sopra le finestre del duello (come la barra dei timer): a sinistra, dove sta il pannello */
-.duel-float-detail { display: none; position: fixed; left: 10px; top: 10px; z-index: 120; width: min(300px, 26vw); max-height: calc(100vh - 20px); overflow: auto; background: rgba(6, 7, 11, 0.94); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
-body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float-detail { display: block; }
-body:has(.modal-backdrop.top:not(.closing)) .duel-float-detail { display: none; }
-/* La finestra del duello si centra nello spazio a destra del pannello, così non si sovrappongono. */
-body:has(.duel-float-detail) .modal-backdrop:not(.top):not(.minimized) { padding-left: calc(min(300px, 26vw) + 30px); }
-@media (max-width: 760px) {
-  .duel-float-detail { display: none !important; }
-  body:has(.duel-float-detail) .modal-backdrop:not(.top):not(.minimized) { padding-left: 20px; }
-}
 
 /* Legami tra carte (equipaggiamenti, bersagli persistenti) mostrati passando sopra una carta del campo */
 .board { position: relative; }
