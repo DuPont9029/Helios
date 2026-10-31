@@ -10,6 +10,7 @@ import * as nip44 from "nostr-tools/nip44";
 import { encode, decode } from "./peer.js";
 import { sha256Hex, fromHex } from "./identity.js";
 import { eloRelays } from "./elo.js";
+import { sharedPool } from "./social.js";
 
 const KIND = 25078;
 const CHUNK = 12000; // caratteri per pezzo (gli eventi restano sotto i limiti dei relay)
@@ -60,15 +61,22 @@ class RelayLink extends EventTarget {
 /**
  * Canale sui relay per la stanza `code`. Si mette subito in ascolto (se l'altro passa ai relay, ci passa anche
  * questo client); request() lo attiva da qui. onPeer(): l'altro ha chiesto il ripiego. ready: Promise<RelayLink>.
+ * onPresent(): l'altro è nella stanza (un "ci sono" leggero, che non attiva il ripiego): da lì si può misurare
+ * quanto ci mette WebRTC, senza contare l'attesa di un amico che non ha ancora accettato l'invito.
  */
-export async function relayChannel(code, { onPeer } = {}) {
+export async function relayChannel(code, { onPeer, onPresent } = {}) {
   const key = fromHex(await sha256Hex(`helios-relay-v1|key|${code}`));
   const topic = (await sha256Hex(`helios-relay-v1|topic|${code}`)).slice(0, 32);
   const sk = generateSecretKey();
   const sid = rid();
   const relays = eloRelays();
-  const pool = new SimplePool({ enablePing: true, enableReconnect: true });
+  // Le stesse connessioni di amici e matchmaking: alcuni relay rifiutano troppe connessioni dallo stesso indirizzo
+  // (es. nos.lol, "429"), soprattutto con due giocatori sulla stessa rete.
+  const own = !sharedPool();
+  const pool = sharedPool() ?? new SimplePool({ enablePing: true, enableReconnect: true });
   let peer = null; // sid dell'altro
+  let present = null; // sid dell'altro, appena si sa che è nella stanza
+  let lastHere = 0;
   let established = false;
   let active = false;
   let closed = false;
@@ -153,6 +161,12 @@ export async function relayChannel(code, { onPeer } = {}) {
       }
       if (!m || m.from === sid || (peer && m.from !== peer) || (m.to && m.to !== sid)) return;
       lastHeard = Date.now();
+      if ((m.here || m.hello) && !present) {
+        present = m.from;
+        post({ here: true }); // anche chi è arrivato dopo sa che ci siamo
+        onPresent?.();
+      }
+      if (m.here) return;
       if (m.hello) {
         if (!peer) {
           peer = m.from;
@@ -183,6 +197,10 @@ export async function relayChannel(code, { onPeer } = {}) {
   // ---- tempi: saluti finché non ci si trova, ripetizioni, ping e connessione persa
   const timer = setInterval(() => {
     if (closed) return;
+    if (!present && Date.now() - lastHere > 3000) {
+      lastHere = Date.now();
+      post({ here: true });
+    }
     if (active && !established) hello();
     if (!established) return;
     const t = Date.now();
@@ -216,7 +234,7 @@ export async function relayChannel(code, { onPeer } = {}) {
       clearTimeout(ackTimer);
       setTimeout(() => {
         sub.close();
-        pool.destroy();
+        if (own) pool.destroy();
       }, bye ? 1500 : 0);
     },
   };

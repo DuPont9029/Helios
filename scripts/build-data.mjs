@@ -205,7 +205,7 @@ async function buildBanlists() {
 
 // ---------------------------------------------------------------- script lua
 
-function buildScripts() {
+function buildScripts(cards) {
   const src = path.join(VENDOR, "CardScripts");
   const dst = path.join(OUT, "script");
   fs.rmSync(dst, { recursive: true, force: true });
@@ -222,7 +222,23 @@ function buildScripts() {
   };
   copyLua(src); // constant.lua, utility.lua, proc_*.lua ...
   for (const sub of ["official", "pre-release", "unofficial"]) copyLua(path.join(src, sub));
-  console.log(`script: ${n} file lua`);
+  // Carte con effetto rimaste senza script: a volte ProjectIgnis mette lo script attuale in un'altra cartella
+  // (es. Red-Eyes Darkness Metal Dragon, 88264978, finito in pre-errata/ a ottobre 2026). Senza script la carta non
+  // ha nessun effetto nel duello: si prende quello con lo stesso codice dalle altre cartelle.
+  const NORMAL = 0x10;
+  const EFFECT = 0x20;
+  const rescued = [];
+  for (const [code, , alias, , type, , , , , , , name] of cards.values()) {
+    if (alias || !type || (type & NORMAL && !(type & EFFECT))) continue;
+    const f = `c${code}.lua`;
+    if (fs.existsSync(path.join(dst, f))) continue;
+    const from = ["pre-errata", "goat"].map((sub) => path.join(src, sub, f)).find((p) => fs.existsSync(p));
+    if (!from) continue;
+    fs.copyFileSync(from, path.join(dst, f));
+    rescued.push(`${name} (${path.basename(path.dirname(from))})`);
+    n++;
+  }
+  console.log(`script: ${n} file lua${rescued.length ? `; presi da altre cartelle: ${rescued.join(", ")}` : ""}`);
 }
 
 // ---------------------------------------------------------------- deck di esempio
@@ -292,7 +308,7 @@ fs.mkdirSync(OUT, { recursive: true });
 const cards = buildCards();
 buildStrings();
 await buildBanlists();
-buildScripts();
+buildScripts(cards);
 buildStarters(cards);
 
 const manifest = { built: new Date().toISOString(), repos: {} };

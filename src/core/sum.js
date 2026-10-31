@@ -35,27 +35,44 @@ export function isValidSum(msg, selected) {
   return !(mx < msg.amount || sum - mn >= msg.amount);
 }
 
-/** Cerca una combinazione valida (per l'IA e per il pulsante "auto"). */
+// Valore più piccolo che una carta può dare alla somma.
+const lowOf = (op) => {
+  const o1 = op & 0xffff;
+  const o2 = op >>> 16;
+  return o2 && o2 < o1 ? o2 : o1;
+};
+
+/**
+ * Cerca una combinazione valida (per l'IA e per il pulsante "auto"), prima quelle con meno carte. Anche con molte
+ * carte tra cui scegliere (es. 35 copie della stessa nel Deck): le carte con lo stesso valore contano come una
+ * sola scelta, e nella somma esatta si scarta subito un ramo che supera già il totale.
+ */
 export function findSum(msg) {
   const n = msg.selects.length;
-  if (n > 20) return null;
-  // Prima le combinazioni con meno carte.
-  const masks = [];
-  for (let m = 1; m < 1 << n; m++) masks.push(m);
-  masks.sort((a, b) => popcount(a) - popcount(b));
-  for (const m of masks) {
-    const sel = [];
-    for (let i = 0; i < n; i++) if (m & (1 << i)) sel.push(i);
-    if (isValidSum(msg, sel)) return sel;
+  const exact = msg.select_max === 0;
+  const order = [...Array(n).keys()].sort((a, b) => lowOf(msg.selects[a].amount) - lowOf(msg.selects[b].amount) || msg.selects[a].amount - msg.selects[b].amount);
+  const base = msg.selects_must.reduce((s, c) => s + lowOf(c.amount), 0);
+  let budget = 200000; // controlli al massimo: l'IA non deve bloccare la pagina
+  const pick = [];
+  const dfs = (start, k, acc) => {
+    if (pick.length === k) return --budget >= 0 && isValidSum(msg, pick) ? [...pick] : null;
+    for (let j = start; j <= n - (k - pick.length) && budget > 0; j++) {
+      const i = order[j];
+      if (j > start && msg.selects[i].amount === msg.selects[order[j - 1]].amount) continue;
+      const a = acc + lowOf(msg.selects[i].amount);
+      if (exact && a > msg.amount) break; // in ordine crescente: anche le successive superano il totale
+      pick.push(i);
+      const found = dfs(j + 1, k, a);
+      pick.pop();
+      if (found) return found;
+    }
+    return null;
+  };
+  const from = exact ? Math.max(1, msg.min) : 1;
+  const to = exact ? Math.min(n, msg.max) : n;
+  for (let k = from; k <= to && budget > 0; k++) {
+    const found = dfs(0, k, base);
+    if (found) return found;
   }
   return null;
-}
-
-function popcount(x) {
-  let c = 0;
-  while (x) {
-    c += x & 1;
-    x >>>= 1;
-  }
-  return c;
 }

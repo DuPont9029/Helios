@@ -1,7 +1,8 @@
 // Matchmaking con giocatori sconosciuti, senza server: sui relay Nostr (gli stessi di amici e classifica).
 //
 // - Chi cerca un duello pubblica un annuncio ("seek", NIP-78) firmato con la propria chiave, con le regole
-//   scelte e la versione dei dati: si rinnova ogni 30 s e scade da solo (NIP-40), "off" quando si smette.
+//   scelte e la versione dei dati: si rinnova ogni 15 s e scade da solo (NIP-40), "off" quando si smette (anche
+//   chiudendo la scheda).
 // - Si incontrano solo annunci con le stesse regole (stessa "coda"). Per non abbinarsi in due contro uno, propone
 //   sempre chi ha la chiave pubblica più piccola: offerta → accetto → conferma con il codice di una stanza Nostr.
 //   Chi aspetta una risposta rifiuta le altre offerte; chi ha la chiave più grande di tutti aspetta e basta.
@@ -16,15 +17,18 @@ const D = "helios-seek";
 // Versione della stretta di mano: si abbinano solo client con la stessa (le vecchie non capiscono le ripetizioni).
 // Gli annunci senza "p" sono della 1.
 export const MM_PROTO = 2;
-const REFRESH_S = 30;
-const ACTIVE_S = 75; // un annuncio vale se rinnovato da meno di così
+// Un annuncio non rinnovato (scheda chiusa senza "off") è un fantasma: a chi gli propone il duello non risponde
+// nessuno. Rinnovi frequenti e scadenza breve li tolgono presto di mezzo (i client della 1.0.21 rinnovano ogni 30 s).
+const REFRESH_S = 15;
+const ACTIVE_S = 45; // un annuncio vale se rinnovato da meno di così
 // I gift wrap a volte arrivano in ritardo o si perdono: offerta e accetto si ripetono finché non arriva la risposta,
 // e una risposta in ritardo vale ancora se nel frattempo non si è preso un altro impegno.
-const OFFER_MS = 15000; // chi propone aspetta l'accetto
+const OFFER_MS = 7000; // chi propone aspetta l'accetto (un client vivo risponde in 1-2 s; poi si prova un altro)
 const CONFIRM_MS = 30000; // chi accetta aspetta la conferma (chi propone intanto prepara la stanza)
 const RESEND_MS = 2500;
 const LATE_MS = 60000; // per quanto si ricordano offerte e accetti scaduti
 const COOLDOWN_MS = 45000; // chi non ha risposto non si riprova subito
+const SWITCH_MS = 3000; // senza risposta dopo così, se c'è un altro giocatore libero si propone a lui
 const HEX64 = /^[0-9a-f]{64}$/;
 const ROOM = /^[A-HJ-NP-Z2-9]{8}$/;
 
@@ -59,6 +63,9 @@ export const queueOf = (rules, data) => sha256Hex(canonical({ rules: cleanRules(
  */
 export function watchSeeks(onChange) {
   const seeks = new Map();
+  // Data dell'ultimo annuncio di ognuno, anche "off": i relay mandano gli eventi in ordine sparso, e un "searching"
+  // vecchio arrivato dopo l'"off" (da un altro relay) farebbe tornare in coda chi ha già smesso di cercare.
+  const latest = new Map();
   const emit = () => {
     const t = now();
     for (const [pk, s] of seeks) {
@@ -75,8 +82,9 @@ export function watchSeeks(onChange) {
     } catch {
       return;
     }
+    if ((latest.get(ev.pubkey) ?? 0) >= ev.created_at) return;
+    latest.set(ev.pubkey, ev.created_at);
     const old = seeks.get(ev.pubkey);
-    if (old && old.at >= ev.created_at) return;
     if (c?.status !== "searching") {
       if (old) seeks.delete(ev.pubkey), emit();
       return;
@@ -135,11 +143,18 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   };
   // Ripete l'ultimo messaggio finché si aspetta la risposta.
   const resender = setInterval(() => {
-    if (state === "proposing" && pending) send(pending.pk, { t: "mm-offer", id: pending.id, queue });
-    else if (state === "accepted" && pending) send(pending.pk, { t: "mm-accept", id: pending.id });
+    if (state === "proposing" && pending) {
+      if (maybeSwitch()) return;
+      send(pending.pk, { t: "mm-offer", id: pending.id, queue });
+    } else if (state === "accepted" && pending) send(pending.pk, { t: "mm-accept", id: pending.id });
   }, RESEND_MS);
   const refresh = setInterval(announce, REFRESH_S * 1000);
   announce();
+  // Scheda chiusa mentre si cerca: l'annuncio si ritira subito (altrimenti resta un fantasma fino alla scadenza).
+  const onPageHide = () => {
+    if (state === "searching" || state === "proposing" || state === "accepted") seekEvent("off");
+  };
+  addEventListener("pagehide", onPageHide);
 
   const stopWatch = watchSeeks((list) => {
     const same = list.filter((s) => s.pk !== me && s.queue === queue);
@@ -155,7 +170,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
           ? `${older.join(", ")} ${older.length === 1 ? "is" : "are"} searching with an older version of Helios: ask them to reload the page to update.`
           : others.length ? `Searching… ${others.length} other player${others.length === 1 ? "" : "s"} with these rules` : "Searching for an opponent with these rules…");
     }
-    tryPropose();
+    if (!maybeSwitch()) tryPropose();
   });
 
   const back = (why) => {
@@ -169,19 +184,37 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
     setTimeout(tryPropose, 500 + Math.random() * 1500);
   };
 
+  // A chi si può proporre: chi ha la chiave più grande, non in pausa dopo un silenzio. Prima chi ha rinnovato
+  // l'annuncio più di recente: è quasi certamente ancora lì, mentre una scheda chiusa lascia l'annuncio fino alla
+  // scadenza senza più rinnovarlo.
+  const candidates = (except = null) => {
+    const t = Date.now();
+    return others.filter((s) => s.pk > me && s.pk !== except && (cooldown.get(s.pk) ?? 0) < t).sort((a, b) => b.at - a.at);
+  };
+
+  /**
+   * Si sta aspettando chi non risponde (un fantasma, o un client bloccato) mentre un altro giocatore libero cerca:
+   * dopo SWITCH_MS si ritira l'offerta e si propone all'altro. Un accetto in ritardo del primo riceve un rifiuto.
+   */
+  function maybeSwitch() {
+    if (state !== "proposing" || !pending || Date.now() - pending.at < SWITCH_MS) return false;
+    if (!candidates(pending.pk).length) return false;
+    send(pending.pk, { t: "mm-decline", id: pending.id });
+    cooldown.set(pending.pk, Date.now() + COOLDOWN_MS);
+    clearTimeout(pending.timer);
+    pending = null;
+    state = "searching";
+    tryPropose();
+    return true;
+  }
+
   function tryPropose() {
     if (state !== "searching") return;
-    const t = Date.now();
-    // Prima chi ha rinnovato l'annuncio da poco (è ancora lì: una scheda chiusa lascia l'annuncio fino alla scadenza),
-    // tra questi chi cerca da più tempo.
-    const fresh = (s) => now() - s.at <= REFRESH_S + 10;
-    const target = others
-      .filter((s) => s.pk > me && (cooldown.get(s.pk) ?? 0) < t)
-      .sort((a, b) => fresh(b) - fresh(a) || a.at - b.at)[0];
+    const target = candidates()[0];
     if (!target) return;
     const id = crypto.getRandomValues(new Uint32Array(2)).join("-");
     state = "proposing";
-    pending = { id, pk: target.pk, name: target.name, timer: setTimeout(() => { cooldown.set(target.pk, Date.now() + COOLDOWN_MS); back(); }, OFFER_MS) };
+    pending = { id, pk: target.pk, name: target.name, at: Date.now(), timer: setTimeout(() => { cooldown.set(target.pk, Date.now() + COOLDOWN_MS); back(); }, OFFER_MS) };
     offered.set(id, { pk: target.pk, name: target.name, at: Date.now() });
     onStatus(`Opponent found: ${target.name}. Waiting for their client…`);
     send(target.pk, { t: "mm-offer", id, queue });
@@ -265,6 +298,7 @@ export async function findMatch({ rules, data, name, onStatus = () => {}, create
   });
 
   function cleanup() {
+    removeEventListener("pagehide", onPageHide);
     clearInterval(refresh);
     clearInterval(resender);
     stopWatch();
