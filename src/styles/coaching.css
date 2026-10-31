@@ -19,7 +19,7 @@
 .duel-watchers .icon { font-size: 16px; }
 
 /* Spettatore: i comandi per rispondere al core non servono */
-.duel-screen.spectating .chain-mode, .duel-screen.spectating .duel-controls > .check:not(.anim-speed), .duel-float.spectating .chain-mode { display: none; }
+.duel-screen.spectating .chain-mode, .duel-screen.spectating .center-autoplace, .duel-float.spectating .chain-mode { display: none; }
 
 /* Scheda "Coach" dello spettatore */
 .coach-panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; padding: 8px; overflow: hidden; }
@@ -195,5 +195,3 @@
 .practice-list li { display: flex; align-items: center; gap: 6px; }
 .practice-list li.popp { color: var(--muted); }
 /* Rigiocando o provando, la scheda laterale ha più spazio del dettaglio della carta */
-.duel-side:has(.review-panel, .practice-panel) .detail-panel { flex-basis: 32%; }
-.duel-side:has(.review-panel, .practice-panel) .side-tabs { flex-basis: 68%; }

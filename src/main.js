@@ -190,9 +190,8 @@ async function aiVsAi() {
 // MacBook Pro 14" (circa 1512×860 punti) e viene scalata con uno zoom uniforme. L'altezza di riferimento
 // resta sempre 860 punti; la larghezza si adatta all'aspetto dello schermo, con un minimo di 1180.
 // --vh/--vw sostituiscono vh/vw nel CSS: sono l'1% della finestra *dopo* lo zoom.
-// Il duello invece è una "tela" fissa di 1180×860 (vedi .duel-screen in duel.css), scalata per starci tutta:
-// il campo è identico su ogni schermo (riempie la colonna centrale, come su un Mac con la barra laterale
-// del browser aperta), con al massimo due bande ai lati sugli schermi larghi o sopra e sotto su quelli alti.
+// Il duello occupa tutta la finestra (vedi .duel-screen in duel.css): lo zoom è lo stesso, il campo 3D riempie
+// lo spazio in più ai lati.
 const REF_HEIGHT = 860;
 const MIN_WIDTH = 1180;
 const DUEL_WIDTH = 1180;

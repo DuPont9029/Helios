@@ -68,7 +68,7 @@ button { font: inherit; color: inherit; }
 .icon { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; white-space: nowrap; font-feature-settings: "liga"; -webkit-font-smoothing: antialiased; font-size: 1.25em; vertical-align: -0.2em; }
 
 /* angolo smussato in alto a destra e in basso a sinistra */
-.chamfer, .btn, .card-box, .menu-tile, .panel, .modal, .status-box, .deck-part, .search-panel, .detail-panel, .side-tabs, .duel-controls {
+.chamfer, .btn, .card-box, .menu-tile, .panel, .modal, .status-box, .deck-part, .search-panel, .detail-panel {
   clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
 }
 .btn { --cut: 8px; }
