@@ -13,7 +13,10 @@ import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { HINT, LOC, MSG, PHASE, PHASE_NAMES, POS } from "../../core/constants.js";
 import { formatClock } from "../../duel/clock.js";
-import { chooseField, fieldsBase } from "../../data/fields3d.js";
+import { chooseField } from "../../data/fields3d.js";
+
+// Inclinazione del campo 3D nel duello con "Tilted view" (Settings → Field), in gradi.
+const FIELD_TILT = 30;
 
 const PHASES = [
   [PHASE.DRAW, "DP"], [PHASE.STANDBY, "SP"], [PHASE.MAIN1, "M1"],
@@ -86,7 +89,7 @@ export class DuelView {
   async mountField3d() {
     // Con un campo 3D scelto, la griglia è già quella del campo 3D (fondo scuro) mentre si carica:
     // il campo 2D non compare per un attimo prima di quello importato.
-    const wanted = !!(fieldsBase() && settings.field3d);
+    const wanted = !!settings.field3d;
     this.main.classList.toggle("field3d", wanted);
     this.main.classList.toggle("loading3d", wanted);
     let choice;
@@ -100,10 +103,10 @@ export class DuelView {
       // three.js si scarica solo quando serve.
       const { FieldStage } = await import("../../field3d/stage.js");
       if (this.destroyed) return;
-      this.stage = new FieldStage(this.main, { fx: settings.field3dFx });
+      this.stage = new FieldStage(this.main, { fx: settings.field3dFx, tilt: settings.field3dTilt ? FIELD_TILT : 0 });
       const zones = this.board.zoneEls;
       this.stage.setAnchors({ center: this.board.centerEl, left: zones.get(key(this.me, LOC.MZONE, 5)), right: zones.get(key(this.me, LOC.MZONE, 6)) });
-      await this.stage.load(choice.base, choice.id, choice.sides);
+      await (choice.theme ? this.stage.loadHelios(choice.theme) : this.stage.load(choice.base, choice.id, choice.sides));
       if (this.destroyed) return;
       // Log e Chat: pulsante nel campo, sul bordo sinistro (senza spazio ai lati resta quello normale).
       this.stage.setLogButton({
@@ -344,6 +347,8 @@ export class DuelView {
     this.medallionEl.addEventListener("click", (e) => {
       e.stopPropagation();
       this.toggleMenu(this.centerMenu);
+      // Sul campo di Helios il medaglione sta sopra il sole: cliccato, il sole manda la sua onda.
+      this.stage?.sunPulse();
     });
     this.centerMenu.addEventListener("click", (e) => e.stopPropagation());
 

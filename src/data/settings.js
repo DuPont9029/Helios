@@ -41,8 +41,9 @@ const DEFAULTS = {
   lastBestOf: 1, // partita: 1 (duello singolo), 3 o 5 (al meglio di) // chiave di TIMER_PRESETS (src/duel/clock.js)
   sleeve: null, // immagine del dorso delle proprie carte (data URL JPEG, vedi src/data/sleeve.js)
   fieldsUrl: "", // cartella dei campi 3D su un sito esterno (vedi src/data/fields3d.js); vuoto = VITE_FIELDS_URL
-  field3d: "random", // campo 3D del duello: "" (campo 2D), "random" o l'id di un campo (es. "Mat_001")
+  field3d: "helios", // campo 3D del duello: "" (campo 2D), "random" o l'id di un campo ("helios", "helios-sole" o es. "Mat_001")
   field3dFx: true, // campo 3D: particelle e bagliore
+  field3dTilt: false, // campo 3D: nel duello inclinato come in Master Duel (altrimenti visto dall'alto)
   pendulumIcon: null, // figura per le gemme delle zone Pendulum (data URL PNG con trasparenza)
   moai: null, // aspetto del proprio Moai sul campo 3D: { stone, eyes, flame, shape, drawing } (src/data/moai.js)
   testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)
@@ -66,6 +67,8 @@ function load() {
     // I relay Nostr sono il predefinito delle stanze: vale anche per chi aveva il vecchio predefinito salvato
     // (le impostazioni si salvano tutte), tranne se il server l'aveva scelto lui.
     if (!saved.roomModeChosen) delete saved.roomMode;
+    // Il campo Helios è il predefinito anche per chi aveva salvato il vecchio predefinito ("random").
+    if (!saved.field3dChosen) delete saved.field3d;
     return { ...DEFAULTS, ...saved };
   } catch {
     return { ...DEFAULTS };

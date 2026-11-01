@@ -3,7 +3,11 @@
 // accendono e dalla bocca esce il colpo. L'aspetto (pietra, occhi, colore e forma del colpo, disegno sulla faccia) è in
 // src/data/moai.js.
 import * as THREE from "three";
-import { MOAI_DEFAULT } from "../data/moai.js";
+import { MOAI_DEFAULT, DRAWING_W, DRAWING_H, DRAWING_RECTS, drawDrawing } from "../data/moai.js";
+
+// Dove sta il mio Moai sul campo (unità del campo; l'avversario a -x e z[1], speculare) e quanto è grande: lo usano
+// FieldStage.placePets e l'anteprima nelle impostazioni, che così lo vede come sul campo.
+export const PET = { x: 37.67, y: 2, z: [-5.48, 7.48], scale: 2.5 };
 
 const SHAPE_ID = { ray: 0, flame: 1, wave: 2, bolt: 3 };
 const SHAPE_WIDTH = { ray: 1.4, flame: 2.4, wave: 1.8, bolt: 1.6 };
@@ -36,14 +40,44 @@ function relief(nx, ny) {
   return brow + sockets + nose + tip + wings + lips + mouth + chin + cheeks;
 }
 
-/** Testa: blocco suddiviso deformato. UV proiettate di fronte (il disegno si vede sulla faccia). */
+// Zona della texture (DRAWING_RECTS) di ogni lato del blocco, nell'ordine dei vertici di BoxGeometry (+x, -x, +y, -y,
+// +z, -z) e come trasformare la posizione (non ancora deformata) in coordinate 0..1 dentro la zona, vista da fuori.
+const SIDES = [
+  ["right", (v) => [(D / 2 - v.z) / D, (v.y + H / 2) / H]],
+  ["left", (v) => [(v.z + D / 2) / D, (v.y + H / 2) / H]],
+  ["top", (v) => [(v.x + W / 2) / W, (D / 2 - v.z) / D]], // il bordo davanti tocca la fronte
+  ["bottom", (v) => [(v.x + W / 2) / W, (v.z + D / 2) / D]], // il bordo davanti tocca il mento
+  ["face", (v) => [(v.x + W / 2) / W, (v.y + H / 2) / H]],
+  ["back", (v) => [(W / 2 - v.x) / W, (v.y + H / 2) / H]],
+];
+
+/** Testa: blocco suddiviso deformato. Ogni lato ha la sua zona della texture (il disegno resta dove lo si fa). */
 function headGeometry() {
-  const geo = new THREE.BoxGeometry(W, H, D, 44, 80, 14);
+  const seg = [44, 80, 14];
+  const geo = new THREE.BoxGeometry(W, H, D, ...seg);
   const p = geo.attributes.position;
   const uv = geo.attributes.uv;
   const v = new THREE.Vector3();
+  // Vertici per lato: (segmenti + 1) × (segmenti + 1) delle due direzioni del lato.
+  const grid = [
+    [seg[2], seg[1]],
+    [seg[2], seg[1]],
+    [seg[0], seg[2]],
+    [seg[0], seg[2]],
+    [seg[0], seg[1]],
+    [seg[0], seg[1]],
+  ];
+  const sideOf = [];
+  grid.forEach(([a, b], k) => {
+    for (let i = 0; i < (a + 1) * (b + 1); i++) sideOf.push(k);
+  });
   for (let i = 0; i < p.count; i++) {
     v.fromBufferAttribute(p, i);
+    const [name, map] = SIDES[sideOf[i]];
+    const r = DRAWING_RECTS[name];
+    const [su, sv] = map(v);
+    // La texture si legge dal basso (flipY): v = 1 è la riga in alto della tela.
+    uv.setXY(i, (r.x + clamp01(su) * r.w) / DRAWING_W, 1 - (r.y + (1 - clamp01(sv)) * r.h) / DRAWING_H);
     const nx = v.x / (W / 2);
     const ny = v.y / (H / 2);
     const nz = v.z / (D / 2);
@@ -57,9 +91,6 @@ function headGeometry() {
     const ear = smooth(-0.45, -0.25, ny) * smooth(0.62, 0.42, ny) * smooth(0.86, 1, Math.abs(nx)) * (1 - 0.6 * Math.abs(nz));
     x += Math.sign(v.x) * 0.24 * ear;
     p.setXYZ(i, x, v.y, z);
-    // In cima e sotto le UV scorrono anche in profondità (si vede dall'alto: niente pietra stirata a righe).
-    const cap = Math.sign(ny) * smooth(0.8, 1, Math.abs(ny)) * (1 - nz) * 0.14;
-    uv.setXY(i, clamp01(0.5 + x / (W * 1.1)), clamp01(0.5 + v.y / H - cap));
   }
   geo.computeVertexNormals();
   return geo;
@@ -68,21 +99,21 @@ function headGeometry() {
 /** Pietra lavica porosa (deterministica: lo stesso Moai è uguale per entrambi), poi il disegno sopra. */
 function stoneCanvas(color) {
   const c = document.createElement("canvas");
-  c.width = 320;
-  c.height = 576;
+  c.width = DRAWING_W * 2;
+  c.height = DRAWING_H * 2;
   const x = c.getContext("2d");
   x.fillStyle = color;
   x.fillRect(0, 0, c.width, c.height);
   let seed = 7;
   const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  for (let i = 0; i < 2600; i++) {
+  for (let i = 0; i < 5400; i++) {
     x.fillStyle = rnd() < 0.55 ? `rgba(0,0,0,${0.05 + rnd() * 0.16})` : `rgba(255,255,255,${0.03 + rnd() * 0.08})`;
     x.beginPath();
     x.arc(rnd() * c.width, rnd() * c.height, 0.6 + rnd() * 2.2, 0, Math.PI * 2);
     x.fill();
   }
   x.strokeStyle = "rgba(0,0,0,0.22)";
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < 28; i++) {
     x.lineWidth = 0.6 + rnd() * 1.4;
     x.beginPath();
     let px = rnd() * c.width;
@@ -316,7 +347,7 @@ export class Moai {
     x.drawImage(this.stone, 0, 0);
     if (drawing) {
       x.globalAlpha = 0.95;
-      x.drawImage(drawing, 0, 0, this.face.width, this.face.height);
+      drawDrawing(x, drawing, this.face.width, this.face.height);
     }
     this.texture.image = this.face;
     this.texture.needsUpdate = true;

@@ -1,7 +1,7 @@
 import { h, clear, icon, pickFile } from "./dom.js";
 import { makeSleeve, validSleeve } from "../data/sleeve.js";
 import { makePendulumIcons, pendulumIcons, mirrorFor } from "../data/pendulum.js";
-import { MOAI_DEFAULT, MOAI_SHAPES, DRAWING_W, DRAWING_H, moaiConfig, drawingFrom } from "../data/moai.js";
+import { MOAI_DEFAULT, MOAI_SHAPES, DRAWING_W, DRAWING_H, DRAWING_RECTS, moaiConfig, drawingFrom, drawDrawing } from "../data/moai.js";
 import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
@@ -11,7 +11,7 @@ import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
 import { eloRelays } from "../net/elo.js";
 import { uploadHistory, rememberUpload, forgetUpload } from "../data/uploads.js";
-import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL } from "../data/fields3d.js";
+import { fieldList, fieldsBase, fieldFiles, isZip, storedSize, forgetZips, useZipFile, BUILD_FIELDS_URL, BUILTIN_FIELDS } from "../data/fields3d.js";
 import { COACHING } from "../data/features.js";
 
 /** Copia un testo segreto: prima si conferma. */
@@ -320,6 +320,19 @@ function pendulumPicker() {
 function moaiPicker() {
   let cfg = moaiConfig();
   let preview = null;
+  // Pennello o gomma: lo stesso interruttore sulla tela e a tutto schermo.
+  let erasing = false;
+  const switches = [];
+  const setTool = (erase) => {
+    erasing = erase;
+    for (const [b, e] of switches) b.classList.toggle("on", e === erase);
+  };
+  const toolSwitch = () => {
+    const pen = h("button.btn.small.on", { title: "Brush", onclick: () => setTool(false) }, icon("brush"));
+    const rub = h("button.btn.small", { title: "Eraser", onclick: () => setTool(true) }, icon("ink_eraser"));
+    switches.push([pen, false], [rub, true]);
+    return h("div.moai-tool-switch", pen, rub);
+  };
   const save = (patch, fire = false) => {
     cfg = { ...cfg, ...patch };
     settings.moai = cfg;
@@ -328,30 +341,77 @@ function moaiPicker() {
     pad.style.backgroundColor = cfg.stone;
   };
   const box = h("div.moai-preview", { title: "Click to fire" });
-  // Dipingere sul Moai: la testa 3D usa la stessa tela della faccia (le UV sono proiettate di fronte).
-  const paintBtn = h("button.btn.small.moai-paint", {
-    onclick: () => {
-      const on = !box.classList.contains("painting");
-      box.classList.toggle("painting", on);
-      box.title = on ? "" : "Click to fire";
-      paintBtn.replaceChildren(icon(on ? "check" : "brush"), on ? " Done" : " Paint");
-      hint.hidden = zoomBox.hidden = !on;
-      preview?.setPaintMode(on);
-    },
-  }, icon("brush"), " Paint");
-  const hint = h("small.moai-hint", { hidden: true }, "Drag on the Moai to paint · drag beside it to turn it · scroll to zoom");
-  const zoomBox = h(
-    "div.moai-zoom",
+  // Dipingere sul Moai: la testa 3D usa la stessa tela della faccia (le UV sono proiettate di fronte). Mentre si dipinge
+  // l'anteprima occupa tutta la finestra (spostata nel body, poi rimessa al suo posto), con i suoi strumenti.
+  const spot = document.createComment("moai-preview");
+  const setPainting = (on) => {
+    // Pittura o posizionamento di un'immagine (placing): stessa vista a tutto schermo, strumenti diversi.
+    hint.textContent = placing
+      ? "Drag on the Moai to move the image · scroll to resize · drag beside it to turn the Moai · Enter to apply · Esc to cancel"
+      : "Drag on the Moai to paint · drag beside it to turn it · scroll to zoom · Esc to close";
+    paintBtn.hidden = !!placing;
+    paintBar.hidden = !on || !!placing;
+    placeBar.hidden = !on || !placing;
+    hint.hidden = !on;
+    if (on === box.classList.contains("painting")) return;
+    if (on) {
+      box.replaceWith(spot);
+      document.body.append(box);
+      document.addEventListener("keydown", onKey);
+    } else {
+      spot.replaceWith(box);
+      document.removeEventListener("keydown", onKey);
+    }
+    box.classList.toggle("painting", on);
+    box.title = on ? "" : "Click to fire";
+    paintBtn.replaceChildren(icon(on ? "check" : "brush"), on ? " Done" : " Paint");
+    preview?.setPaintMode(on);
+  };
+  const onKey = (e) => {
+    if (placing && (e.key === "Escape" || e.key === "Enter")) endPlace(e.key === "Enter");
+    else if (e.key === "Escape") setPainting(false);
+  };
+  const paintBtn = h("button.btn.small.moai-paint", { onclick: () => setPainting(!box.classList.contains("painting")) }, icon("brush"), " Paint");
+  const hint = h("small.moai-hint", { hidden: true }, "Drag on the Moai to paint · drag beside it to turn it · scroll to zoom · Esc to close");
+  // Strumenti a tutto schermo: gli stessi della tela (inchiostro e spessore restano sincronizzati).
+  const barInk = h("input", { type: "color", oninput: () => (ink.value = barInk.value) });
+  const barBrush = h("input", { type: "range", min: 2, max: 18, oninput: () => (brush.value = barBrush.value) });
+  const paintBar = h(
+    "div.moai-paint-bar",
     { hidden: true },
+    h("label.moai-color", barInk, "Ink"),
+    h("label.moai-brush", "Size", barBrush),
+    toolSwitch(),
     h("button.btn.small", { title: "Zoom in", onclick: () => preview?.zoom(0.75) }, icon("zoom_in")),
     h("button.btn.small", { title: "Zoom out", onclick: () => preview?.zoom(1 / 0.75) }, icon("zoom_out"))
   );
-  box.append(paintBtn, zoomBox, hint);
+  // Immagine da sistemare sulla testa: centro (x, y) in pixel della texture, grandezza (s, 1 = adattata alla faccia) e
+  // rotazione; `base` è il disegno com'era prima, l'immagine ci va sopra.
+  let placing = null;
+  let grab = null;
+  const rotate = h("input", { type: "range", min: -180, max: 180, value: 0, oninput: () => placing && ((placing.rot = +rotate.value), renderPlace()) });
+  const resize = (k) => {
+    if (!placing) return;
+    placing.s = Math.min(8, Math.max(0.1, placing.s * k));
+    renderPlace();
+  };
+  const placeBar = h(
+    "div.moai-paint-bar",
+    { hidden: true },
+    h("button.btn.small", { title: "Smaller", onclick: () => resize(1 / 1.15) }, icon("remove")),
+    h("button.btn.small", { title: "Bigger", onclick: () => resize(1.15) }, icon("add")),
+    h("label.moai-brush", "Rotate", rotate),
+    h("button.btn.small", { title: "Fit to the face", onclick: () => placing && (Object.assign(placing, fitFace()), (rotate.value = 0), renderPlace()) }, icon("fit_screen"), " Fit"),
+    h("button.btn.small", { onclick: () => endPlace(false) }, icon("close"), " Cancel"),
+    h("button.btn.small.primary", { onclick: () => endPlace(true) }, icon("check"), " Apply")
+  );
+  box.append(paintBtn, paintBar, placeBar, hint);
   let stroke = null;
   import("../field3d/moai-preview.js")
     .then(({ MoaiPreview }) => {
       preview = new MoaiPreview(box, cfg);
       preview.onPaint = (u, v, start) => {
+        if (placing) return moveImage(u, v, start);
         if (u == null) return void (stroke = null); // fuori dalla testa: il tratto si interrompe
         const p = [u * DRAWING_W, (1 - v) * DRAWING_H];
         // Un salto lungo (per esempio dal lato alla faccia) non diventa una riga attraverso la faccia.
@@ -361,7 +421,13 @@ function moaiPicker() {
       };
       preview.onPaintEnd = () => {
         stroke = null;
-        commit();
+        grab = null;
+        if (!placing) commit();
+      };
+      preview.onWheel = (dy, pinch) => {
+        if (!placing) return false;
+        resize(Math.exp(-dy * (pinch ? 0.01 : 0.0015)));
+        return true;
       };
     })
     .catch(() => (box.dataset.loading = "3D preview unavailable"));
@@ -373,36 +439,55 @@ function moaiPicker() {
     ...Object.entries(MOAI_SHAPES).map(([k, v]) => h("option", { value: k, selected: cfg.shape === k }, v))
   );
 
-  // Disegno sulla faccia: la tela ha le proporzioni della texture della testa (in alto la fronte, in basso il mento).
-  const pad = h("canvas.moai-pad", { width: DRAWING_W, height: DRAWING_H });
-  const ctx = pad.getContext("2d");
-  const ink = h("input", { type: "color", value: "#1a1a1a" });
-  const brush = h("input", { type: "range", min: 2, max: 18, value: 6 });
+  // Disegno: `sheet` è tutta la texture della testa (faccia, fianchi, nuca, cima e mento, vedi DRAWING_RECTS); la tela
+  // visibile mostra e modifica solo la faccia (in alto la fronte, in basso il mento). Sul Moai in 3D si dipinge ovunque.
+  const sheet = h("canvas", { width: DRAWING_W, height: DRAWING_H });
+  const ctx = sheet.getContext("2d");
+  const FACE = DRAWING_RECTS.face;
+  const pad = h("canvas.moai-pad", { width: 160, height: 288 });
+  const padCtx = pad.getContext("2d");
+  const showPad = () => {
+    padCtx.clearRect(0, 0, pad.width, pad.height);
+    padCtx.drawImage(sheet, FACE.x, FACE.y, FACE.w, FACE.h, 0, 0, pad.width, pad.height);
+  };
+  const ink = h("input", { type: "color", value: "#1a1a1a", oninput: () => (barInk.value = ink.value) });
+  const brush = h("input", { type: "range", min: 2, max: 18, value: 6, oninput: () => (barBrush.value = brush.value) });
+  barInk.value = ink.value;
+  barBrush.value = brush.value;
   const status = h("small.muted");
   const load = (src) => {
     ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
+    showPad();
     if (!src) return;
     const img = new Image();
-    img.onload = () => ctx.drawImage(img, 0, 0, DRAWING_W, DRAWING_H);
+    img.onload = () => {
+      drawDrawing(ctx, img, DRAWING_W, DRAWING_H);
+      showPad();
+    };
     img.src = src;
   };
   const commit = () => {
     try {
-      save({ drawing: drawingFrom(pad) });
+      save({ drawing: drawingFrom(sheet) });
       status.textContent = cfg.drawing ? "Drawing saved. Your opponent sees it on your Moai in online Duels." : "";
     } catch (e) {
       status.textContent = e.message;
     }
   };
   // Pennello comune alla tela e alla testa 3D: punti in coordinate della tela; ogni tratto si vede subito sull'anteprima.
+  // Con la gomma il tratto toglie il disegno (torna la pietra).
   const dot = (p) => {
+    ctx.globalCompositeOperation = erasing ? "destination-out" : "source-over";
     ctx.fillStyle = ink.value;
     ctx.beginPath();
     ctx.arc(p[0], p[1], brush.value / 2, 0, Math.PI * 2);
     ctx.fill();
-    preview?.showDrawing(pad);
+    ctx.globalCompositeOperation = "source-over";
+    showPad();
+    preview?.showDrawing(sheet);
   };
   const line = (a, b) => {
+    ctx.globalCompositeOperation = erasing ? "destination-out" : "source-over";
     ctx.strokeStyle = ink.value;
     ctx.lineWidth = +brush.value;
     ctx.lineCap = ctx.lineJoin = "round";
@@ -410,12 +495,14 @@ function moaiPicker() {
     ctx.moveTo(...a);
     ctx.lineTo(...b);
     ctx.stroke();
-    preview?.showDrawing(pad);
+    ctx.globalCompositeOperation = "source-over";
+    showPad();
+    preview?.showDrawing(sheet);
   };
   let last = null;
   const at = (e) => {
     const r = pad.getBoundingClientRect();
-    return [((e.clientX - r.left) / r.width) * DRAWING_W, ((e.clientY - r.top) / r.height) * DRAWING_H];
+    return [FACE.x + ((e.clientX - r.left) / r.width) * FACE.w, FACE.y + ((e.clientY - r.top) / r.height) * FACE.h];
   };
   pad.addEventListener("pointerdown", (e) => {
     pad.setPointerCapture(e.pointerId);
@@ -434,18 +521,76 @@ function moaiPicker() {
   };
   pad.addEventListener("pointerup", end);
   pad.addEventListener("pointercancel", end);
+  // Posizionamento dell'immagine: trascinando sulla testa si sposta (di quanto si è mosso il punto della texture sotto il
+  // puntatore), oltre i bordi della faccia continua sui fianchi, sulla fronte e sul mento.
+  const fitFace = () => ({
+    x: FACE.x + FACE.w / 2,
+    y: FACE.y + FACE.h / 2,
+    s: 1,
+    rot: 0,
+  });
+  const renderPlace = () => {
+    const { img, base, x, y, s, rot } = placing;
+    const k = Math.min(FACE.w / img.naturalWidth, FACE.h / img.naturalHeight) * s;
+    ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
+    ctx.drawImage(base, 0, 0);
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate((rot * Math.PI) / 180);
+    ctx.drawImage(img, (-img.naturalWidth * k) / 2, (-img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+    ctx.restore();
+    showPad();
+    preview?.showDrawing(sheet);
+  };
+  const moveImage = (u, v, start) => {
+    if (u == null) return void (grab = null);
+    const p = [u * DRAWING_W, (1 - v) * DRAWING_H];
+    // Un salto lungo (da una parte all'altra della texture) riprende da lì invece di far saltare l'immagine.
+    if (!start && grab && Math.hypot(p[0] - grab[0], p[1] - grab[1]) < 40) {
+      placing.x += p[0] - grab[0];
+      placing.y += p[1] - grab[1];
+      renderPlace();
+    }
+    grab = p;
+  };
+  const endPlace = (apply) => {
+    if (!placing) return;
+    const { img, base } = placing;
+    if (!apply) {
+      ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
+      ctx.drawImage(base, 0, 0);
+      showPad();
+      preview?.showDrawing(sheet);
+    }
+    URL.revokeObjectURL(img.src);
+    placing = null;
+    setPainting(false);
+    if (apply) commit();
+  };
   const image = h("button.btn.small", {
     onclick: async () => {
       const f = await pickFile("image/*");
       if (!f) return;
       const img = new Image();
       img.onload = () => {
-        // Adattata alla faccia, centrata, con le proporzioni originali.
-        const k = Math.min(DRAWING_W / img.naturalWidth, DRAWING_H / img.naturalHeight);
+        if (preview) {
+          // Sul Moai a tutto schermo, da spostare, ingrandire e ruotare prima di applicarla.
+          const base = h("canvas", { width: DRAWING_W, height: DRAWING_H });
+          base.getContext("2d").drawImage(sheet, 0, 0);
+          placing = { img, base, ...fitFace() };
+          rotate.value = 0;
+          setPainting(true);
+          renderPlace();
+          return;
+        }
+        // Senza anteprima 3D: adattata alla faccia, centrata, con le proporzioni originali.
+        const k = Math.min(FACE.w / img.naturalWidth, FACE.h / img.naturalHeight);
         const w = img.naturalWidth * k;
         const hgt = img.naturalHeight * k;
-        ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
-        ctx.drawImage(img, (DRAWING_W - w) / 2, (DRAWING_H - hgt) / 2, w, hgt);
+        ctx.clearRect(FACE.x, FACE.y, FACE.w, FACE.h);
+        ctx.drawImage(img, FACE.x + (FACE.w - w) / 2, FACE.y + (FACE.h - hgt) / 2, w, hgt);
+        showPad();
+        preview?.showDrawing(sheet);
         URL.revokeObjectURL(img.src);
         commit();
       };
@@ -478,7 +623,7 @@ function moaiPicker() {
         h("small.muted", "Your Moai stands beside the 3D field: click it during a Duel to make it fire. In online Duels your opponent sees it and its shots."),
         h("div.row", ...colors.map(([, el]) => el)),
         h("label.moai-shape", h("span", "Shot"), shape),
-        h("div.moai-draw", h("div.moai-face", pad), h("div.moai-tools", h("small.muted", "Draw on the face, or press Paint on the preview to paint on the Moai itself"), h("label.moai-color", ink, "Ink"), h("label.moai-brush", "Size", brush), h("div.row", image, wipe))),
+        h("div.moai-draw", h("div.moai-face", pad), h("div.moai-tools", h("small.muted", "Draw on the face, or press Paint on the preview to paint on the Moai itself"), h("label.moai-color", ink, "Ink"), h("label.moai-brush", "Size", brush), toolSwitch(), h("div.row", image, wipe))),
         status,
         h("div.row", reset)
       )
@@ -489,7 +634,7 @@ function moaiPicker() {
 /** Campo 3D: sorgente dei campi (cartella, link a uno .zip o .zip dal computer), scelta del campo e anteprima. */
 function field3dPicker() {
   const status = h("small.muted");
-  const select = h("select.select", { onchange: () => { settings.field3d = select.value; preview(); } });
+  const select = h("select.select", { onchange: () => { settings.field3d = select.value; settings.field3dChosen = true; preview(); } });
   const box = h("div.field3d-preview", { hidden: true });
   const url = h("input.input", {
     value: settings.fieldsUrl ?? "",
@@ -526,7 +671,7 @@ function field3dPicker() {
     const t = ++token;
     stage?.dispose();
     stage = null;
-    const list = await fieldList().catch(() => []);
+    const list = [...BUILTIN_FIELDS, ...(await fieldList().catch(() => []))];
     const f = list.find((x) => x.id === settings.field3d);
     box.hidden = !f;
     if (!f || t !== token) return;
@@ -536,7 +681,7 @@ function field3dPicker() {
     stage.showcase();
     box.dataset.loading = "Loading…";
     try {
-      await stage.load(await fieldFiles(), f.id, f.sides);
+      await (f.theme ? stage.loadHelios(f.theme) : stage.load(await fieldFiles(), f.id, f.sides));
       delete box.dataset.loading;
     } catch (e) {
       box.dataset.loading = `Unable to load this field (${e.message})`;
@@ -546,11 +691,16 @@ function field3dPicker() {
   const refresh = async () => {
     const t = ++token;
     const src = fieldsBase();
-    clear(select).append(h("option", { value: "" }, "Standard field (2D)"));
-    select.disabled = !src;
+    // Sempre: il campo 2D, i campi di Helios e uno a caso; poi quelli della sorgente, se c'è.
+    clear(select).append(
+      h("option", { value: "" }, "Standard field (2D)"),
+      h("option", { value: "random" }, "Random field each duel"),
+      ...BUILTIN_FIELDS.map((f) => h("option", { value: f.id }, f.name))
+    );
+    select.value = [...select.options].some((o) => o.value === settings.field3d) ? settings.field3d : "";
     forget.hidden = true;
     if (!src) {
-      status.textContent = "No 3D fields: enter the address of the fields folder or of a .zip with it, or upload the .zip. An address must allow cross-site requests (e.g. GitHub Pages).";
+      status.textContent = "More 3D fields: enter the address of a fields folder or of a .zip with it, or upload the .zip. An address must allow cross-site requests (e.g. GitHub Pages).";
       return preview();
     }
     status.textContent = isZip(src) ? "Opening the .zip…" : "Loading the list…";
@@ -558,12 +708,12 @@ function field3dPicker() {
       const list = await fieldList(src, (k, got) => {
         if (t === token) status.textContent = `Downloading the .zip… ${k == null ? mb(got) : Math.round(k * 100) + "%"} (only the first time)`;
       });
-      select.append(h("option", { value: "random" }, "Random field each duel"), ...list.map((f) => h("option", { value: f.id }, f.name)));
+      select.append(...list.map((f) => h("option", { value: f.id }, f.name)));
       const stored = await storedSize(src).catch(() => 0);
       forget.hidden = !stored;
       // Indirizzi che funzionano nella rubrica (uno .zip dal computer no: nel browser se ne tiene uno solo).
       if (!src.startsWith("file:")) rememberUpload("fields", src).then(prev.refresh);
-      status.textContent = `${list.length} fields available${stored ? ` · ${mb(stored)} .zip stored in this browser` : ""}. Your opponent sees the field they chose.`;
+      status.textContent = `${list.length + BUILTIN_FIELDS.length} fields available${stored ? ` · ${mb(stored)} .zip stored in this browser` : ""}. Your opponent sees the field they chose.`;
     } catch (e) {
       status.textContent = `Unable to read the fields: ${e.message}`;
     }
@@ -577,6 +727,7 @@ function field3dPicker() {
     onPick: (v) => { url.value = settings.fieldsUrl = v; refresh(); },
   });
   const fx = h("label.check", h("input", { type: "checkbox", checked: settings.field3dFx, onchange: (e) => { settings.field3dFx = e.target.checked; preview(); } }), "Particles and glow (turn off on slow computers)");
+  const tilt = h("label.check", h("input", { type: "checkbox", checked: settings.field3dTilt, onchange: (e) => (settings.field3dTilt = e.target.checked) }), "Tilted view in the Duel (like Master Duel) instead of from above");
   refresh();
   return h(
     "div.field3d-picker",
@@ -584,13 +735,14 @@ function field3dPicker() {
       "label.field",
       h("span", "3D fields"),
       url,
-      h("small.muted", "Address of the fields folder or of a .zip with it (downloaded once and kept in this browser). The fields are not part of Helios.")
+      h("small.muted", "More fields: address of a fields folder or of a .zip with it (downloaded once and kept in this browser). The Helios fields are always there.")
     ),
     h("div.row", upload, forget),
     prev,
     h("label.field", h("span", "3D field"), select, status),
     box,
-    fx
+    fx,
+    tilt
   );
 }
 

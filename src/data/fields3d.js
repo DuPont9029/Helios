@@ -8,11 +8,18 @@
 //   names.json (facoltativo)   { "Mat_001": { en: "Ritual Cage", it: "..." } } (anche nella cartella superiore)
 //   Mat_001/near.glb, near.json, far.glb, far.json
 // Un indirizzo esterno deve permettere le richieste da altri siti (CORS), come GitHub Pages o raw.githubusercontent.com.
+// I campi di Helios (src/field3d/helios-field.js) invece sono nel codice: ci sono sempre, anche senza sorgente.
 import { settings } from "./settings.js";
 import { ZipReader } from "./zip.js";
 
 const ENV = import.meta.env ?? {};
 export const BUILD_FIELDS_URL = ENV.VITE_FIELDS_URL || "";
+
+/** Campi fatti da noi, sempre disponibili: `theme` è il tema di HeliosField. */
+export const BUILTIN_FIELDS = [
+  { id: "helios", name: "Helios", theme: "helios" },
+  { id: "helios-sole", name: "Helios · Sun", theme: "sole" },
+];
 
 /** Indirizzo (o "file:<nome>") della sorgente dei campi, "" se non configurata. */
 export function fieldsBase() {
@@ -256,9 +263,11 @@ export async function fieldFiles(src = fieldsBase()) {
 export async function chooseField() {
   const src = fieldsBase();
   const want = settings.field3d;
-  if (!src || !want) return null;
-  const { list, url } = await source(src);
-  if (!list.length) return null;
-  const f = (want !== "random" && list.find((x) => x.id === want)) || list[Math.floor(Math.random() * list.length)];
-  return { base: url, ...f };
+  if (!want) return null;
+  const builtin = BUILTIN_FIELDS.find((x) => x.id === want);
+  if (builtin) return builtin;
+  // Campo casuale, o uno della sorgente: anche i campi di Helios sono tra quelli possibili.
+  const ext = src ? await source(src).catch(() => null) : null;
+  const list = [...BUILTIN_FIELDS, ...(ext?.list ?? []).map((f) => ({ base: ext.url, ...f }))];
+  return (want !== "random" && list.find((x) => x.id === want)) || list[Math.floor(Math.random() * list.length)];
 }
