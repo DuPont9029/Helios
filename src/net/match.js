@@ -6,6 +6,7 @@ import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
 import { validPendulumIcons } from "../data/pendulum.js";
+import { validMoai } from "../data/moai.js";
 import { validMessage, cleanOptions } from "./guard.js";
 import { identity } from "./identity.js";
 import { RankedGame } from "./elo.js";
@@ -148,6 +149,8 @@ export async function negotiate(mux, opts) {
     sleeve: opts.sleeve ?? null,
     // Gemme delle zone Pendulum (campo facoltativo: i client che non lo conoscono lo ignorano).
     pendulum: opts.pendulum ?? null,
+    // Aspetto del Moai (campo facoltativo, come le gemme).
+    moai: opts.moai ?? null,
     options: opts.host ? opts.options : undefined,
     // Partite classificate (ELO): identità del giocatore e se vuole che il duello conti.
     pk: identity().pk,
@@ -214,11 +217,14 @@ export async function negotiate(mux, opts) {
     }
   }
   const pendulums = iAmFirst ? [opts.pendulum ?? null, theirGems] : [theirGems, opts.pendulum ?? null];
+  const theirMoai = validMoai(hello.moai);
+  const moais = iAmFirst ? [opts.moai ?? null, theirMoai] : [theirMoai, opts.moai ?? null];
   return {
     me: iAmFirst ? 0 : 1,
     names,
     sleeves,
     pendulums,
+    moais,
     sameData,
     iWinToss,
     options,

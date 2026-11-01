@@ -13,7 +13,10 @@ import { cardName, descString, getCard, victoryString } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { HINT, LOC, MSG, PHASE, PHASE_NAMES, POS } from "../../core/constants.js";
 import { formatClock } from "../../duel/clock.js";
-import { chooseField, fieldsBase } from "../../data/fields3d.js";
+import { chooseField } from "../../data/fields3d.js";
+
+// Inclinazione del campo 3D nel duello con "Tilted view" (Settings → Field), in gradi.
+const FIELD_TILT = 30;
 
 const PHASES = [
   [PHASE.DRAW, "DP"], [PHASE.STANDBY, "SP"], [PHASE.MAIN1, "M1"],
@@ -24,6 +27,7 @@ const PHASES = [
 export class DuelView {
   /**
    * @param opts { me, names, reveal, onSurrender, onChat (null = chat disattivata), onLeave,
+   *   moais: [aspetto del Moai del giocatore 0, del giocatore 1] (null = predefinito), onMoai() quando il mio spara,
    *   sideTab: { id, label, el } scheda in più accanto a Log e Chat, aperta all'inizio (es. le note dello spettatore) }
    */
   constructor(opts) {
@@ -85,7 +89,7 @@ export class DuelView {
   async mountField3d() {
     // Con un campo 3D scelto, la griglia è già quella del campo 3D (fondo scuro) mentre si carica:
     // il campo 2D non compare per un attimo prima di quello importato.
-    const wanted = !!(fieldsBase() && settings.field3d);
+    const wanted = !!settings.field3d;
     this.main.classList.toggle("field3d", wanted);
     this.main.classList.toggle("loading3d", wanted);
     let choice;
@@ -99,10 +103,10 @@ export class DuelView {
       // three.js si scarica solo quando serve.
       const { FieldStage } = await import("../../field3d/stage.js");
       if (this.destroyed) return;
-      this.stage = new FieldStage(this.main, { fx: settings.field3dFx });
+      this.stage = new FieldStage(this.main, { fx: settings.field3dFx, tilt: settings.field3dTilt ? FIELD_TILT : 0 });
       const zones = this.board.zoneEls;
       this.stage.setAnchors({ center: this.board.centerEl, left: zones.get(key(this.me, LOC.MZONE, 5)), right: zones.get(key(this.me, LOC.MZONE, 6)) });
-      await this.stage.load(choice.base, choice.id, choice.sides);
+      await (choice.theme ? this.stage.loadHelios(choice.theme) : this.stage.load(choice.base, choice.id, choice.sides));
       if (this.destroyed) return;
       // Log e Chat: pulsante nel campo, sul bordo sinistro (senza spazio ai lati resta quello normale).
       this.stage.setLogButton({
@@ -110,12 +114,16 @@ export class DuelView {
         onVisible: (v) => this.main.classList.toggle("log3d", v),
       });
       this.stage.setLogUnread(this.unread);
+      // Moai ai lati del campo: cliccato il mio spara (online lo vede anche l'avversario).
+      const moais = this.opts.moais ?? [];
+      this.stage.setPets({ mine: moais[this.me], theirs: moais[1 - this.me], onFire: () => this.opts.onMoai?.() });
       let last = 0;
       this.main.addEventListener("mousemove", (e) => {
         const now = performance.now();
         if (now - last < 80) return;
         last = now;
-        this.main.classList.toggle("over-log", !e.target.closest(".zone, .card, button, .hand, .lp") && !!this.stage?.overLogButton(e.clientX, e.clientY));
+        const free = !e.target.closest(".zone, .card, button, .hand, .lp");
+        this.main.classList.toggle("over-log", free && !!(this.stage?.overLogButton(e.clientX, e.clientY) || this.stage?.overPet(e.clientX, e.clientY)));
       });
       for (let p = 0; p < 2; p++) if (this.lp[p]) this.stage.syncLP(this.board.side(p), this.lp[p], this.startLP);
       this.main.classList.remove("loading3d");
@@ -339,6 +347,8 @@ export class DuelView {
     this.medallionEl.addEventListener("click", (e) => {
       e.stopPropagation();
       this.toggleMenu(this.centerMenu);
+      // Sul campo di Helios il medaglione sta sopra il sole: cliccato, il sole manda la sua onda.
+      this.stage?.sunPulse();
     });
     this.centerMenu.addEventListener("click", (e) => e.stopPropagation());
 
@@ -693,6 +703,11 @@ export class DuelView {
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
     this.logEl.scrollTop = this.logEl.scrollHeight;
     return line;
+  }
+
+  /** Il Moai dell'avversario spara (messaggio "moai" dei duelli online). */
+  opponentMoai() {
+    this.stage?.firePet(1);
   }
 
   addChat(name, text, mine = false) {

@@ -9,6 +9,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Field } from "./field.js";
+import { HeliosField } from "./helios-field.js";
+import { Moai, PET } from "./moai.js";
 
 // Centro delle zone mostri extra (x) nel campo 3D: dà la scala tra unità del campo e pixel della griglia.
 const EMZ_X = 8.55;
@@ -16,15 +18,26 @@ const FOV = 35;
 // Eventi del campo (vedi EVENT_LABELS in field.js).
 const HIT = 11;
 const BREAK = [12, 13, 14, 15]; // fase 2, 3, 4, distruzione
+const SUN = 24; // tocco: sul campo di Helios l'onda del sole
+// Moai (i pet, come in MDPro3): il mio a sinistra appena sotto la linea centrale, quello dell'avversario a destra appena
+// sopra, speculare al mio (girato di mezzo giro: l'avversario vede il suo come io vedo il mio). Posizioni scelte
+// nell'anteprima di md-fields; a grandezza piena servono PET_ROOM unità tra il centro del campo e il bordo della vista.
+const { x: PET_X, y: PET_Y, z: PET_Z, scale: PET_SCALE } = PET; // il mio a +x (sinistra dello schermo)
+const PET_ROOM = 47; // sotto, i Moai si rimpiccioliscono
+const PET_MIN_FIT = 0.45;
+const PET_COOLDOWN = 1500; // ms tra un colpo e l'altro del proprio Moai
+// Altezza dei supporti di Deck ed Extra Deck nei campi di Master Duel (misurata: piatti, a 1.46 in quasi tutti).
+const PILE_HEIGHT = 1.46;
 
 export class FieldStage {
   /**
    * @param host elemento in cui disegnare (la tela riempie tutto l'elemento)
-   * @param opts { fx: particelle + bagliore }
+   * @param opts { fx: particelle + bagliore, tilt: gradi di inclinazione del campo nel duello (0 = dall'alto) }
    */
   constructor(host, opts = {}) {
     this.host = host;
     this.fx = opts.fx !== false;
+    this.tilt = opts.tilt || 0;
     this.canvas = document.createElement("canvas");
     this.canvas.className = "field3d-canvas";
     host.prepend(this.canvas);
@@ -41,6 +54,13 @@ export class FieldStage {
     this.camera.up.set(0, 0, 1); // in alto sullo schermo il lato dell'avversario (+z)
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Moai in una scena a parte, disegnata su una tela trasparente sopra la griglia delle zone (vedi setPets): né le
+    // decorazioni del campo né zone e carte coprono il Moai e il suo colpo.
+    this.petScene = new THREE.Scene();
+    this.petScene.add(new THREE.HemisphereLight(0xffffff, 0x404050, 2.2));
+    const petSun = new THREE.DirectionalLight(0xffffff, 1.6);
+    petSun.position.set(-20, 60, -30);
+    this.petScene.add(petSun);
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 1.0));
     this.composer.addPass(new OutputPass());
     this.field = null;
@@ -66,6 +86,18 @@ export class FieldStage {
     this.align();
   }
 
+  /** Campo di Helios (nel codice, niente da scaricare) con il tema "helios" o "sole". */
+  async loadHelios(theme) {
+    this.field = new HeliosField({ theme });
+    this.scene.add(this.field.group);
+    this.align();
+  }
+
+  /** Onda del sole al centro del campo di Helios (sugli altri campi niente). */
+  sunPulse() {
+    if (this.field instanceof HeliosField) this.field.trigger(SUN);
+  }
+
   /**
    * Allinea la telecamera alla griglia: `center` è l'elemento al centro del campo, `left`/`right`
    * le due zone mostri extra (rettangoli a schermo, con lo zoom della pagina già applicato).
@@ -83,8 +115,15 @@ export class FieldStage {
       const r = el.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
     };
+    // Con il campo inclinato le misure si prendono con la griglia delle zone dritta (inclinata ha i rettangoli deformati).
+    const grid = a.center.parentElement;
+    const tilted = grid.style.transform;
+    grid.style.transform = "none";
     const [cx, cy] = mid(a.center);
     const ppu = (mid(a.right)[0] - mid(a.left)[0]) / (2 * EMZ_X); // pixel a schermo per unità del campo
+    const gridBox = grid.getBoundingClientRect();
+    const boardBox = grid.parentElement.getBoundingClientRect();
+    grid.style.transform = tilted;
     if (!box.width || !box.height || !(ppu > 0)) return;
     // Risoluzione: dimensione CSS della tela × zoom della pagina × densità dello schermo.
     const w = this.canvas.clientWidth || box.width;
@@ -94,6 +133,7 @@ export class FieldStage {
     this.renderer.setSize(w, hgt, false);
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(w, hgt);
+    this.sizePets();
     // Telecamera perpendicolare al pavimento (y = 0): il pavimento si proietta senza deformazioni,
     // le decorazioni in rilievo mantengono un po' di profondità.
     const height = box.height / ppu / 2 / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -102,16 +142,111 @@ export class FieldStage {
     const oz = (cy - (box.top + box.height / 2)) / ppu;
     this.camera.aspect = box.width / box.height;
     this.camera.position.set(ox, height, oz);
-    this.camera.lookAt(ox, 0, oz);
+    this.camera.up.set(0, 0, 1);
+    const target = new THREE.Vector3(ox, 0, oz);
+    if (this.tilt) {
+      // Campo inclinato (come in Master Duel): la griglia delle zone gira di `tilt` gradi attorno alla linea orizzontale
+      // che passa per il centro del campo, vista da un occhio sopra il centro della tela alla stessa distanza della
+      // telecamera (perspective); la telecamera gira al contrario attorno allo stesso asse, così 3D e zone combaciano.
+      const axis = new THREE.Vector3(1, 0, 0);
+      const k = -THREE.MathUtils.degToRad(this.tilt);
+      this.camera.position.applyAxisAngle(axis, k);
+      this.camera.up.applyAxisAngle(axis, k);
+      target.applyAxisAngle(axis, k);
+      const board = grid.parentElement;
+      board.style.perspective = `${(height * ppu) / zoom}px`;
+      board.style.perspectiveOrigin = `${(box.left + box.width / 2 - boardBox.left) / zoom}px ${(box.top + box.height / 2 - boardBox.top) / zoom}px`;
+      grid.style.transformOrigin = `${(cx - gridBox.left) / zoom}px ${(cy - gridBox.top) / zoom}px`;
+      grid.style.transform = `rotateX(${this.tilt}deg)`;
+      // Deck ed Extra Deck sui supporti rialzati: le loro zone salgono all'altezza del supporto (dall'alto non serve,
+      // le posizioni in field-3d.css sono misurate così).
+      grid.style.transformStyle = "preserve-3d";
+      grid.style.setProperty("--pile-lift", `${((this.field?.pileHeight ?? PILE_HEIGHT) * ppu) / zoom}px`);
+    }
+    this.camera.lookAt(target);
     this.camera.far = height + 500;
     this.camera.updateProjectionMatrix();
     this.placeLogButton();
+    this.placePets();
+  }
+
+  // ---------------------------------------------------------------- Moai
+
+  /**
+   * I due Moai: `mine` e `theirs` sono i loro aspetti (src/data/moai.js). Cliccando il mio spara e chiama onFire
+   * (online lo si manda all'avversario, che lo vede con firePet(1)).
+   */
+  setPets({ mine, theirs, onFire }) {
+    if (!this.petRenderer) {
+      this.petCanvas = document.createElement("canvas");
+      this.petCanvas.className = "field3d-pets";
+      this.host.append(this.petCanvas);
+      this.petRenderer = new THREE.WebGLRenderer({ canvas: this.petCanvas, alpha: true, antialias: true });
+      this.petRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.petRenderer.setClearColor(0x000000, 0);
+      this.sizePets();
+    }
+    const list = [new Moai(mine), new Moai(theirs)];
+    for (const m of list) this.petScene.add(m.group, m.beam.mesh);
+    this.pets = { list, onFire, last: 0, visible: false };
+
+    this.placePets();
+  }
+
+  /** La tela dei Moai è grande come quella del campo, con la stessa risoluzione. */
+  sizePets() {
+    if (!this.petRenderer) return;
+    this.petRenderer.setPixelRatio(this.renderer.getPixelRatio());
+    this.petRenderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
+  }
+
+  /** Fa sparare il Moai del lato `side` (0 = mio, 1 = dell'avversario). */
+  firePet(side) {
+    this.pets?.list[side].fire();
+  }
+
+  placePets() {
+    const p = this.pets;
+    if (!p || !this.anchors) return;
+    const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const halfW = (this.camera.position.y - PET_Y) * t * this.camera.aspect;
+    const cx = this.camera.position.x;
+    // Spazio dal centro del campo al bordo più vicino della vista (lo schermo ha la sinistra a +x).
+    const room = Math.min(cx + halfW, halfW - cx);
+    // Con poco spazio ai lati (finestra stretta) i Moai si rimpiccioliscono e si stringono verso il bordo; spariscono
+    // solo se non c'è proprio posto.
+    const fit = Math.min(1, room / PET_ROOM);
+    p.visible = fit >= PET_MIN_FIT;
+    const [me, opp] = p.list;
+    for (const m of p.list) m.group.visible = p.visible;
+    if (!p.visible) return;
+    // Sempre allo stesso punto rispetto al tabellone (a tutto schermo non scivola verso il bordo); più vicino al centro
+    // solo se la vista non arriva fin lì.
+    const x = Math.min(PET_X, room - 7.1 * fit);
+    me.group.position.set(x, PET_Y, PET_Z[0]);
+    opp.group.position.set(-x, PET_Y, PET_Z[1]);
+    for (const m of p.list) {
+      m.group.scale.setScalar(PET_SCALE * fit);
+      m.setTarget(new THREE.Vector3(0, 0, 0));
+    }
+    opp.body.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(me.body.quaternion);
+    // Il campo di Helios ha i basamenti dei Moai: seguono i Moai.
+    this.field?.placePets?.([
+      [x, PET_Z[0], fit],
+      [-x, PET_Z[1], fit],
+    ]);
+  }
+
+  /** Il mio Moai è sotto il puntatore? */
+  overPet(clientX, clientY) {
+    const p = this.pets;
+    return !!p?.visible && p.list[0].hit(this.rayAt(clientX, clientY));
   }
 
   // ---------------------------------------------------------------- pulsante Log/Chat nel campo
 
   /**
-   * Pulsante di Log e Chat dentro il campo: un esagono piccolo sul bordo sinistro, a metà altezza, che si accende
+   * Pulsante di Log e Chat dentro il campo: un esagono piccolo sul bordo sinistro, in alto, che si accende
    * solo al passaggio del mouse (o appena di più con messaggi da leggere). onVisible(false): niente spazio ai lati
    * del tabellone (schermo stretto), la pagina mostra il suo pulsante.
    */
@@ -187,7 +322,7 @@ export class FieldStage {
     b.badgeTex.needsUpdate = true;
   }
 
-  /** Sul bordo sinistro della vista, a metà altezza, sollevato sopra le decorazioni del campo. */
+  /** Sul bordo sinistro della vista, nella metà dell'avversario, sollevato sopra le decorazioni del campo. */
   placeLogButton() {
     const b = this.logButton;
     if (!b || !this.anchors) return;
@@ -197,7 +332,7 @@ export class FieldStage {
     const x = this.camera.position.x + halfW - 4.5; // lo schermo ha la sinistra a +x
     // Serve spazio a sinistra del tabellone (la Zona Banditi dell'avversario è a x ≈ 25.6).
     const visible = x > 33;
-    b.group.position.set(x, y, 0);
+    b.group.position.set(x, y, 17); // in alto, lontano dal Moai
     b.group.visible = visible;
     if (visible !== b.visible) {
       b.visible = visible;
@@ -277,10 +412,19 @@ export class FieldStage {
     this.timers.push(t);
   }
 
-  /** Clic sul pavimento (fuori da zone e carte): la creatura del campo fa la sua animazione. */
+  /** Clic sul pavimento (fuori da zone e carte): il mio Moai spara, o la creatura del campo fa la sua animazione. */
   tap(clientX, clientY) {
     if (this.overLogButton(clientX, clientY)) {
       this.logButton.onClick?.();
+      return true;
+    }
+    if (this.overPet(clientX, clientY)) {
+      const p = this.pets;
+      if (performance.now() - p.last >= PET_COOLDOWN) {
+        p.last = performance.now();
+        p.list[0].fire();
+        p.onFire?.();
+      }
       return true;
     }
     if (!this.field) return false;
@@ -313,20 +457,34 @@ export class FieldStage {
       b.group.scale.setScalar(b.hover ? 1.08 : 1);
     }
     this.field.update(dt, { particles: this.fx, animations: true });
+    for (const m of this.pets?.list ?? []) m.update(dt);
     if (this.fx) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
+    this.petRenderer?.render(this.petScene, this.camera);
   }
 
   dispose() {
     this.alive = false;
+    // La griglia delle zone torna dritta (per esempio se il campo 3D non si carica e resta quello 2D).
+    const grid = this.anchors?.center.parentElement;
+    if (grid) {
+      grid.style.transform = grid.style.transformOrigin = grid.style.transformStyle = "";
+      grid.parentElement.style.perspective = grid.parentElement.style.perspectiveOrigin = "";
+      grid.style.removeProperty("--pile-lift");
+    }
     this.timers.forEach(clearTimeout);
     this.resize.disconnect();
     window.removeEventListener("resize", this.onResize);
     this.field?.dispose();
     this.field = null;
+    for (const m of this.pets?.list ?? []) m.dispose();
+    this.pets = null;
     this.composer.dispose?.();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.canvas.remove();
+    this.petRenderer?.dispose();
+    this.petRenderer?.forceContextLoss();
+    this.petCanvas?.remove();
   }
 }

@@ -36,6 +36,8 @@
 }
 .log-btn:hover { border-color: var(--accent); color: #fff; }
 .duel-main.log3d .log-btn { display: none; }
+/* sul campo 3D a metà altezza a sinistra c'è il Moai: il pulsante sale in alto, dove sta quello del campo */
+.duel-main.field3d .log-btn { top: 96px; transform: none; }
 .log-btn-badge { position: absolute; right: -4px; top: -4px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font: 700 11px/18px var(--font); }
 .duel-main.over-log { cursor: pointer; }
 .log, .chat { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
