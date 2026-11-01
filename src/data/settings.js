@@ -44,6 +44,7 @@ const DEFAULTS = {
   field3d: "random", // campo 3D del duello: "" (campo 2D), "random" o l'id di un campo (es. "Mat_001")
   field3dFx: true, // campo 3D: particelle e bagliore
   pendulumIcon: null, // figura per le gemme delle zone Pendulum (data URL PNG con trasparenza)
+  moai: null, // aspetto del proprio Moai sul campo 3D: { stone, eyes, flame, shape, drawing } (src/data/moai.js)
   testDrawOrder: "random", // Test Duel: "random" o "ordered" (entrambi i giocatori pescano nell'ordine del mazzo)
   testOpponent: "deck", // Test Duel: "deck" (il giocatore 2 ha un mazzo) o "none" (nessun mazzo, passa sempre il turno)
   lastDrawOrder: "random", // contro la CPU: "random" o "ordered" (si pesca nell'ordine del mazzo)

@@ -24,6 +24,7 @@ const PHASES = [
 export class DuelView {
   /**
    * @param opts { me, names, reveal, onSurrender, onChat (null = chat disattivata), onLeave,
+   *   moais: [aspetto del Moai del giocatore 0, del giocatore 1] (null = predefinito), onMoai() quando il mio spara,
    *   sideTab: { id, label, el } scheda in più accanto a Log e Chat, aperta all'inizio (es. le note dello spettatore) }
    */
   constructor(opts) {
@@ -110,12 +111,16 @@ export class DuelView {
         onVisible: (v) => this.main.classList.toggle("log3d", v),
       });
       this.stage.setLogUnread(this.unread);
+      // Moai ai lati del campo: cliccato il mio spara (online lo vede anche l'avversario).
+      const moais = this.opts.moais ?? [];
+      this.stage.setPets({ mine: moais[this.me], theirs: moais[1 - this.me], onFire: () => this.opts.onMoai?.() });
       let last = 0;
       this.main.addEventListener("mousemove", (e) => {
         const now = performance.now();
         if (now - last < 80) return;
         last = now;
-        this.main.classList.toggle("over-log", !e.target.closest(".zone, .card, button, .hand, .lp") && !!this.stage?.overLogButton(e.clientX, e.clientY));
+        const free = !e.target.closest(".zone, .card, button, .hand, .lp");
+        this.main.classList.toggle("over-log", free && !!(this.stage?.overLogButton(e.clientX, e.clientY) || this.stage?.overPet(e.clientX, e.clientY)));
       });
       for (let p = 0; p < 2; p++) if (this.lp[p]) this.stage.syncLP(this.board.side(p), this.lp[p], this.startLP);
       this.main.classList.remove("loading3d");
@@ -693,6 +698,11 @@ export class DuelView {
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
     this.logEl.scrollTop = this.logEl.scrollHeight;
     return line;
+  }
+
+  /** Il Moai dell'avversario spara (messaggio "moai" dei duelli online). */
+  opponentMoai() {
+    this.stage?.firePet(1);
   }
 
   addChat(name, text, mine = false) {

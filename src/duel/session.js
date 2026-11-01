@@ -85,6 +85,7 @@ export class DuelSession {
    *   timer: chiave di TIMER_PRESETS ("omega" | "off"),
    *   sleeves: [immagine del giocatore 0, del giocatore 1] (data URL o null),
    *   pendulums: [gemme Pendulum del giocatore 0, del giocatore 1] ({ red, blue, side } o null = gemme predefinite),
+   *   moais: [aspetto del Moai del giocatore 0, del giocatore 1] (src/data/moai.js; null = predefinito),
    *   mux: LinkMux (solo P2P),
    *   practice: true = giocata di prova (dal report del coaching): niente spettatori né report,
    *   prefix: risposte da rigiocare subito senza animazioni (la prova parte da quel momento del duello),
@@ -119,6 +120,8 @@ export class DuelSession {
       // Master Rule 3: zone Pendulum separate; altrimenti sono la prima e l'ultima zona Magie/Trappole.
       separatePz: (BigInt(cfg.duel.flags ?? 0) & DUEL.SEPARATE_PZONE) !== 0n,
       onChat: p2p ? (text) => this.send({ t: "chat", text }) : null,
+      moais: cfg.moais ?? null,
+      onMoai: p2p ? () => this.send({ t: "moai" }) : null,
       onSurrender: () => this.surrender(),
       onLeave: () => this.leave(),
       sideTab: cfg.sideTab ?? null,
@@ -244,6 +247,9 @@ export class DuelSession {
     // Chat dell'avversario: al massimo 8 messaggi ogni 10 secondi (gli altri si scartano).
     const chatOk = rateLimit(8, 10000);
     mux.on("chat", (m) => chatOk() && this.view.addChat(opp(), String(m.text).slice(0, 300)));
+    // Colpo del Moai dell'avversario: al massimo 3 ogni 5 secondi.
+    const moaiOk = rateLimit(3, 5000);
+    mux.on("moai", () => moaiOk() && this.view.opponentMoai());
     mux.on("surrender", () => this.finish({ winner: this.cfg.me, text: "Your opponent surrendered" }));
     // "Tempo scaduto" dall'avversario: vale solo per il suo giocatore (equivale ad arrendersi). Il proprio
     // timeout lo decide solo il proprio orologio: un messaggio che dice il contrario si ignora.

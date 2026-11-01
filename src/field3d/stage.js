@@ -9,6 +9,7 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Field } from "./field.js";
+import { Moai } from "./moai.js";
 
 // Centro delle zone mostri extra (x) nel campo 3D: dà la scala tra unità del campo e pixel della griglia.
 const EMZ_X = 8.55;
@@ -16,6 +17,15 @@ const FOV = 35;
 // Eventi del campo (vedi EVENT_LABELS in field.js).
 const HIT = 11;
 const BREAK = [12, 13, 14, 15]; // fase 2, 3, 4, distruzione
+// Moai (i pet, come in MDPro3): il mio a sinistra appena sotto la linea centrale, quello dell'avversario a destra appena
+// sopra, speculare al mio (girato di mezzo giro: l'avversario vede il suo come io vedo il mio). Posizioni scelte
+// nell'anteprima di md-fields; a grandezza piena servono PET_ROOM unità tra il centro del campo e il bordo della vista.
+const PET_Y = 2;
+const PET_Z = [-5.48, 7.48];
+const PET_SCALE = 2.5;
+const PET_ROOM = 47; // sotto, i Moai si rimpiccioliscono
+const PET_MIN_FIT = 0.45;
+const PET_COOLDOWN = 1500; // ms tra un colpo e l'altro del proprio Moai
 
 export class FieldStage {
   /**
@@ -41,6 +51,16 @@ export class FieldStage {
     this.camera.up.set(0, 0, 1); // in alto sullo schermo il lato dell'avversario (+z)
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // Moai in una scena a parte, disegnata sopra il campo: le decorazioni del campo non li coprono mai.
+    this.petScene = new THREE.Scene();
+    this.petScene.add(new THREE.HemisphereLight(0xffffff, 0x404050, 2.2));
+    const petSun = new THREE.DirectionalLight(0xffffff, 1.6);
+    petSun.position.set(-20, 60, -30);
+    this.petScene.add(petSun);
+    const petPass = new RenderPass(this.petScene, this.camera);
+    petPass.clear = false;
+    petPass.clearDepth = true;
+    this.composer.addPass(petPass);
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 1.0));
     this.composer.addPass(new OutputPass());
     this.field = null;
@@ -106,12 +126,63 @@ export class FieldStage {
     this.camera.far = height + 500;
     this.camera.updateProjectionMatrix();
     this.placeLogButton();
+    this.placePets();
+  }
+
+  // ---------------------------------------------------------------- Moai
+
+  /**
+   * I due Moai: `mine` e `theirs` sono i loro aspetti (src/data/moai.js). Cliccando il mio spara e chiama onFire
+   * (online lo si manda all'avversario, che lo vede con firePet(1)).
+   */
+  setPets({ mine, theirs, onFire }) {
+    const list = [new Moai(mine), new Moai(theirs)];
+    for (const m of list) this.petScene.add(m.group, m.beam.mesh);
+    this.pets = { list, onFire, last: 0, visible: false };
+
+    this.placePets();
+  }
+
+  /** Fa sparare il Moai del lato `side` (0 = mio, 1 = dell'avversario). */
+  firePet(side) {
+    this.pets?.list[side].fire();
+  }
+
+  placePets() {
+    const p = this.pets;
+    if (!p || !this.anchors) return;
+    const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+    const halfW = (this.camera.position.y - PET_Y) * t * this.camera.aspect;
+    const cx = this.camera.position.x;
+    // Spazio dal centro del campo al bordo più vicino della vista (lo schermo ha la sinistra a +x).
+    const room = Math.min(cx + halfW, halfW - cx);
+    // Con poco spazio ai lati (finestra stretta) i Moai si rimpiccioliscono e si stringono verso il bordo; spariscono
+    // solo se non c'è proprio posto.
+    const fit = Math.min(1, room / PET_ROOM);
+    p.visible = fit >= PET_MIN_FIT;
+    const [me, opp] = p.list;
+    for (const m of p.list) m.group.visible = p.visible;
+    if (!p.visible) return;
+    const x = Math.min(room - 6 * fit, Math.max(43 * fit, room * 0.78)) - 1.12 * fit;
+    me.group.position.set(x, PET_Y, PET_Z[0]);
+    opp.group.position.set(-x, PET_Y, PET_Z[1]);
+    for (const m of p.list) {
+      m.group.scale.setScalar(PET_SCALE * fit);
+      m.setTarget(new THREE.Vector3(0, 0, 0));
+    }
+    opp.body.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(me.body.quaternion);
+  }
+
+  /** Il mio Moai è sotto il puntatore? */
+  overPet(clientX, clientY) {
+    const p = this.pets;
+    return !!p?.visible && p.list[0].hit(this.rayAt(clientX, clientY));
   }
 
   // ---------------------------------------------------------------- pulsante Log/Chat nel campo
 
   /**
-   * Pulsante di Log e Chat dentro il campo: un esagono piccolo sul bordo sinistro, a metà altezza, che si accende
+   * Pulsante di Log e Chat dentro il campo: un esagono piccolo sul bordo sinistro, in alto, che si accende
    * solo al passaggio del mouse (o appena di più con messaggi da leggere). onVisible(false): niente spazio ai lati
    * del tabellone (schermo stretto), la pagina mostra il suo pulsante.
    */
@@ -187,7 +258,7 @@ export class FieldStage {
     b.badgeTex.needsUpdate = true;
   }
 
-  /** Sul bordo sinistro della vista, a metà altezza, sollevato sopra le decorazioni del campo. */
+  /** Sul bordo sinistro della vista, nella metà dell'avversario, sollevato sopra le decorazioni del campo. */
   placeLogButton() {
     const b = this.logButton;
     if (!b || !this.anchors) return;
@@ -197,7 +268,7 @@ export class FieldStage {
     const x = this.camera.position.x + halfW - 4.5; // lo schermo ha la sinistra a +x
     // Serve spazio a sinistra del tabellone (la Zona Banditi dell'avversario è a x ≈ 25.6).
     const visible = x > 33;
-    b.group.position.set(x, y, 0);
+    b.group.position.set(x, y, 17); // in alto, lontano dal Moai
     b.group.visible = visible;
     if (visible !== b.visible) {
       b.visible = visible;
@@ -277,10 +348,19 @@ export class FieldStage {
     this.timers.push(t);
   }
 
-  /** Clic sul pavimento (fuori da zone e carte): la creatura del campo fa la sua animazione. */
+  /** Clic sul pavimento (fuori da zone e carte): il mio Moai spara, o la creatura del campo fa la sua animazione. */
   tap(clientX, clientY) {
     if (this.overLogButton(clientX, clientY)) {
       this.logButton.onClick?.();
+      return true;
+    }
+    if (this.overPet(clientX, clientY)) {
+      const p = this.pets;
+      if (performance.now() - p.last >= PET_COOLDOWN) {
+        p.last = performance.now();
+        p.list[0].fire();
+        p.onFire?.();
+      }
       return true;
     }
     if (!this.field) return false;
@@ -313,8 +393,17 @@ export class FieldStage {
       b.group.scale.setScalar(b.hover ? 1.08 : 1);
     }
     this.field.update(dt, { particles: this.fx, animations: true });
+    for (const m of this.pets?.list ?? []) m.update(dt);
     if (this.fx) this.composer.render();
-    else this.renderer.render(this.scene, this.camera);
+    else {
+      this.renderer.render(this.scene, this.camera);
+      if (this.pets?.visible) {
+        this.renderer.autoClear = false;
+        this.renderer.clearDepth();
+        this.renderer.render(this.petScene, this.camera);
+        this.renderer.autoClear = true;
+      }
+    }
   }
 
   dispose() {
@@ -324,6 +413,8 @@ export class FieldStage {
     window.removeEventListener("resize", this.onResize);
     this.field?.dispose();
     this.field = null;
+    for (const m of this.pets?.list ?? []) m.dispose();
+    this.pets = null;
     this.composer.dispose?.();
     this.renderer.dispose();
     this.renderer.forceContextLoss();
