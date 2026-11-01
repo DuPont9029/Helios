@@ -9,7 +9,8 @@ import { RenderPass } from "three/addons/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/addons/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/addons/postprocessing/OutputPass.js";
 import { Field } from "./field.js";
-import { Moai } from "./moai.js";
+import { HeliosField } from "./helios-field.js";
+import { Moai, PET } from "./moai.js";
 
 // Centro delle zone mostri extra (x) nel campo 3D: dà la scala tra unità del campo e pixel della griglia.
 const EMZ_X = 8.55;
@@ -17,25 +18,26 @@ const FOV = 35;
 // Eventi del campo (vedi EVENT_LABELS in field.js).
 const HIT = 11;
 const BREAK = [12, 13, 14, 15]; // fase 2, 3, 4, distruzione
+const SUN = 24; // tocco: sul campo di Helios l'onda del sole
 // Moai (i pet, come in MDPro3): il mio a sinistra appena sotto la linea centrale, quello dell'avversario a destra appena
 // sopra, speculare al mio (girato di mezzo giro: l'avversario vede il suo come io vedo il mio). Posizioni scelte
 // nell'anteprima di md-fields; a grandezza piena servono PET_ROOM unità tra il centro del campo e il bordo della vista.
-const PET_Y = 2;
-const PET_X = 37.67; // il mio a +x (sinistra dello schermo), quello dell'avversario a -x
-const PET_Z = [-5.48, 7.48];
-const PET_SCALE = 2.5;
+const { x: PET_X, y: PET_Y, z: PET_Z, scale: PET_SCALE } = PET; // il mio a +x (sinistra dello schermo)
 const PET_ROOM = 47; // sotto, i Moai si rimpiccioliscono
 const PET_MIN_FIT = 0.45;
 const PET_COOLDOWN = 1500; // ms tra un colpo e l'altro del proprio Moai
+// Altezza dei supporti di Deck ed Extra Deck nei campi di Master Duel (misurata: piatti, a 1.46 in quasi tutti).
+const PILE_HEIGHT = 1.46;
 
 export class FieldStage {
   /**
    * @param host elemento in cui disegnare (la tela riempie tutto l'elemento)
-   * @param opts { fx: particelle + bagliore }
+   * @param opts { fx: particelle + bagliore, tilt: gradi di inclinazione del campo nel duello (0 = dall'alto) }
    */
   constructor(host, opts = {}) {
     this.host = host;
     this.fx = opts.fx !== false;
+    this.tilt = opts.tilt || 0;
     this.canvas = document.createElement("canvas");
     this.canvas.className = "field3d-canvas";
     host.prepend(this.canvas);
@@ -52,16 +54,13 @@ export class FieldStage {
     this.camera.up.set(0, 0, 1); // in alto sullo schermo il lato dell'avversario (+z)
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    // Moai in una scena a parte, disegnata sopra il campo: le decorazioni del campo non li coprono mai.
+    // Moai in una scena a parte, disegnata su una tela trasparente sopra la griglia delle zone (vedi setPets): né le
+    // decorazioni del campo né zone e carte coprono il Moai e il suo colpo.
     this.petScene = new THREE.Scene();
     this.petScene.add(new THREE.HemisphereLight(0xffffff, 0x404050, 2.2));
     const petSun = new THREE.DirectionalLight(0xffffff, 1.6);
     petSun.position.set(-20, 60, -30);
     this.petScene.add(petSun);
-    const petPass = new RenderPass(this.petScene, this.camera);
-    petPass.clear = false;
-    petPass.clearDepth = true;
-    this.composer.addPass(petPass);
     this.composer.addPass(new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.4, 1.0));
     this.composer.addPass(new OutputPass());
     this.field = null;
@@ -87,6 +86,18 @@ export class FieldStage {
     this.align();
   }
 
+  /** Campo di Helios (nel codice, niente da scaricare) con il tema "helios" o "sole". */
+  async loadHelios(theme) {
+    this.field = new HeliosField({ theme });
+    this.scene.add(this.field.group);
+    this.align();
+  }
+
+  /** Onda del sole al centro del campo di Helios (sugli altri campi niente). */
+  sunPulse() {
+    if (this.field instanceof HeliosField) this.field.trigger(SUN);
+  }
+
   /**
    * Allinea la telecamera alla griglia: `center` è l'elemento al centro del campo, `left`/`right`
    * le due zone mostri extra (rettangoli a schermo, con lo zoom della pagina già applicato).
@@ -104,8 +115,15 @@ export class FieldStage {
       const r = el.getBoundingClientRect();
       return [r.left + r.width / 2, r.top + r.height / 2];
     };
+    // Con il campo inclinato le misure si prendono con la griglia delle zone dritta (inclinata ha i rettangoli deformati).
+    const grid = a.center.parentElement;
+    const tilted = grid.style.transform;
+    grid.style.transform = "none";
     const [cx, cy] = mid(a.center);
     const ppu = (mid(a.right)[0] - mid(a.left)[0]) / (2 * EMZ_X); // pixel a schermo per unità del campo
+    const gridBox = grid.getBoundingClientRect();
+    const boardBox = grid.parentElement.getBoundingClientRect();
+    grid.style.transform = tilted;
     if (!box.width || !box.height || !(ppu > 0)) return;
     // Risoluzione: dimensione CSS della tela × zoom della pagina × densità dello schermo.
     const w = this.canvas.clientWidth || box.width;
@@ -115,6 +133,7 @@ export class FieldStage {
     this.renderer.setSize(w, hgt, false);
     this.composer.setPixelRatio(this.renderer.getPixelRatio());
     this.composer.setSize(w, hgt);
+    this.sizePets();
     // Telecamera perpendicolare al pavimento (y = 0): il pavimento si proietta senza deformazioni,
     // le decorazioni in rilievo mantengono un po' di profondità.
     const height = box.height / ppu / 2 / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
@@ -123,7 +142,28 @@ export class FieldStage {
     const oz = (cy - (box.top + box.height / 2)) / ppu;
     this.camera.aspect = box.width / box.height;
     this.camera.position.set(ox, height, oz);
-    this.camera.lookAt(ox, 0, oz);
+    this.camera.up.set(0, 0, 1);
+    const target = new THREE.Vector3(ox, 0, oz);
+    if (this.tilt) {
+      // Campo inclinato (come in Master Duel): la griglia delle zone gira di `tilt` gradi attorno alla linea orizzontale
+      // che passa per il centro del campo, vista da un occhio sopra il centro della tela alla stessa distanza della
+      // telecamera (perspective); la telecamera gira al contrario attorno allo stesso asse, così 3D e zone combaciano.
+      const axis = new THREE.Vector3(1, 0, 0);
+      const k = -THREE.MathUtils.degToRad(this.tilt);
+      this.camera.position.applyAxisAngle(axis, k);
+      this.camera.up.applyAxisAngle(axis, k);
+      target.applyAxisAngle(axis, k);
+      const board = grid.parentElement;
+      board.style.perspective = `${(height * ppu) / zoom}px`;
+      board.style.perspectiveOrigin = `${(box.left + box.width / 2 - boardBox.left) / zoom}px ${(box.top + box.height / 2 - boardBox.top) / zoom}px`;
+      grid.style.transformOrigin = `${(cx - gridBox.left) / zoom}px ${(cy - gridBox.top) / zoom}px`;
+      grid.style.transform = `rotateX(${this.tilt}deg)`;
+      // Deck ed Extra Deck sui supporti rialzati: le loro zone salgono all'altezza del supporto (dall'alto non serve,
+      // le posizioni in field-3d.css sono misurate così).
+      grid.style.transformStyle = "preserve-3d";
+      grid.style.setProperty("--pile-lift", `${((this.field?.pileHeight ?? PILE_HEIGHT) * ppu) / zoom}px`);
+    }
+    this.camera.lookAt(target);
     this.camera.far = height + 500;
     this.camera.updateProjectionMatrix();
     this.placeLogButton();
@@ -137,11 +177,27 @@ export class FieldStage {
    * (online lo si manda all'avversario, che lo vede con firePet(1)).
    */
   setPets({ mine, theirs, onFire }) {
+    if (!this.petRenderer) {
+      this.petCanvas = document.createElement("canvas");
+      this.petCanvas.className = "field3d-pets";
+      this.host.append(this.petCanvas);
+      this.petRenderer = new THREE.WebGLRenderer({ canvas: this.petCanvas, alpha: true, antialias: true });
+      this.petRenderer.outputColorSpace = THREE.SRGBColorSpace;
+      this.petRenderer.setClearColor(0x000000, 0);
+      this.sizePets();
+    }
     const list = [new Moai(mine), new Moai(theirs)];
     for (const m of list) this.petScene.add(m.group, m.beam.mesh);
     this.pets = { list, onFire, last: 0, visible: false };
 
     this.placePets();
+  }
+
+  /** La tela dei Moai è grande come quella del campo, con la stessa risoluzione. */
+  sizePets() {
+    if (!this.petRenderer) return;
+    this.petRenderer.setPixelRatio(this.renderer.getPixelRatio());
+    this.petRenderer.setSize(this.canvas.clientWidth, this.canvas.clientHeight, false);
   }
 
   /** Fa sparare il Moai del lato `side` (0 = mio, 1 = dell'avversario). */
@@ -174,6 +230,11 @@ export class FieldStage {
       m.setTarget(new THREE.Vector3(0, 0, 0));
     }
     opp.body.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(me.body.quaternion);
+    // Il campo di Helios ha i basamenti dei Moai: seguono i Moai.
+    this.field?.placePets?.([
+      [x, PET_Z[0], fit],
+      [-x, PET_Z[1], fit],
+    ]);
   }
 
   /** Il mio Moai è sotto il puntatore? */
@@ -398,19 +459,19 @@ export class FieldStage {
     this.field.update(dt, { particles: this.fx, animations: true });
     for (const m of this.pets?.list ?? []) m.update(dt);
     if (this.fx) this.composer.render();
-    else {
-      this.renderer.render(this.scene, this.camera);
-      if (this.pets?.visible) {
-        this.renderer.autoClear = false;
-        this.renderer.clearDepth();
-        this.renderer.render(this.petScene, this.camera);
-        this.renderer.autoClear = true;
-      }
-    }
+    else this.renderer.render(this.scene, this.camera);
+    this.petRenderer?.render(this.petScene, this.camera);
   }
 
   dispose() {
     this.alive = false;
+    // La griglia delle zone torna dritta (per esempio se il campo 3D non si carica e resta quello 2D).
+    const grid = this.anchors?.center.parentElement;
+    if (grid) {
+      grid.style.transform = grid.style.transformOrigin = grid.style.transformStyle = "";
+      grid.parentElement.style.perspective = grid.parentElement.style.perspectiveOrigin = "";
+      grid.style.removeProperty("--pile-lift");
+    }
     this.timers.forEach(clearTimeout);
     this.resize.disconnect();
     window.removeEventListener("resize", this.onResize);
@@ -422,5 +483,8 @@ export class FieldStage {
     this.renderer.dispose();
     this.renderer.forceContextLoss();
     this.canvas.remove();
+    this.petRenderer?.dispose();
+    this.petRenderer?.forceContextLoss();
+    this.petCanvas?.remove();
   }
 }

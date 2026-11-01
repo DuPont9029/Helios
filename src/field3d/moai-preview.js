@@ -1,8 +1,13 @@
-// Anteprima del proprio Moai nelle impostazioni: visto dall'alto come sul campo, con la stessa posa. Cliccato spara.
+// Anteprima del proprio Moai nelle impostazioni: com'è sul campo (stesso punto, stessa posa, stessa telecamera dall'alto
+// sopra il centro del campo), inquadrato da vicino con setViewOffset. Cliccato spara.
 // In modalità pittura la telecamera va davanti alla faccia: trascinando sulla testa si dipinge (onPaint riceve il punto
 // della texture, in 0..1 con l'alto in alto), trascinando attorno la si gira, con la rotellina si fa zoom.
 import * as THREE from "three";
-import { Moai } from "./moai.js";
+import { Moai, PET } from "./moai.js";
+
+// Altezza della telecamera del campo (circa quella di una finestra da laptop) e quanto l'anteprima ingrandisce.
+const FIELD_HEIGHT = 100;
+const CROP = 2.2;
 
 export class MoaiPreview {
   constructor(host, cfg) {
@@ -22,13 +27,13 @@ export class MoaiPreview {
     const floor = (this.floor = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshStandardMaterial({ color: 0x2a2620, roughness: 1 })));
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
-    this.camera = new THREE.PerspectiveCamera(35, 1, 1, 200);
+    this.camera = new THREE.PerspectiveCamera(35, 1, 1, 400);
     this.camera.up.set(0, 0, 1); // come sul campo: in alto +z, a sinistra +x
-    this.camera.position.set(0, 40, 0);
+    this.camera.position.set(0, FIELD_HEIGHT, 0);
     this.camera.lookAt(0, 0, 0);
     this.moai = new Moai(cfg);
-    this.moai.group.position.set(10, 2, -3);
-    this.moai.group.scale.setScalar(2.5);
+    this.moai.group.position.set(PET.x, PET.y, PET.z[0]);
+    this.moai.group.scale.setScalar(PET.scale);
     this.moai.setTarget(new THREE.Vector3(0, 0, 0));
     this.scene.add(this.moai.group, this.moai.beam.mesh);
     this.canvas.addEventListener("click", () => !this.painting && this.moai.fire());
@@ -40,6 +45,7 @@ export class MoaiPreview {
     this.raycaster = new THREE.Raycaster();
     this.onPaint = null; // (u, v, newStroke) oppure (null) quando il pennello esce dalla testa
     this.onPaintEnd = null;
+    this.onWheel = null; // (deltaY, ctrlKey) => true se la rotellina l'ha usata qualcun altro (niente zoom)
     this.bindPaint();
     this.aimCamera();
     this.camera.position.copy(this.view.pos);
@@ -79,10 +85,11 @@ export class MoaiPreview {
     head.updateWorldMatrix(true, false);
     const center = new THREE.Box3().setFromObject(head).getCenter(new THREE.Vector3());
     if (!this.painting) {
-      // Dall'alto, con il Moai al centro (abbastanza lontano da vedere anche il colpo).
-      this.view.pos.set(center.x, 46, center.z);
+      // Come sul campo: dall'alto sopra il centro del campo (il Moai si vede di sbieco); frame() lo inquadra al centro.
+      this.headCenter = center;
+      this.view.pos.set(0, FIELD_HEIGHT, 0);
       this.view.up.set(0, 0, 1);
-      this.view.look.set(center.x, 0, center.z);
+      this.view.look.set(0, 0, 0);
       return;
     }
     const up = new THREE.Vector3(0, 1, 0).transformDirection(head.matrixWorld);
@@ -146,6 +153,7 @@ export class MoaiPreview {
       (e) => {
         if (!this.painting) return;
         e.preventDefault();
+        if (this.onWheel?.(e.deltaY, e.ctrlKey)) return;
         this.zoom(Math.exp(e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
       },
       { passive: false }
@@ -177,6 +185,15 @@ export class MoaiPreview {
     this.camera.up.lerp(this.view.up, k).normalize();
     this.look.lerp(this.view.look, k);
     this.camera.lookAt(this.look);
+    this.camera.updateMatrixWorld();
+    // Fuori dalla pittura: si ritaglia dalla vista del campo un riquadro attorno al Moai (prospettiva identica al campo).
+    this.camera.clearViewOffset();
+    if (!this.painting && this.headCenter) {
+      const c = this.headCenter.clone().project(this.camera);
+      const fw = w * CROP;
+      const fh = hgt * CROP;
+      this.camera.setViewOffset(fw, fh, ((c.x + 1) / 2) * fw - w / 2, ((1 - c.y) / 2) * fh - hgt / 2, w, hgt);
+    }
     this.moai.update(dt);
     this.renderer.render(this.scene, this.camera);
   }
