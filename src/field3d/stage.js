@@ -21,6 +21,7 @@ const BREAK = [12, 13, 14, 15]; // fase 2, 3, 4, distruzione
 // sopra, speculare al mio (girato di mezzo giro: l'avversario vede il suo come io vedo il mio). Posizioni scelte
 // nell'anteprima di md-fields; a grandezza piena servono PET_ROOM unità tra il centro del campo e il bordo della vista.
 const PET_Y = 2;
+const PET_X = 37.67; // il mio a +x (sinistra dello schermo), quello dell'avversario a -x
 const PET_Z = [-5.48, 7.48];
 const PET_SCALE = 2.5;
 const PET_ROOM = 47; // sotto, i Moai si rimpiccioliscono
@@ -163,7 +164,9 @@ export class FieldStage {
     const [me, opp] = p.list;
     for (const m of p.list) m.group.visible = p.visible;
     if (!p.visible) return;
-    const x = Math.min(room - 6 * fit, Math.max(43 * fit, room * 0.78)) - 1.12 * fit;
+    // Sempre allo stesso punto rispetto al tabellone (a tutto schermo non scivola verso il bordo); più vicino al centro
+    // solo se la vista non arriva fin lì.
+    const x = Math.min(PET_X, room - 7.1 * fit);
     me.group.position.set(x, PET_Y, PET_Z[0]);
     opp.group.position.set(-x, PET_Y, PET_Z[1]);
     for (const m of p.list) {
