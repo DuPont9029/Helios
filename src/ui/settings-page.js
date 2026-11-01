@@ -1,6 +1,7 @@
 import { h, clear, icon, pickFile } from "./dom.js";
 import { makeSleeve, validSleeve } from "../data/sleeve.js";
 import { makePendulumIcons, pendulumIcons, mirrorFor } from "../data/pendulum.js";
+import { MOAI_DEFAULT, MOAI_SHAPES, DRAWING_W, DRAWING_H, moaiConfig, drawingFrom } from "../data/moai.js";
 import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
@@ -312,6 +313,179 @@ function pendulumPicker() {
   return h("div.field", h("span", "Pendulum Zone gems"), h("div.pz-picker", h("div.pz-previews", blue, red), h("div.sleeve-side", status, side, h("div.row", choose, remove), prev)));
 }
 
+/**
+ * Moai: il pet ai lati del campo 3D. Colori, forma del colpo e un disegno sulla faccia (a mano o da un'immagine);
+ * nei duelli online l'avversario lo vede com'è qui. Anteprima 3D: cliccala per farlo sparare.
+ */
+function moaiPicker() {
+  let cfg = moaiConfig();
+  let preview = null;
+  const save = (patch, fire = false) => {
+    cfg = { ...cfg, ...patch };
+    settings.moai = cfg;
+    preview?.setConfig(cfg);
+    if (fire) preview?.fire();
+    pad.style.backgroundColor = cfg.stone;
+  };
+  const box = h("div.moai-preview", { title: "Click to fire" });
+  // Dipingere sul Moai: la testa 3D usa la stessa tela della faccia (le UV sono proiettate di fronte).
+  const paintBtn = h("button.btn.small.moai-paint", {
+    onclick: () => {
+      const on = !box.classList.contains("painting");
+      box.classList.toggle("painting", on);
+      box.title = on ? "" : "Click to fire";
+      paintBtn.replaceChildren(icon(on ? "check" : "brush"), on ? " Done" : " Paint");
+      hint.hidden = zoomBox.hidden = !on;
+      preview?.setPaintMode(on);
+    },
+  }, icon("brush"), " Paint");
+  const hint = h("small.moai-hint", { hidden: true }, "Drag on the Moai to paint · drag beside it to turn it · scroll to zoom");
+  const zoomBox = h(
+    "div.moai-zoom",
+    { hidden: true },
+    h("button.btn.small", { title: "Zoom in", onclick: () => preview?.zoom(0.75) }, icon("zoom_in")),
+    h("button.btn.small", { title: "Zoom out", onclick: () => preview?.zoom(1 / 0.75) }, icon("zoom_out"))
+  );
+  box.append(paintBtn, zoomBox, hint);
+  let stroke = null;
+  import("../field3d/moai-preview.js")
+    .then(({ MoaiPreview }) => {
+      preview = new MoaiPreview(box, cfg);
+      preview.onPaint = (u, v, start) => {
+        if (u == null) return void (stroke = null); // fuori dalla testa: il tratto si interrompe
+        const p = [u * DRAWING_W, (1 - v) * DRAWING_H];
+        // Un salto lungo (per esempio dal lato alla faccia) non diventa una riga attraverso la faccia.
+        if (start || !stroke || Math.hypot(p[0] - stroke[0], p[1] - stroke[1]) > 30) dot(p);
+        else line(stroke, p);
+        stroke = p;
+      };
+      preview.onPaintEnd = () => {
+        stroke = null;
+        commit();
+      };
+    })
+    .catch(() => (box.dataset.loading = "3D preview unavailable"));
+  const color = (key, label) =>
+    h("label.moai-color", h("input", { type: "color", value: cfg[key], oninput: (e) => save({ [key]: e.target.value }, key === "flame") }), label);
+  const shape = h(
+    "select.select",
+    { onchange: () => save({ shape: shape.value }, true) },
+    ...Object.entries(MOAI_SHAPES).map(([k, v]) => h("option", { value: k, selected: cfg.shape === k }, v))
+  );
+
+  // Disegno sulla faccia: la tela ha le proporzioni della texture della testa (in alto la fronte, in basso il mento).
+  const pad = h("canvas.moai-pad", { width: DRAWING_W, height: DRAWING_H });
+  const ctx = pad.getContext("2d");
+  const ink = h("input", { type: "color", value: "#1a1a1a" });
+  const brush = h("input", { type: "range", min: 2, max: 18, value: 6 });
+  const status = h("small.muted");
+  const load = (src) => {
+    ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
+    if (!src) return;
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0, DRAWING_W, DRAWING_H);
+    img.src = src;
+  };
+  const commit = () => {
+    try {
+      save({ drawing: drawingFrom(pad) });
+      status.textContent = cfg.drawing ? "Drawing saved. Your opponent sees it on your Moai in online Duels." : "";
+    } catch (e) {
+      status.textContent = e.message;
+    }
+  };
+  // Pennello comune alla tela e alla testa 3D: punti in coordinate della tela; ogni tratto si vede subito sull'anteprima.
+  const dot = (p) => {
+    ctx.fillStyle = ink.value;
+    ctx.beginPath();
+    ctx.arc(p[0], p[1], brush.value / 2, 0, Math.PI * 2);
+    ctx.fill();
+    preview?.showDrawing(pad);
+  };
+  const line = (a, b) => {
+    ctx.strokeStyle = ink.value;
+    ctx.lineWidth = +brush.value;
+    ctx.lineCap = ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(...a);
+    ctx.lineTo(...b);
+    ctx.stroke();
+    preview?.showDrawing(pad);
+  };
+  let last = null;
+  const at = (e) => {
+    const r = pad.getBoundingClientRect();
+    return [((e.clientX - r.left) / r.width) * DRAWING_W, ((e.clientY - r.top) / r.height) * DRAWING_H];
+  };
+  pad.addEventListener("pointerdown", (e) => {
+    pad.setPointerCapture(e.pointerId);
+    dot((last = at(e)));
+  });
+  pad.addEventListener("pointermove", (e) => {
+    if (!last) return;
+    const p = at(e);
+    line(last, p);
+    last = p;
+  });
+  const end = () => {
+    if (!last) return;
+    last = null;
+    commit();
+  };
+  pad.addEventListener("pointerup", end);
+  pad.addEventListener("pointercancel", end);
+  const image = h("button.btn.small", {
+    onclick: async () => {
+      const f = await pickFile("image/*");
+      if (!f) return;
+      const img = new Image();
+      img.onload = () => {
+        // Adattata alla faccia, centrata, con le proporzioni originali.
+        const k = Math.min(DRAWING_W / img.naturalWidth, DRAWING_H / img.naturalHeight);
+        const w = img.naturalWidth * k;
+        const hgt = img.naturalHeight * k;
+        ctx.clearRect(0, 0, DRAWING_W, DRAWING_H);
+        ctx.drawImage(img, (DRAWING_W - w) / 2, (DRAWING_H - hgt) / 2, w, hgt);
+        URL.revokeObjectURL(img.src);
+        commit();
+      };
+      img.onerror = () => toast("Unsupported image format: use a JPG, PNG or WebP", { kind: "error" });
+      img.src = URL.createObjectURL(f);
+    },
+  }, icon("image"), " Image");
+  const wipe = h("button.btn.small.danger", { onclick: () => { load(""); commit(); } }, icon("delete"), " Clear");
+  const reset = h("button.btn.small", {
+    onclick: () => {
+      save({ ...MOAI_DEFAULT });
+      load("");
+      settings.moai = null;
+      for (const [k, input] of colors) input.querySelector("input").value = cfg[k];
+      shape.value = cfg.shape;
+      status.textContent = "";
+    },
+  }, icon("restart_alt"), " Default");
+  const colors = [["stone", color("stone", "Stone")], ["eyes", color("eyes", "Eyes")], ["flame", color("flame", "Shot")]];
+  load(cfg.drawing);
+  pad.style.backgroundColor = cfg.stone;
+  return h(
+    "div.field",
+    h("span", "Moai"),
+    h(
+      "div.moai-picker",
+      box,
+      h(
+        "div.moai-side",
+        h("small.muted", "Your Moai stands beside the 3D field: click it during a Duel to make it fire. In online Duels your opponent sees it and its shots."),
+        h("div.row", ...colors.map(([, el]) => el)),
+        h("label.moai-shape", h("span", "Shot"), shape),
+        h("div.moai-draw", h("div.moai-face", pad), h("div.moai-tools", h("small.muted", "Draw on the face, or press Paint on the preview to paint on the Moai itself"), h("label.moai-color", ink, "Ink"), h("label.moai-brush", "Size", brush), h("div.row", image, wipe))),
+        status,
+        h("div.row", reset)
+      )
+    )
+  );
+}
+
 /** Campo 3D: sorgente dei campi (cartella, link a uno .zip o .zip dal computer), scelta del campo e anteprima. */
 function field3dPicker() {
   const status = h("small.muted");
@@ -459,7 +633,7 @@ export function showSettings(app) {
           check("fieldSelect", "Pick materials, targets and costs by clicking the cards on the field"),
           sleevePicker()
         ),
-        h("section.card-box", h("h3", "Field"), field3dPicker(), pendulumPicker()),
+        h("section.card-box", h("h3", "Field"), field3dPicker(), moaiPicker(), pendulumPicker()),
         h(
           "section.card-box",
           h("h3", "Network (WebRTC)"),

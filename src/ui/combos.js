@@ -9,6 +9,7 @@ import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine } from "../d
 import { settings } from "../data/settings.js";
 import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
+import { moaiConfig, MOAI_CPU } from "../data/moai.js";
 import { loadDecks, saveDecks, sortDeckPart } from "../deck/deck.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
@@ -1623,6 +1624,7 @@ function startDuel(app, deck, combo, controller, title) {
     timer: "off",
     sleeves: pair(validSleeve(settings.sleeve), null),
     pendulums: pair(pendulumIcons(), null),
+    moais: pair(moaiConfig(), MOAI_CPU),
     trainer: controller,
     duel: {
       flags: String(DUEL_MODES.MR5.flags),

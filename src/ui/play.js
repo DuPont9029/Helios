@@ -10,6 +10,7 @@ import { TIMER_PRESETS } from "../duel/clock.js";
 import { MAX_BEST_OF, clampBestOf, newSeries } from "../duel/series.js";
 import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
+import { moaiConfig, MOAI_CPU } from "../data/moai.js";
 import { openSideEditor } from "./editor.js";
 import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen, signalingAvailable, resolveIceServers } from "../net/signaling.js";
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
@@ -298,11 +299,15 @@ export function showLocalSetup(app, { vsCpu }) {
             sleeves[me] = validSleeve(settings.sleeve);
             const pendulums = [null, null];
             pendulums[me] = pendulumIcons();
+            // La CPU ha il suo Moai; nel Test Duel il giocatore 2 ha quello predefinito.
+            const moais = [null, null];
+            moais[me] = moaiConfig();
+            if (vsCpu) moais[1 - me] = MOAI_CPU;
             startSession(app, {
               onExit: () => app.home("training"),
               // Tra i duelli della partita si apre il Side Deck (se c'è almeno un mazzo con carte nel Side).
               sideDeck: series.bestOf > 1,
-              controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves, pendulums,
+              controllers, me, names, reveal: !vsCpu, timer: options.timer, sleeves, pendulums, moais,
               match: series,
               // Duello successivo della partita: si fa il side deck, poi inizia chi ha perso (pareggio: stesso ordine).
               onNextGame: async (old) => {
@@ -411,6 +416,7 @@ async function playMatch(app, match, old = null) {
       deck: match.deck,
       sleeve: validSleeve(settings.sleeve),
       pendulum: pendulumIcons(),
+      moai: moaiConfig(),
       options: match.options,
       ranked: !!settings.ranked,
       chooseFirst: coinToss(toss),
@@ -446,7 +452,7 @@ async function playMatch(app, match, old = null) {
     if (app.current === old) app.current = null;
   }
   startSession(app, {
-    controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, mux: match.mux,
+    controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, moais: result.moais, mux: match.mux,
     ranked: result.ranked,
     sideDeck: match.series.bestOf > 1,
     match: match.series,

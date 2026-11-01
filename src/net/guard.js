@@ -20,7 +20,8 @@ const SHAPES = {
   hello: (m) =>
     isInt(m.v, 0, 1000) && isStr(m.name ?? "", 200) && isStr(m.data ?? "", 100) && isStr(m.commit, 64) && HEX64.test(m.commit) &&
     isObj(m.deck) && codes(m.deck.main, 60) && codes(m.deck.extra, 15) && (m.options === undefined || isObj(m.options)) &&
-    (m.pk === undefined || (isStr(m.pk, 64) && HEX64.test(m.pk))) && (m.ranked === undefined || typeof m.ranked === "boolean"),
+    (m.pk === undefined || (isStr(m.pk, 64) && HEX64.test(m.pk))) && (m.ranked === undefined || typeof m.ranked === "boolean") &&
+    (m.moai == null || isObj(m.moai)),
   // Partite classificate (ELO): firme dello start e del risultato.
   "rank-start": (m) => isStr(m.sig, 128) && SIG.test(m.sig),
   "rank-result": (m) => isStr(m.hash, 64) && HEX64.test(m.hash) && isStr(m.sig, 128) && SIG.test(m.sig),
@@ -32,6 +33,7 @@ const SHAPES = {
     (m.sum === undefined || m.sum === null || isStr(m.sum, 200) || Number.isFinite(m.sum)) &&
     (m.clock === undefined || (isObj(m.clock) && Number.isFinite(m.clock.left) && m.clock.left >= 0 && m.clock.left <= HOUR && (m.clock.bonus == null || (Number.isFinite(m.clock.bonus) && m.clock.bonus >= 0 && m.clock.bonus <= HOUR)))),
   chat: (m) => isStr(m.text, 300),
+  moai: () => true,
   timeout: (m) => m.player === 0 || m.player === 1,
   rematch: () => true,
   surrender: () => true,
