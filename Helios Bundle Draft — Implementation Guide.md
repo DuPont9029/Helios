@@ -65,7 +65,7 @@ Where the format leaves room for tuning, expose the knob to the host / cube mana
   - **Ghost picks are saved to B's binder, held in trust by C** — not C's property and therefore not visible by that player; stored in the background solely to return to B.
   - Ghost picks are held **in memory on C and die with C** (consistent with the abort rule below).
   - **Reconnect:** B presents its session token, takes over the ghost seat, and inherits the held picks (B's pool = pre-drop binder + ghost picks), then resumes normal play.
-  - **No reconnect:** the ghost finishes the draft on B's behalf; accumulated picks remain B's abandoned pool.
+  - **No reconnect:** the ghost finishes the draft on B's behalf; accumulated picks remain B's abandoned pool and are, therefore, discarded as the disconnected player is disqualified from the following matches and removed entirely from the session.
 - **Abort condition (background behavior; not player-facing):** a single disconnect is survivable via ghost. If a **second disconnect occurs adjacent to an already-ghosted seat** — i.e., the peer hosting the ghost also disconnects — the draft is **immediately aborted and all draft state deleted**. No recovery is attempted. This is the only abort condition.
 
 ## 6. Deck Construction & Match Rules
