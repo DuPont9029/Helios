@@ -1197,7 +1197,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   root.append(
     h(
       "div.page.online",
-      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { stopSearch(); stopSeeks?.(); withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home("duel"); } }, icon("chevron_left")), h("h1", "Online Duel")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { stopSearch(); stopSeeks?.(); withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home("duel"); } }, icon("chevron_left")), h("h1", "Constructed")),
       h("div.online-grid",
         h("div.card-box",
           h("h3", "Your Profile"),

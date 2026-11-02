@@ -80,7 +80,7 @@ function lobbyPage(app, { code, host, onStart, onBots, onLeave }) {
         h("span.muted.small", "Room code"),
         h("b", code),
         h("button.btn", { onclick: copy }, icon("content_copy"), " Copy"),
-        h("span.muted.small", host ? "Your friends join from Duel → Limited → Join a draft." : "Waiting for the host to start the draft.")
+        h("span.muted.small", host ? "Your friends join from Online Duel → Limited → Join a draft." : "Waiting for the host to start the draft.")
       ),
       h("div.ol-body", h("section.ol-panel", h("h2", "Players"), players), h("section.ol-panel", h("h2", "Draft"), info)),
       statusEl

@@ -22,7 +22,7 @@ const now = () => Math.floor(Date.now() / 1000);
 /** Duello trasmesso agli amici dal giocatore. */
 export class Broadcast {
   /**
-   * @param cfg { duel, names, me, mode ("Vs CPU", "Online Duel"), match: { bestOf, game } | null, report (id del report) }
+   * @param cfg { duel, names, me, mode ("Vs CPU", "Constructed"), match: { bestOf, game } | null, report (id del report) }
    */
   constructor(cfg) {
     this.sk = generateSecretKey();
