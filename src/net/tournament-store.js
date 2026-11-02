@@ -130,6 +130,11 @@ export async function fetchBackups() {
     if (!verifyEvent(ev)) continue;
     try {
       const data = JSON.parse(nip44.v2.decrypt(ev.content, selfKey()));
+      // Backup cancellato: vale come ultimo, il draft non si ripristina più.
+      if (data?.deleted) {
+        if (!by.has(data.deleted) || by.get(data.deleted).at < data.at) by.set(data.deleted, { run: null, at: data.at ?? 0 });
+        continue;
+      }
       const run = data?.run;
       if (!run?.id || !Array.isArray(run.seats)) continue;
       if (!by.has(run.id) || by.get(run.id).at < data.at) by.set(run.id, { run, at: data.at ?? 0 });
@@ -137,5 +142,20 @@ export async function fetchBackups() {
       /* non è un nostro backup leggibile */
     }
   }
-  return [...by.values()].map((x) => x.run);
+  return [...by.values()].map((x) => x.run).filter(Boolean);
 }
+
+/**
+ * Cancella dai relay il backup privato di un draft: lo sostituisce con un evento vuoto (gli eventi sostituibili
+ * tengono solo l'ultimo) e chiede ai relay di cancellarlo (NIP-09). I record del torneo (risultati, voti) restano:
+ * sono anche degli altri giocatori.
+ */
+export async function deleteBackup(runId) {
+  const { sk, pk } = identity();
+  const d = `${BACKUP_TAG}:${runId}`;
+  const empty = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", d], ["t", BACKUP_TAG]], content: nip44.v2.encrypt(JSON.stringify({ v: 1, deleted: runId, at: Date.now() }), selfKey()) }, fromHex(sk));
+  const del = finalizeEvent({ kind: 5, created_at: now(), tags: [["a", `${KIND}:${pk}:${d}`], ["k", String(KIND)]], content: "Helios: draft deleted" }, fromHex(sk));
+  const res = await Promise.allSettled([...pool().publish(eloRelays(), empty), ...pool().publish(eloRelays(), del)]);
+  return res.some((r) => r.status === "fulfilled");
+}
+

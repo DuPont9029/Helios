@@ -156,7 +156,7 @@ function runsSection(app) {
                   h(
                     "div.draft-format-actions",
                     h("button.btn.small.primary", { onclick: async () => (await import("./draft-deck.js")).showDraftDeck(app, r.id) }, icon("style"), " Open"),
-                    h("button.btn.small.danger", { title: "Delete", onclick: async () => { if (await confirmModal("Delete this draft?", "Its pool, deck and results are deleted.", "Delete", "Cancel", { danger: true })) { deleteRun(r.id); draw(); } } }, icon("delete"))
+                    h("button.btn.small.danger", { title: "Delete", onclick: () => removeRun(r) }, icon("delete"))
                   )
                 );
               })
@@ -171,6 +171,38 @@ function runsSection(app) {
       )
     );
   };
+  // Draft online: si può cancellare anche il backup privato sui relay Nostr (se no, si potrebbe ripristinare).
+  async function removeRun(r) {
+    if (!r.online) {
+      if (await confirmModal("Delete this draft?", "Its pool, deck and results are deleted.", "Delete", "Cancel", { danger: true })) {
+        deleteRun(r.id);
+        draw();
+      }
+      return;
+    }
+    const choice = await openModal({
+      title: "Delete this draft?",
+      className: "danger",
+      body: [
+        h("p", "Its pool, deck and results are deleted from this browser."),
+        h("p.muted.small", "This online draft is also backed up on the Nostr relays (encrypted, only you can read it). \"Only here\" keeps the backup, so you can restore the draft later; \"Also from Nostr\" deletes it too. The tournament results stay for the other players."),
+      ],
+      actions: [
+        { label: "Cancel", value: null },
+        { label: "Only here", value: "local" },
+        { label: "Also from Nostr", value: "all", danger: true },
+      ],
+    }).result;
+    if (!choice) return;
+    deleteRun(r.id);
+    draw();
+    if (choice === "all") {
+      const { deleteBackup } = await import("../net/tournament-store.js");
+      const ok = await deleteBackup(r.id).catch(() => false);
+      toast(ok ? "Draft deleted, also from the Nostr relays" : "Draft deleted here; the relays did not answer, the backup may still be there", ok ? {} : { kind: "error" });
+    } else toast("Draft deleted (the backup on Nostr is kept)");
+  }
+
   async function restore() {
     toast("Looking for your backups on the relays…");
     const { fetchBackups } = await import("../net/tournament-store.js");
