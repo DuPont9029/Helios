@@ -305,6 +305,37 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     table.tick();
     renderTimer();
   }, 200);
+  // Bundle con più carte di quelle che stanno nella cella: la lista scorre da sola, avanti e indietro, con una pausa
+  // alle estremità; si ferma con il mouse sopra (e si scorre a mano).
+  const scrollState = new WeakMap();
+  let lastFrame = performance.now();
+  const autoScroll = (t) => {
+    if (!root.isConnected) return;
+    const dt = Math.min(100, t - lastFrame);
+    lastFrame = t;
+    for (const el of packEl.querySelectorAll(".dt-strips")) {
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 1) continue;
+      const st = scrollState.get(el) ?? { dir: 1, wait: 1200, pos: el.scrollTop };
+      scrollState.set(el, st);
+      if (el.matches(":hover")) {
+        st.pos = el.scrollTop;
+        continue;
+      }
+      if (st.wait > 0) {
+        st.wait -= dt;
+        continue;
+      }
+      st.pos = Math.max(0, Math.min(max, st.pos + st.dir * dt * 0.018));
+      el.scrollTop = st.pos;
+      if (st.pos >= max || st.pos <= 0) {
+        st.dir = -st.dir;
+        st.wait = 1500;
+      }
+    }
+    requestAnimationFrame(autoScroll);
+  };
+  requestAnimationFrame(autoScroll);
   const stop = () => {
     clearInterval(timer);
     document.removeEventListener("click", onCardClick, true);
