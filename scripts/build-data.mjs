@@ -243,60 +243,14 @@ function buildScripts(cards) {
 
 // ---------------------------------------------------------------- deck di esempio
 
-// Mazzi semplici costruiti per nome, così restano validi anche se cambiano i DB.
-const STARTERS = {
-  "Starter - Dark Magician": {
-    level: "Basic",
-    main: [
-      ["Dark Magician", 3], ["Dark Magician Girl", 2], ["Magician's Rod", 3],
-      ["Magicians' Souls", 2], ["Apprentice Illusion Magician", 2], ["Skilled Dark Magician", 1],
-      ["Mystical Elf", 2], ["Summoned Skull", 2], ["Celtic Guardian", 2],
-      ["Dark Magic Attack", 1], ["Thousand Knives", 1], ["Dark Magical Circle", 2],
-      ["Illusion Magic", 1], ["Pot of Prosperity", 1], ["Mystical Space Typhoon", 2],
-      ["Eternal Soul", 1], ["Dark Magic Veil", 1], ["Mirror Force", 1], ["Magician Navigation", 2],
-      ["Dark Burning Attack", 1], ["Monster Reborn", 1], ["Kuriboh", 2], ["Trap Hole", 2],
-      ["Swords of Revealing Light", 1], ["Magic Cylinder", 1],
-    ],
-    extra: [["Dark Paladin", 1], ["The Dark Magicians", 1], ["Ebon Illusion Magician", 1]],
-  },
-  "Starter - Blue-Eyes": {
-    level: "Basic",
-    main: [
-      ["Blue-Eyes White Dragon", 3], ["Blue-Eyes Alternative White Dragon", 2],
-      ["Sage with Eyes of Blue", 3], ["The White Stone of Ancients", 2], ["The White Stone of Legend", 3],
-      ["Dragon Spirit of White", 2], ["Maiden with Eyes of Blue", 2],
-      ["Trade-In", 3], ["The Melody of Awakening Dragon", 2], ["Return of the Dragon Lords", 2],
-      ["Monster Reborn", 1], ["Mystical Space Typhoon", 2], ["Cosmic Cyclone", 1], ["Mirror Force", 1],
-      ["Dragon Shrine", 2], ["Burst Stream of Destruction", 1], ["Lord of D.", 1],
-      ["The Flute of Summoning Dragon", 1], ["Trap Hole", 2], ["Dark Hole", 1], ["Magic Cylinder", 1],
-      ["Swords of Revealing Light", 1], ["Giant Soldier of Stone", 1],
-    ],
-    extra: [
-      ["Blue-Eyes Twin Burst Dragon", 1], ["Blue-Eyes Ultimate Dragon", 1],
-      ["Blue-Eyes Spirit Dragon", 1], ["Azure-Eyes Silver Dragon", 1],
-    ],
-  },
-};
-
-function buildStarters(cards) {
-  const byName = new Map();
-  for (const c of cards.values()) if (c[14] === 0 && !byName.has(c[11])) byName.set(c[11], c[0]);
-  const decks = [];
-  for (const [name, def] of Object.entries(STARTERS)) {
-    // level: livello del mazzo base nel gioco (vedi src/data/base-content.js).
-    const deck = { name, level: def.level, main: [], extra: [], side: [] };
-    for (const part of ["main", "extra"]) {
-      for (const [cardName, count] of def[part]) {
-        const id = byName.get(cardName);
-        if (!id) {
-          if (count) console.warn(`  [starter] carta non trovata: ${cardName}`);
-          continue;
-        }
-        for (let i = 0; i < count; i++) deck[part].push(id);
-      }
-    }
-    decks.push(deck);
-    console.log(`  ${name}: ${deck.main.length} main, ${deck.extra.length} extra`);
+// I Base decks del gioco (src/data/default-decks.js): in starter-decks.json per gli script (smoke test, trailer).
+async function buildStarters(cards) {
+  const { DEFAULT_DECKS } = await import("../src/data/default-decks.js");
+  const decks = DEFAULT_DECKS.map((d) => ({ name: d.name, level: "Basic", main: [...d.main], extra: [...d.extra], side: [...d.side] }));
+  for (const d of decks) {
+    const missing = [...d.main, ...d.extra, ...d.side].filter((c) => !cards.has(c));
+    if (missing.length) console.warn(`  [base deck] ${d.name}: carte non trovate ${missing.join(", ")}`);
+    console.log(`  ${d.name}: ${d.main.length} main, ${d.extra.length} extra`);
   }
   fs.writeFileSync(path.join(OUT, "starter-decks.json"), JSON.stringify(decks));
 }
@@ -309,7 +263,7 @@ const cards = buildCards();
 buildStrings();
 await buildBanlists();
 buildScripts(cards);
-buildStarters(cards);
+await buildStarters(cards);
 
 const manifest = { built: new Date().toISOString(), repos: {} };
 for (const name of Object.keys(REPOS)) {
