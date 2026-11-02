@@ -277,7 +277,7 @@ export class ReviewSession {
       names: this.rp.names,
       prefix: this.track.slice(0, n),
       title: `Try it yourself · Turn ${snap?.turn ?? "?"}`,
-      hint: `You play ${this.rp.names[this.me]} from this moment; the CPU plays the opponent${this.r.mode === "Online Duel" ? " (in the real Duel it was a person: its answers may differ)" : ""}.`,
+      hint: `You play ${this.rp.names[this.me]} from this moment; the CPU plays the opponent${this.r.mode === "Constructed" ? " (in the real Duel it was a person: its answers may differ)" : ""}.`,
       notes,
       onDone: () => this.run((t) => this.goTo(n, t)),
     });

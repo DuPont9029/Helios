@@ -110,8 +110,8 @@ function home(section = null) {
     ? h(
         "nav.menu",
         back(),
-        h("div.menu-section", "Duel"),
-        item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
+        h("div.menu-section", "Online Duel"),
+        item("Constructed", "Online Duels with your Decks · P2P via WebRTC", () => showOnline(app)),
         item("Limited", `Draft decks from a pool you curate · ${loadFormats().length} formats`, () => showDraft(app))
       )
     : section === "training"
@@ -126,7 +126,7 @@ function home(section = null) {
       )
     : h(
         "nav.menu",
-        h("button.menu-item", { onclick: () => home("duel") }, h("span.menu-title", "Duel"), h("span.menu-sub", "Online Duel · Limited")),
+        h("button.menu-item", { onclick: () => home("duel") }, h("span.menu-title", "Online Duel"), h("span.menu-sub", "Constructed · Limited")),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
         h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Trainer · Vs CPU · HDPC")),
         item("Settings", "Name, network, graphics", () => showSettings(app))
@@ -256,7 +256,7 @@ onInvite((inv) => {
   });
 });
 onInviteCancel(({ id }) => openInvites.get(id)?.close("cancelled"));
-onFriendRequest(({ name }) => toast(`${name} wants to be your friend (Online Duel → Friends & Ranking)`, { ms: 6000 }));
+onFriendRequest(({ name }) => toast(`${name} wants to be your friend (Online Duel → Constructed → Friends & Ranking)`, { ms: 6000 }));
 // Inizio e fine di un duello: lo stato per gli amici cambia subito.
 let wasInDuel = false;
 new MutationObserver(() => {

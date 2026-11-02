@@ -138,7 +138,7 @@ export class DuelSession {
     // Amici spettatori: duelli contro la CPU e online (non il duello di prova né il Combo Trainer), se il
     // giocatore lo permette (Settings → Profile → Friends).
     const watchable = !this.trainer && !cfg.practice && !cfg.reveal && cfg.controllers.some((c) => c === "ai" || c === "remote") && settings.allowSpectators !== false;
-    if (watchable) this.startBroadcast(p2p ? "Online Duel" : "Vs CPU");
+    if (watchable) this.startBroadcast(p2p ? "Constructed" : "Vs CPU");
     // Statistiche per il report (e passi della giocata di prova).
     if ((this.broadcast && COACHING) || cfg.practice) this.stats = new StatsRecorder(cfg.me, { base: cfg.prefix?.length ?? 0, onChange: cfg.onStats });
   }
