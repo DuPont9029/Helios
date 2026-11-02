@@ -5,7 +5,7 @@ import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
-import { BASE_READY, baseDecks, hideBaseDeck, restoreBaseDecks, hiddenBaseDecks } from "../data/base-content.js";
+import { BASE_READY, BASE_DECKS_READY, baseDecks, hideBaseDeck, restoreBaseDecks, hiddenBaseDecks } from "../data/base-content.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType,
@@ -147,7 +147,7 @@ export function showDeckList(app) {
           e.stopPropagation();
           add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] });
         };
-        const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." });
+        const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: BASE_READY ? "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." : "A Base deck of the game. Add a copy to your Decks to change it." });
         const tile = h(
           "div.deck-tile.base.scroll-host",
           { tabIndex: 0, title: `${d.level} level · ${d.main.length} main · ${d.extra.length} extra — click to look at it` },
@@ -156,10 +156,10 @@ export function showDeckList(app) {
           h("div.deck-tile-meta", h("span.deck-level", d.level), ` ${d.main.length} · ${d.extra.length} · ${d.side.length}`),
           h("button.deck-tile-add", { title: "Add a copy to your Decks", onclick: copy }, icon("add")),
           h("button.deck-tile-del", {
-            title: "Delete this Base deck (and its Base combos)",
+            title: BASE_READY ? "Delete this Base deck (and its Base combos)" : "Delete this Base deck",
             onclick: async (e) => {
               e.stopPropagation();
-              if (!(await confirmModal("Delete Base deck?", `"${d.name}" and its Base combos in the Trainer will be removed. Your copies of it stay. You can bring the Base decks back from this screen.`, "Delete", "Cancel", { danger: true }))) return;
+              if (!(await confirmModal("Delete Base deck?", `"${d.name}"${BASE_READY ? " and its Base combos in the Trainer" : ""} will be removed. Your copies of it stay. You can bring the Base decks back from this screen.`, "Delete", "Cancel", { danger: true }))) return;
               hideBaseDeck(d.name);
               toast("Base deck deleted");
               render();
@@ -174,14 +174,14 @@ export function showDeckList(app) {
       h("button.deck-tile.new", { title: "New Deck", onclick: async () => { const n = await promptModal("New Deck", "Name", "New Deck"); if (n) add(emptyDeck(n)); } }, h("span.plus", icon("add")), h("div.deck-tile-name", "New Deck")),
       ...tiles,
       // Mazzi base non ancora pronti: solo l'avviso.
-      ...(!selecting && !BASE_READY ? [h("div.decks-section", h("b", "Base decks"), h("span.muted.small", "Ready-made Decks of the game, Basic level.")), h("div.coming-soon", icon("schedule"), h("b", "Coming soon"), h("span.muted.small", "Base decks with their combos for the Trainer are on the way."))] : []),
-      ...(!selecting && BASE_READY && (base.length || hiddenBaseDecks())
+      ...(!selecting && !BASE_DECKS_READY ? [h("div.decks-section", h("b", "Base decks"), h("span.muted.small", "Ready-made Decks of the game, Basic level.")), h("div.coming-soon", icon("schedule"), h("b", "Coming soon"), h("span.muted.small", "Base decks with their combos for the Trainer are on the way."))] : []),
+      ...(!selecting && BASE_DECKS_READY && (base.length || hiddenBaseDecks())
         ? [
             h(
               "div.decks-section",
               h("b", "Base decks"),
               h("span.muted.small", "Ready-made Decks of the game, Basic level: look at them or add a copy to your Decks."),
-              hiddenBaseDecks() ? h("button.btn.small.ghost", { title: "Bring back the deleted Base decks and their Base combos", onclick: () => { restoreBaseDecks(); toast("Base decks restored"); render(); } }, icon("restore"), ` Restore deleted (${hiddenBaseDecks()})`) : null
+              hiddenBaseDecks() ? h("button.btn.small.ghost", { title: BASE_READY ? "Bring back the deleted Base decks and their Base combos" : "Bring back the deleted Base decks", onclick: () => { restoreBaseDecks(); toast("Base decks restored"); render(); } }, icon("restore"), ` Restore deleted (${hiddenBaseDecks()})`) : null
             ),
             ...base,
           ]

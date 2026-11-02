@@ -56,16 +56,25 @@ export function openBotDraftSetup(app, { online = false } = {}) {
           ? "You open a room with a code: your friends join with it, then you start the draft. Bots can fill the empty seats (they run on your computer)."
           : "You draft at a table of bots, build your deck from your pool, then play best-of matches against the bots with the CPU."
       ),
+      // Impostazioni in righe allineate; i timer in una tabellina (round × pacchetto pieno / ultima scelta).
       h(
-        "div.form-grid",
-        h("label.field", h("span", "Draft format"), fmt),
-        h("label.field", h("span", online ? "Bots (you can change them in the room)" : "Bots at the table"), bots),
-        online ? h("label.field", h("span", "Pools"), pool) : null,
-        h("label.field", h("span", "Round 1 timer: full pack (s)"), timers[0].start),
-        h("label.field", h("span", "Round 1 timer: last bundle (s)"), timers[0].end),
-        h("label.field", h("span", "Round 2 timer: full pack (s)"), timers[1].start),
-        h("label.field", h("span", "Round 2 timer: last card (s)"), timers[1].end),
-        h("label.field", h("span", "Matches: best of"), bestOf)
+        "div.ds-grid",
+        h("label.field.ds-wide", h("span", "Draft format"), fmt),
+        h("label.field", h("span", online ? "Bots (also in the room)" : "Bots at the table"), bots),
+        h("label.field", h("span", "Matches: best of"), bestOf),
+        online ? h("label.field.ds-wide", h("span", "Pools"), pool) : null
+      ),
+      h(
+        "div.ds-timers",
+        h("span.ds-timers-title", "Pick timer (seconds)"),
+        h("span.muted.small", "Full pack"),
+        h("span.muted.small", "Last pick"),
+        h("span", "Round 1 · bundles"),
+        timers[0].start,
+        timers[0].end,
+        h("span", "Round 2 · cards"),
+        timers[1].start,
+        timers[1].end
       ),
     ],
     actions: [
@@ -172,6 +181,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
         // Bundle: l'artwork della copertina è lo sfondo di tutto il riquadro (sfocato fuori dalla finestra della copertina).
         style: `--rc: ${r?.color ?? "#5b6070"}; --tier: ${tier}; --d: ${i * 70}ms${x.round === 1 && coverOf(x) ? `; --art: url("${artUrl(coverOf(x))}")` : ""}`,
         draggable: true,
+        dataset: { uid: x.uid },
         onclick: () => table.select(me, x.uid),
         ondblclick: () => table.pick(me, x.uid),
         // Trascinato nel binder: è la scelta confermata.
@@ -217,17 +227,33 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     };
     const main = stacks(x.main);
     const extra = stacks(x.extra);
-    return h(
+    // Altezza delle strisce secondo le carte del bundle: grandi nei bundle piccoli, più fitte in quelli grandi.
+    const rows = Math.max(6, main.length + extra.length + (extra.length && main.length ? 0.5 : 0));
+    const el = h(
       "div.dt-strips",
+      { style: `--n: ${rows}` },
       ...main.map(strip),
       ...(extra.length && main.length ? [h("div.dt-strip-sep")] : []),
       ...extra.map(strip)
     );
+    // Nessuna barra di scorrimento: la lista scorre da sola (vedi autoScroll) o con la rotella.
+    el.addEventListener("wheel", (e) => {
+      if (el.scrollHeight <= el.clientHeight) return;
+      e.preventDefault();
+      el.scrollTop += e.deltaY;
+    }, { passive: false });
+    return el;
   }
 
+  let packKey = "";
   function renderPack() {
     const pack = seat.queue[0];
     pickBtn.disabled = !seat.selected;
+    // Lo stesso pacchetto con la stessa selezione non si ridisegna (le scelte degli altri posti arrivano di
+    // continuo): lo scorrimento delle liste dei bundle resta dov'è.
+    const key = pack ? `${pack.id}:${pack.items.length}:${seat.selected}` : `wait:${table.round}:${seat.picks.join()}:${table.done}`;
+    if (key === packKey) return;
+    packKey = key;
     if (!pack) {
       shownPack = null;
       const waitingRound = seat.picks[table.round - 1] >= PACK_SIZE;
@@ -247,13 +273,16 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     const n = pack.items.length;
     const cols = Math.min(n, pack.round === 1 ? (n > 12 ? 5 : n > 6 ? 4 : 3) : n > 10 ? 5 : n > 6 ? 4 : n > 2 ? 3 : n);
     const rows = Math.ceil(n / cols);
-    // Strisce della stessa altezza in tutti i bundle: quella che serve al bundle con più carte diverse.
-    const rowsOf = (x) => new Set(x.main).size + new Set(x.extra).size + (x.main.length && x.extra.length ? 0.5 : 0);
-    const maxRows = pack.round === 1 ? Math.max(...pack.items.map(rowsOf)) : 0;
+    // Cambia solo la selezione: le liste ripartono da dove erano.
+    const scrolled = new Map([...packEl.querySelectorAll(".dt-item")].map((el) => [el.dataset.uid, el.querySelector(".dt-strips")?.scrollTop ?? 0]));
     clear(packEl).append(
       h("div.dt-pack-head", h("span.muted.small", `${n} ${pack.round === 1 ? "bundles" : "cards"} · click to select, then double-click, Pick or drag it into your binder to take it`)),
-      h(`div.dt-items${pack.round === 1 ? ".bundles" : ".singles"}`, { style: `--cols: ${cols}; --rows: ${rows}; --n: ${maxRows || 8}` }, pack.items.map((x, i) => itemEl(x, i, reveal)))
+      h(`div.dt-items${pack.round === 1 ? ".bundles" : ".singles"}`, { style: `--cols: ${cols}; --rows: ${rows}` }, pack.items.map((x, i) => itemEl(x, i, reveal)))
     );
+    if (!reveal) for (const el of packEl.querySelectorAll(".dt-item")) {
+      const list = el.querySelector(".dt-strips");
+      if (list && scrolled.get(el.dataset.uid)) list.scrollTop = scrolled.get(el.dataset.uid);
+    }
   }
 
   // Carte dell'ultima scelta: evidenziate nel binder.

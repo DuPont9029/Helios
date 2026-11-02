@@ -183,11 +183,12 @@ function deckPanel(go) {
   return box;
 }
 
-// Test del motore nel browser: due IA giocano con i mazzi starter.
+// Test del motore nel browser: due IA giocano con i primi due Base decks.
 async function aiVsAi() {
   const { DuelSession } = await import("./duel/session.js");
   const { DUEL_MODES } = await import("./core/constants.js");
-  const [a, b] = db.starters;
+  const { DEFAULT_DECKS } = await import("./data/default-decks.js");
+  const [a, b] = DEFAULT_DECKS;
   const session = new DuelSession({
     controllers: ["ai", "ai"], me: 0, names: ["AI 1", "AI 2"], reveal: true,
     duel: { flags: String(DUEL_MODES.MR5.flags), seed: ["1", "2", "3", "4"], lp: 8000, hand: 5, draw: 1, decks: [a, b] },

@@ -1,6 +1,7 @@
 // Mazzi: formati .ydk / ydke:// / codice Omega / lista per nome, salvataggio locale e validazione con le banlist.
 import { db, getCard, isExtraDeckCard } from "../data/db.js";
 import { TYPE } from "../core/constants.js";
+import { DEFAULT_DECKS } from "../data/default-decks.js";
 
 const KEY = "ygoweb.decks";
 
@@ -192,8 +193,8 @@ export function loadDecks() {
   } catch {
     /* ignore */
   }
-  // Primo avvio: copia i mazzi starter.
-  return db.starters.map((d) => ({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] }));
+  // Primo avvio: una copia dei Base decks del gioco (data/default-decks.js).
+  return DEFAULT_DECKS.map((d) => ({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] }));
 }
 
 export function saveDecks(decks) {
