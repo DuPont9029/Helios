@@ -883,6 +883,30 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   };
   const poolPartBad = (p) => (pool.lock ? deck[p].length !== pool.lock[p] : p === "main" ? deck.main.length < 30 : deck.extra.length > 15);
   const poolPartTitle = (p) => (pool.lock ? `Must stay at ${pool.lock[p]} cards` : p === "main" ? "At least 30 cards" : "At most 15 cards");
+  // Import nel mazzo del draft: entrano solo le carte della collezione, nel numero di copie che ci sono.
+  async function poolImport(d) {
+    if (!d) return;
+    const left = new Map(poolCount);
+    const main = [];
+    const extra = [];
+    let skipped = 0;
+    for (const c of [...d.main, ...d.extra]) {
+      if (!(left.get(c) > 0)) {
+        skipped++;
+        continue;
+      }
+      left.set(c, left.get(c) - 1);
+      (isExtraDeckCard(getCard(c)) ? extra : main).push(c);
+    }
+    if (!main.length && !extra.length) return toast("None of those cards is in your collection", { kind: "error" });
+    change(() => {
+      deck.main = main;
+      deck.extra = extra;
+    });
+    toast(skipped ? `Imported: ${skipped} card(s) not in your collection (or more copies than you drafted) were skipped` : "Imported");
+  }
+  // Export: Main ed Extra Deck, il resto della collezione come Side.
+  const poolExport = () => ({ ...cloneDeck(deck), side: poolResult().side });
   const poolToolbar = pool && h(
     "div.editor-toolbar.side-toolbar",
     h("div.side-title", h("b", embed.title), h("span.muted", pool.subtitle)),
@@ -895,6 +919,21 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       deck.extra = pool.cards.filter((c) => isExtraDeckCard(getCard(c))).slice(0, 15);
     }) }, icon("auto_awesome"), " Everything in"),
     pool.lock ? null : h("button.btn.danger", { onclick: () => change(() => { deck.main = []; deck.extra = []; }) }, icon("clear_all"), " Clear"),
+    h("button.btn", { title: "Sort the deck like the Deck Editor", onclick: () => change(() => { deck.main = sortDeckPart(deck.main); deck.extra = sortDeckPart(deck.extra); }) }, icon("sort"), " Sort"),
+    pool.lock
+      ? null
+      : menu("Import ▾", [
+          ["From clipboard (Omega, YDK, ydke://)", async () => poolImport(await importDeck("clipboard"))],
+          ["Paste text…", async () => poolImport(await importDeck("paste"))],
+          ["File .ydk…", async () => poolImport(await importDeck("file"))],
+        ]),
+    menu("Export ▾", [
+      ["Download .ydk", () => download(`${embed.title}.ydk`, toYdk({ ...poolExport(), name: embed.title }))],
+      ["Copy ydke://", () => navigator.clipboard?.writeText(toYdke(poolExport())).then(() => toast("ydke:// link copied"))],
+      ["Copy Omega code", async () => navigator.clipboard?.writeText(await toOmega(poolExport())).then(() => toast("Omega deck code copied"))],
+      ["Clipboard (Recipe)", () => navigator.clipboard?.writeText(toRecipe(poolExport())).then(() => toast("Card list copied (Omega Recipe format)"))],
+      ["Copy YDK text", () => navigator.clipboard?.writeText(toYdk({ ...poolExport(), name: embed.title })).then(() => toast("Copied as YDK"))],
+    ]),
     h("div.spacer"),
     pool.lock
       ? h("button.btn.danger", { title: "Give up the whole match", onclick: async () => { if (await confirmModal("Surrender the match?", "You lose the match: no more Duels are played.", "Surrender", "Cancel", { danger: true, top: true })) { unmount(); embed.onDone({ surrendered: true }); } } }, icon("flag"), " Surrender")

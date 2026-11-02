@@ -5,7 +5,7 @@
 // una per una (Main ed Extra Deck restano della stessa dimensione).
 import { h, clear, icon } from "./dom.js";
 import { toast, confirmModal, alertModal, openModal } from "./modal.js";
-import { loadDecks, saveDecks, emptyDeck } from "../deck/deck.js";
+import { loadDecks, saveDecks, emptyDeck, sortDeckPart } from "../deck/deck.js";
 import { getRun, storeRun, draftDeckErrors, sideErrors, runRecord, botMatches, allMatches, matchesLeft, standings, DRAFT_DECK } from "../draft/runs.js";
 import { playDraftMatch, playTournamentMatch } from "./play.js";
 import { openTournament } from "./draft-tour.js";
@@ -196,7 +196,8 @@ export function showDraftDeck(app, runId) {
   function viewPool(seat) {
     const s = run.seats[seat];
     const { main, extra } = poolCards(s.binder);
-    openDeckViewer({ main, extra, side: [], title: `${s.name}'s pool`, subtitle: `${s.binder.length} picks · their deck stays secret` });
+    // Ordinato come nel deck editor: niente indizi sull'ordine in cui le carte sono state scelte.
+    openDeckViewer({ main: sortDeckPart(main), extra: sortDeckPart(extra), side: [], title: `${s.name}'s pool`, subtitle: `${s.binder.length} picks · their deck stays secret` });
   }
 
   /** Voti in corso: uno per giocatore proposto per l'uscita. */
