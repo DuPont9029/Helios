@@ -352,6 +352,72 @@ export function showLocalSetup(app, { vsCpu }) {
   });
 }
 
+// ---------------------------------------------------------------- partita del draft contro un bot
+
+/**
+ * Partita al meglio di N contro la CPU con mazzi già pronti (draft): niente banlist né controlli sul mazzo, regole
+ * MR5. sideEditor(deck, game) apre il side tra i duelli e risolve con il mazzo nuovo o { surrendered: true }.
+ * onDone(result) all'uscita: { wins: [mie, sue], won } a partita finita, null se lasciata a metà.
+ */
+export function playDraftMatch(app, { mine, theirs, theirName, bestOf = 3, sideEditor, onDone }) {
+  let a = mine;
+  const series = newSeries(bestOf);
+  let result = null;
+  let first = Math.random() < 0.5;
+  const finish = () => onDone?.(result);
+  const launch = (meFirst) => {
+    const me = meFirst ? 0 : 1;
+    const decksByTurn = meFirst ? [a, theirs] : [theirs, a];
+    const names = [];
+    names[me] = settings.name;
+    names[1 - me] = theirName;
+    const controllers = [];
+    controllers[me] = "local";
+    controllers[1 - me] = "ai";
+    const sleeves = [null, null];
+    sleeves[me] = validSleeve(settings.sleeve);
+    const pendulums = [null, null];
+    pendulums[me] = pendulumIcons();
+    const moais = [null, null];
+    moais[me] = moaiConfig();
+    moais[1 - me] = MOAI_CPU;
+    toast(meFirst ? "You go first!" : `${theirName} goes first`);
+    startSession(app, {
+      onExit: () => {
+        // Duello singolo: il risultato è quello del duello; al meglio di N quello della partita.
+        const s = app.current;
+        if (!result && series.bestOf === 1 && s?.over && (s.winner === 0 || s.winner === 1)) {
+          const won = s.winner === s.cfg.me;
+          result = { wins: won ? [1, 0] : [0, 1], won };
+        } else if (!result && series.over) result = { wins: [...series.wins], won: series.wins[0] > series.wins[1] };
+        finish();
+      },
+      sideDeck: series.bestOf > 1,
+      controllers, me, names, reveal: false, timer: "off", sleeves, pendulums, moais,
+      match: series,
+      onNextGame: async (old) => {
+        const p1 = old.cfg.me;
+        const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : first;
+        const sa = await sideEditor(a, series.game);
+        if (sa.surrendered) {
+          series.wins[1] = Math.floor(series.bestOf / 2) + 1;
+          result = { wins: [...series.wins], won: false };
+          return old.concludeMatch({ won: false, why: "You surrendered the match" });
+        }
+        a = sa;
+        first = next;
+        old.destroy();
+        launch(next);
+      },
+      duel: {
+        flags: String(DUEL_MODES.MR5.flags), seed: randSeed(), lp: 8000, hand: 5, draw: 1,
+        decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })), shuffle: [true, true], noDraw: [false, false],
+      },
+    });
+  };
+  launch(first);
+}
+
 // ---------------------------------------------------------------- online
 
 /** Vinto il lancio della moneta: si sceglie se iniziare. Perso: una finestra spiega che sceglie l'avversario. */
@@ -390,22 +456,33 @@ async function playMatch(app, match, old = null) {
   let side = null;
   let conceded = null;
   const opponentConceded = new Promise((resolve) => match.mux.on("concede", () => resolve((conceded = true))));
+  // Torneo Limited: chi si arrende perde la partita anche nel punteggio (il risultato va in classifica).
+  const forfeit = (iWin) => {
+    if (!match.limited) return;
+    const need = Math.floor(match.series.bestOf / 2) + 1;
+    match.series.wins[iWin ? 0 : 1] = need;
+  };
   const endByConcede = () => {
     side?.close({ surrendered: false, opponent: true });
+    forfeit(true);
     old?.concludeMatch({ won: true, why: "Your opponent surrendered the match" });
     return null;
   };
   if (nextGame) {
     const opts = match.host ? match.options : match.lastOptions;
-    side = openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, pointCap: opts?.pointCap, game: match.series.game });
+    // Torneo Limited: side nel deck builder del pool, con Main ed Extra Deck della stessa dimensione.
+    side = match.sideEditor
+      ? match.sideEditor(match.deck, match.series.game)
+      : openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, pointCap: opts?.pointCap, game: match.series.game });
     const d = await Promise.race([side, opponentConceded.then(() => ({ opponent: true }))]);
-    if (d.opponent || conceded) return endByConcede();
-    if (d.surrendered) {
+    if (d?.opponent || conceded) return endByConcede();
+    if (d?.surrendered) {
       match.mux.send({ t: "concede" });
+      forfeit(false);
       old.concludeMatch({ won: false, why: "You surrendered the match" });
       return null;
     }
-    match.deck = d;
+    match.deck = d ?? match.deck;
   } else if (old) match.deck = match.savedDeck ?? match.deck;
   match.savedDeck ??= match.deck;
   let result;
@@ -453,6 +530,7 @@ async function playMatch(app, match, old = null) {
   }
   startSession(app, {
     controllers, me: result.me, names: result.names, reveal: false, duel: result.duel, timer: result.options.timer, sleeves: result.sleeves, pendulums: result.pendulums, moais: result.moais, mux: match.mux,
+    ...(match.onExit ? { onExit: () => match.onExit(app.current) } : {}),
     ranked: result.ranked,
     sideDeck: match.series.bestOf > 1,
     match: match.series,
@@ -466,6 +544,49 @@ async function playMatch(app, match, old = null) {
         });
     },
   });
+}
+
+/**
+ * Partita di un torneo Limited su un collegamento già aperto (link, host = chi ha sfidato): regole fisse (MR5, 8000 LP,
+ * best of del torneo), mazzi dal pool, side nel deck builder del pool. onDone({ wins: [mie, sue], won }) a partita
+ * finita; null se è stata interrotta senza un vincitore. Chi esce a metà perde, chi resta vince.
+ */
+export async function playTournamentMatch(app, { link, host, deck, bestOf, sideEditor, onDone }) {
+  const mux = new LinkMux(link);
+  let reported = false;
+  const report = (session) => {
+    if (reported) return;
+    reported = true;
+    const s = match.series;
+    const need = Math.floor((s?.bestOf ?? bestOf) / 2) + 1;
+    let result = null;
+    // Best of 1: il punteggio della partita non si aggiorna, vale il vincitore del duello.
+    const single = s && s.bestOf === 1 && !s.over && session?.over && (session.winner === 0 || session.winner === 1);
+    if (single) result = session.winner === session.cfg.me ? { wins: [1, 0], won: true } : { wins: [0, 1], won: false };
+    else if (s?.over) result = { wins: [...s.wins], won: s.wins[0] > s.wins[1] };
+    else if (session?.rematch?.oppLeft) result = { wins: [need, s?.wins?.[1] ?? 0], won: true };
+    else if (s) result = { wins: [s.wins[0], need], won: false };
+    onDone?.(result);
+  };
+  const match = {
+    mux,
+    host,
+    deck,
+    limited: true,
+    sideEditor,
+    onExit: (session) => report(session),
+    options: host ? { mode: "MR5", flags: String(DUEL_MODES.MR5.flags), lp: 8000, hand: 5, draw: 1, banlist: null, timer: "omega", bestOf, allowUnofficial: true, limited: true } : undefined,
+  };
+  try {
+    await playMatch(app, match);
+  } catch (err) {
+    console.error(err);
+    link.close();
+    if (!reported) {
+      reported = true;
+      alertModal("Match not started", err.message).then(() => onDone?.(null));
+    }
+  }
 }
 
 /** Stato di un amico da mostrare: testo e classe del pallino. */
@@ -1076,7 +1197,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   root.append(
     h(
       "div.page.online",
-      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { stopSearch(); stopSeeks?.(); withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home(); } }, icon("chevron_left")), h("h1", "Online Duel")),
+      h("div.page-head", h("button.btn.ghost.round.page-back", { title: "Menu (right-click)", onclick: () => { stopSearch(); stopSeeks?.(); withdrawInvite(); cancel(); stopWatch(); hostLink?.close(); app.home("duel"); } }, icon("chevron_left")), h("h1", "Online Duel")),
       h("div.online-grid",
         h("div.card-box",
           h("h3", "Your Profile"),

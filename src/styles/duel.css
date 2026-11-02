@@ -40,6 +40,12 @@
 .duel-main.field3d .log-btn { top: 96px; transform: none; }
 .log-btn-badge { position: absolute; right: -4px; top: -4px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font: 700 11px/18px var(--font); }
 .duel-main.over-log { cursor: pointer; }
+.log-pane { display: flex; flex-direction: column; }
+.log-pane[hidden] { display: none; }
+.log-search-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px 0; }
+.log-search { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; }
+.log-search-count { font: 600 11px var(--mono); color: var(--muted); white-space: nowrap; }
+.log-line.log-hit { background: rgba(56, 198, 255, 0.12); box-shadow: inset 2px 0 0 var(--accent); }
 .log, .chat { flex: 1; min-height: 0; overflow: auto; padding: 8px 10px; font-size: 12px; display: flex; flex-direction: column; gap: 2px; }
 .chat { padding: 0; }
 .chat-log { flex: 1; overflow: auto; padding: 8px 10px; display: flex; flex-direction: column; gap: 3px; }
@@ -224,7 +230,6 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .float-trainer.complete { border-color: var(--ok); color: #8affb5; }
 .float-trainer.interrupted { border-color: #ffd23a; color: #ffe9a6; }
 .duel-float .chain-mode.float { flex-direction: row; align-items: center; gap: 8px; }
-.duel-float .chain-btns { min-width: 170px; }
 .float-clock { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; font: 700 14px var(--mono); color: var(--muted); border: 1px solid var(--line); }
 .float-clock[hidden] { display: none; }
 .float-clock .float-name { font: 600 11px var(--display); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -272,36 +277,41 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
   background: rgba(10, 12, 18, 0.95); border: 1px solid var(--line-strong); border-top: 3px solid var(--accent); box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
 }
 .center-menu[hidden], .settings-menu[hidden] { display: none; }
-.center-menu { top: calc(100% + 8px); left: 50%; transform: translateX(-50%); }
+.center-menu { top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 40; min-width: 260px; }
 .center-phases { display: flex; flex-direction: column; gap: 6px; }
 .center-phases:empty { display: none; }
-.center-autoplace { font-size: 13px; }
 /* in basso a destra: catena e impostazioni */
 .duel-dock { position: absolute; right: 14px; bottom: 12px; z-index: 9; display: flex; align-items: center; gap: 10px; }
-.duel-dock .chain-mode { flex-direction: row; align-items: center; gap: 8px; padding: 5px 6px 5px 10px; background: rgba(0, 0, 0, 0.6); border: 1px solid var(--line); }
-.duel-dock .chain-btn { padding: 6px 10px; }
 .gear-btn { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.6); color: var(--accent); cursor: pointer; font-size: 24px; }
 .gear-btn:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(56, 198, 255, 0.6); }
 .settings-menu { right: 0; bottom: calc(100% + 10px); }
 .settings-menu .anim-speed { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 .settings-menu input[type="range"] { width: 100%; }
-/* finestra della carta: tenendo premuta una carta, sopra tutto */
-.card-peek { position: fixed; left: 50%; top: 50%; z-index: 300; width: min(640px, 92vw); max-height: 86vh; pointer-events: none; opacity: 0; transform: translate(-50%, -50%) scale(0.97); transition: opacity 0.12s, transform 0.12s; }
-.card-peek.show { opacity: 1; transform: translate(-50%, -50%); pointer-events: auto; }
-.card-peek .detail-panel { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 14px; max-height: 86vh; padding: 14px; background: rgba(8, 10, 16, 0.96); border-top: 3px solid var(--accent); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); }
+/* finestra della carta: a sinistra sopra il campo (come Master Duel), sopra tutto, finché non si clicca altrove */
+.card-peek { position: fixed; left: 14px; top: 50%; z-index: 300; width: clamp(240px, 21vw, 320px); pointer-events: none; opacity: 0; transform: translate(-12px, -50%); transition: opacity 0.12s, transform 0.12s; }
+.card-peek.show { opacity: 1; transform: translate(0, -50%); pointer-events: auto; }
+.card-peek .detail-panel { display: flex; flex-direction: column; gap: 10px; max-height: 80vh; padding: 12px; background: rgba(8, 10, 16, 0.94); border: 1px solid var(--line-strong); border-top: 3px solid var(--accent); box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8); }
+.card-peek .detail-card { width: 62%; align-self: center; flex: none; }
 .card-peek .detail-card .card { width: 100%; }
-.card-peek .detail-scroll { overflow: auto; }
-@media (max-width: 640px) { .card-peek .detail-panel { grid-template-columns: 1fr; } }
-/* modo della catena: tre pulsanti esclusivi, colorato solo quello attivo adesso */
-.chain-mode { display: flex; flex-direction: column; gap: 4px; }
+.card-peek .detail-scroll { overflow: auto; min-height: 0; }
+.card-peek .detail-desc { font-size: 13px; }
+/* modo della catena: un pulsante che cicla On → Auto → Off */
+.chain-mode { display: flex; }
 .chain-label { font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-.chain-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
-.chain-btn {
-  padding: 7px 0; cursor: pointer; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--muted);
-  font: 700 12px var(--display); letter-spacing: 0.04em; text-transform: uppercase; transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+.chain-cycle {
+  display: flex; align-items: center; gap: 8px; height: 48px; padding: 0 14px; cursor: pointer; border-radius: 24px;
+  border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.6); color: var(--text); transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
 }
-.chain-btn:hover { color: #fff; border-color: var(--accent); }
-.chain-btn.on { background: var(--accent); border-color: var(--accent); color: var(--on-gold); }
+.chain-cycle b { min-width: 3.2em; font: 700 15px var(--display); letter-spacing: 0.04em; text-transform: uppercase; text-align: center; }
+.chain-cycle:hover { border-color: var(--accent); box-shadow: 0 0 16px rgba(56, 198, 255, 0.6); }
+.chain-cycle[data-mode="always"] b { color: var(--accent); }
+.chain-cycle[data-mode="auto"] b { color: var(--accent-2); }
+.chain-cycle[data-mode="never"] b { color: var(--muted); }
+.duel-float .chain-cycle { height: 36px; }
+/* pulsanti rotondi in basso a destra (auto-place) */
+.dock-btn { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.6); color: var(--muted); cursor: pointer; font-size: 24px; }
+.dock-btn:hover { border-color: var(--accent); }
+.dock-btn.on { color: var(--on-gold); background: var(--accent); border-color: var(--accent); box-shadow: 0 0 16px rgba(56, 198, 255, 0.6); }
 
 /* ------------------------------------------------------------------ selezioni */
 .selectable { cursor: pointer; }
@@ -447,7 +457,7 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 }
 .chain-badge.solving { animation: blink 0.5s infinite; }
 .result {
-  position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; pointer-events: none;
+  position: absolute; inset: 0; display: grid; place-content: center; text-align: center; gap: 10px; pointer-events: auto; cursor: pointer;
   background: radial-gradient(circle, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.5)); animation: fade-in 0.4s;
 }
 .result-title { font: 700 clamp(48px, calc(var(--vw) * 8), 110px) var(--display); letter-spacing: 0.2em; animation: pop-in 0.5s; text-align: center; max-width: 92%; }
@@ -457,6 +467,12 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .result.lose .result-title { color: #ff5a6e; text-shadow: 0 0 40px rgba(255, 90, 110, 0.7); }
 .result.draw .result-title { color: var(--accent); }
 .result-sub { font-size: 18px; color: var(--muted); }
+.result-leave { margin-top: 6px; font: 600 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); opacity: 0.7; }
+/* a duello finito: guardare il campo nascondendo il risultato (e i pannelli sopra) */
+.field-toggle { position: absolute; top: 96px; right: 14px; z-index: 26; }
+.duel-screen.viewing-field .fx-layer > .result,
+.duel-screen.viewing-field .fx-layer > .rematch-panel,
+.duel-screen.viewing-field .fx-layer > .coach-result { display: none; }
 
 .decline-hint { margin: 4px 0 0; text-align: right; font-family: var(--mono); letter-spacing: 0.04em; }
 
@@ -573,12 +589,12 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
    l'interruttore e la pausa dell'auto-play, la velocità delle animazioni, lo schermo intero, lo scorrimento
    dei pannelli e "Leave". */
 .duel-screen.autoplaying .duel-main > :not(.duel-dock),
-.duel-screen.autoplaying .duel-dock .chain-mode,
+.duel-screen.autoplaying .duel-dock .chain-mode, .duel-screen.autoplaying .duel-dock .autoplace-btn,
 .duel-screen.autoplaying .settings-menu .btn.danger,
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto),
 .duel-float.autoplaying .chain-mode { pointer-events: none; }
-.duel-screen.autoplaying .duel-dock .chain-mode,
+.duel-screen.autoplaying .duel-dock .chain-mode, .duel-screen.autoplaying .duel-dock .autoplace-btn,
 .duel-screen.autoplaying .settings-menu .btn.danger,
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto) { opacity: 0.45; }
@@ -599,3 +615,5 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .pile-item .card.banished-fd::after { display: none; } /* nell'elenco c'è già l'etichetta sopra la carta */
 .pile-item { position: relative; }
 .fd-badge { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 1px 7px; font: 700 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; background: #1a1d27; border: 1px solid var(--line-strong); color: #ffd23a; white-space: nowrap; }
+/* finestra della carta nascosta mentre c'è una finestra aperta (si vede riducendo la finestra a icona) */
+.card-peek.show.under-popup { opacity: 0; pointer-events: none; }
