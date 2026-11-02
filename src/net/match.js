@@ -112,6 +112,13 @@ export class LinkMux {
   }
 }
 
+/** Mazzo di un torneo Limited (la provenienza dal pool la controlla ognuno sul suo): solo le misure. */
+function limitedErrors(deck) {
+  const ok = (v) => Array.isArray(v) && v.length <= 400 && v.every((c) => Number.isInteger(c) && c > 0);
+  if (!deck || !ok(deck.main) || !ok(deck.extra)) return ["Invalid Deck"];
+  return [deck.main.length < 30 ? `Main Deck: ${deck.main.length} cards, at least 30` : null, deck.extra.length > 15 ? `Extra Deck: ${deck.extra.length} cards, at most 15` : null].filter(Boolean);
+}
+
 async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
   return new Uint8Array(buf);
@@ -163,7 +170,10 @@ export async function negotiate(mux, opts) {
 
   const sameData = hello.data === (db.manifest?.version ?? "?");
   const banlist = options.banlist ? banlistByName(options.banlist) : null;
-  const theirErrors = validateDeck(hello.deck ? { ...hello.deck, side: [] } : { main: [], extra: [], side: [] }, banlist, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap });
+  // Limited: le regole del mazzo sono quelle del draft (Main almeno 30, Extra al massimo 15, copie come draftate).
+  const theirErrors = options.limited
+    ? limitedErrors(hello.deck)
+    : validateDeck(hello.deck ? { ...hello.deck, side: [] } : { main: [], extra: [], side: [] }, banlist, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap });
   if (theirErrors.length) {
     mux.send({ t: "reject", reason: `Invalid Deck for banlist "${options.banlist || "none"}":\n${theirErrors.slice(0, 6).join("\n")}` });
     throw new Error(`Your opponent's Deck is invalid:\n${theirErrors.slice(0, 6).join("\n")}`);

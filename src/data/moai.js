@@ -28,7 +28,8 @@ export const DRAWING_RECTS = {
 const OLD_W = 160;
 const OLD_H = 288;
 const MAX_CHARS = 90000;
-const PNG_RE = /^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/;
+// PNG o WebP (il WebP tiene la trasparenza e pesa molto meno con le immagini caricate).
+const PNG_RE = /^data:image\/(png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
 const COLOR_RE = /^#[0-9a-f]{6}$/i;
 
 /** Aspetto valido (anche quello ricevuto dall'avversario): i campi mancanti o sbagliati tornano quelli predefiniti. */
@@ -60,13 +61,34 @@ export function drawDrawing(ctx, img, w, hgt) {
   } else ctx.drawImage(img, 0, 0, w, hgt);
 }
 
-/** Il disegno della tela (DRAWING_W × DRAWING_H) come PNG; "" se è vuoto. Lancia un errore se è troppo grande. */
+/**
+ * Il disegno della tela (DRAWING_W × DRAWING_H) compresso per stare nel limite (va all'avversario nel messaggio
+ * iniziale del duello): PNG se ci sta (tratti a mano), altrimenti WebP con trasparenza a qualità decrescente e, se
+ * non basta, a risoluzione più bassa (drawDrawing lo riporta alla grandezza della texture). "" se è vuoto.
+ */
 export function drawingFrom(canvas) {
   const px = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height).data;
   let empty = true;
   for (let i = 3; i < px.length; i += 4) if (px[i]) { empty = false; break; }
   if (empty) return "";
-  const url = canvas.toDataURL("image/png");
-  if (url.length > MAX_CHARS) throw new Error("The drawing is too detailed: try a simpler one");
-  return url;
+  const png = canvas.toDataURL("image/png");
+  if (png.length <= MAX_CHARS) return png;
+  for (const scale of [1, 0.8, 0.65, 0.5, 0.4, 0.3]) {
+    let src = canvas;
+    if (scale < 1) {
+      src = document.createElement("canvas");
+      src.width = Math.round(canvas.width * scale);
+      src.height = Math.round(canvas.height * scale);
+      const x = src.getContext("2d");
+      x.imageSmoothingQuality = "high";
+      x.drawImage(canvas, 0, 0, src.width, src.height);
+    }
+    for (const q of [0.9, 0.75, 0.6, 0.45]) {
+      const url = src.toDataURL("image/webp", q);
+      // Browser senza WebP (restituisce un PNG): conta solo la risoluzione più bassa.
+      if (url.length <= MAX_CHARS && PNG_RE.test(url)) return url;
+      if (!url.startsWith("data:image/webp")) break;
+    }
+  }
+  throw new Error("The drawing is too detailed even when compressed: try a simpler image");
 }

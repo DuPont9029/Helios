@@ -1,5 +1,5 @@
 // Deck Editor: ricerca carte, costruzione del mazzo, banlist, import/export.
-import { h, clear, download, pickFile, icon, rect } from "./dom.js";
+import { h, clear, download, pickFile, icon, rect, scrollText } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
@@ -120,10 +120,10 @@ export function showDeckList(app) {
       .filter((d) => !text || d.name.toLowerCase().includes(text))
       .map((d) => {
         const tile = h(
-          `div.deck-tile${d.id === settings.lastDeck ? ".active" : ""}${chosen.has(d.id) ? ".chosen" : ""}`,
+          `div.deck-tile.scroll-host${d.id === settings.lastDeck ? ".active" : ""}${chosen.has(d.id) ? ".chosen" : ""}`,
           { tabIndex: 0, title: `${d.main.length} main · ${d.extra.length} extra · ${d.side.length} side` },
           deckBox(d),
-          h("div.deck-tile-name", d.name),
+          h("div.deck-tile-name", scrollText(d.name)),
           h("div.deck-tile-meta", `${d.main.length} · ${d.extra.length} · ${d.side.length}`),
           selecting
             ? h("span.deck-tile-check", icon(chosen.has(d.id) ? "check_box" : "check_box_outline_blank"))
@@ -149,10 +149,10 @@ export function showDeckList(app) {
         };
         const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." });
         const tile = h(
-          "div.deck-tile.base",
+          "div.deck-tile.base.scroll-host",
           { tabIndex: 0, title: `${d.level} level · ${d.main.length} main · ${d.extra.length} extra — click to look at it` },
           deckBox(d),
-          h("div.deck-tile-name", d.name),
+          h("div.deck-tile-name", scrollText(d.name)),
           h("div.deck-tile-meta", h("span.deck-level", d.level), ` ${d.main.length} · ${d.extra.length} · ${d.side.length}`),
           h("button.deck-tile-add", { title: "Add a copy to your Decks", onclick: copy }, icon("add")),
           h("button.deck-tile-del", {
@@ -325,7 +325,11 @@ export function openDeckViewer({ main = [], extra = [], side = [], title, subtit
  * parts: [{ key, label, cards, max?, filter?(card), hint? }]; active: la parte in cui vanno le carte cliccate
  * nella ricerca (si cambia cliccando l'intestazione di una parte). Restituisce { key: cards } o null (annullato).
  */
-export function openCardCollector({ title, subtitle = "", parts, active = null }) {
+/**
+ * Carte dal database in parti con un nome. noBanlist: nessuna banlist (niente limiti né filtro di stato, es. il pool di
+ * un draft); contextNext: il tasto destro su una carta la sposta nella parte successiva (es. alla rarità dopo).
+ */
+export function openCardCollector({ title, subtitle = "", parts, active = null, noBanlist = false, contextNext = false }) {
   return new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
     document.body.append(layer);
@@ -339,8 +343,36 @@ export function openCardCollector({ title, subtitle = "", parts, active = null }
       resolve(v ? Object.fromEntries(parts.map((p) => [p.key, [...v[p.key]]])) : null);
     };
     const deck = { id: "collect", name: title, main: [], extra: [], side: [], ...Object.fromEntries(parts.map((p) => [p.key, [...(p.cards ?? [])]])) };
-    showEditor(host, { embed: { deck, title, onDone: finish, collect: { parts, active: active ?? parts[0].key, subtitle } } });
+    showEditor(host, { embed: { deck, title, onDone: finish, collect: { parts, active: active ?? parts[0].key, subtitle, noBanlist, contextNext } } });
   });
+}
+
+/**
+ * Deck builder su una collezione (pool di un draft): la ricerca mostra solo le carte del pool ancora libere, con
+ * quante copie restano; si costruiscono Main ed Extra Deck, il resto è il sideboard. Niente banlist né limiti di copie
+ * oltre a quelle del pool. validate(deck) → errori; lock { main, extra }: side tra i duelli a dimensioni fisse.
+ * Risolve con { main, extra, side } (side = il resto del pool), null (annullato) o { surrendered: true }.
+ */
+export function openPoolEditor({ title, subtitle = "", pool, deck, validate, lock = null, game = null, help = "" }) {
+  let finish;
+  const promise = new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v);
+    };
+    const d = { id: "pool", name: title, main: [...deck.main], extra: [...deck.extra], side: [] };
+    showEditor(host, { embed: { deck: d, title, onDone: finish, pool: { cards: pool, subtitle, validate, lock, game, help, start: { main: [...deck.main], extra: [...deck.extra] } } } });
+  });
+  // Come openSideEditor: .close(value) chiude la schermata dall'esterno (es. l'avversario si è arreso).
+  promise.close = (v) => finish?.(v);
+  return promise;
 }
 
 export function showEditor(app, { side = null, embed = null } = {}) {
@@ -354,10 +386,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const view = embed?.view ?? null;
   // Carte dal database in parti con un nome (stato di partenza, hand trap): la ricerca riempie la parte attiva.
   const collect = embed?.collect ?? null;
+  // Collezione (pool di un draft): vedi openPoolEditor.
+  const pool = embed?.pool ?? null;
+  const poolCount = new Map();
+  for (const c of pool?.cards ?? []) poolCount.set(c, (poolCount.get(c) ?? 0) + 1);
+  const poolLeft = (code) => (poolCount.get(code) ?? 0) - deck.main.filter((x) => x === code).length - deck.extra.filter((x) => x === code).length;
   const collectPart = (key) => collect?.parts.find((p) => p.key === key);
   let activePart = collect?.active ?? null;
   // Parti del mazzo (in ordine di visualizzazione).
-  const PARTS = collect ? collect.parts.map((p) => p.key) : pick ? ["hand", "main", "extra", "side"] : ["main", "extra", "side"];
+  const PARTS = collect ? collect.parts.map((p) => p.key) : pick ? ["hand", "main", "extra", "side"] : pool ? ["main", "extra"] : ["main", "extra", "side"];
   let decks = single ? [cloneDeck({ ...single.deck, side: single.deck.side ?? [] })] : loadDecks();
   if (!decks.length) decks = [emptyDeck()];
   if (!single) saveDecks(decks); // salvataggio alla prima apertura (es. mazzi starter non ancora in memoria)
@@ -365,7 +402,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   let baseline = "";
   let undoStack = [];
   let redoStack = [];
-  let banlist = side ? banlistByName(side.banlist) : banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
+  let banlist = side ? banlistByName(side.banlist) : collect?.noBanlist || pool ? null : banlistByName(settings.lastBanlist ?? db.banlists[0]?.name);
   // ------------------------------------------------------------ preferiti (bookmark)
   const isBookmarked = (code) => settings.bookmarks?.includes(code);
   function toggleBookmark(code) {
@@ -396,7 +433,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   // Cronologia: le ultime carte con cui si è interagito (aggiunte, tolte, spostate), la più recente prima.
   const HISTORY_MAX = 60;
   const remember = (code) => {
-    if (!code || side || pick || view || collect) return;
+    if (!code || side || pick || view || collect || pool) return;
     settings.editorHistory = [code, ...(settings.editorHistory ?? []).filter((c) => c !== code)].slice(0, HISTORY_MAX);
     refreshTabs?.();
     if (tab === "history") runSearch();
@@ -604,7 +641,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     runSearch();
   });
   const validity = h("button.validity", { onclick: () => {
-    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
+    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
     alertModal(errs.length ? "Deck issues" : "Valid deck", errs.length ? errs.join("\n") : "The deck follows the rules and the selected banlist.");
   } });
   const saveBtn = h("button.btn.primary.save-btn", { title: "Save the deck (Ctrl+S)", onclick: () => save() });
@@ -801,11 +838,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   const viewToolbar = view && h(
     "div.editor-toolbar.side-toolbar",
-    h("div.side-title", h("b", embed.title), view.subtitle ? h("span.muted", view.subtitle) : null),
+    h("div.side-title", h("b", embed.title), view.subtitle ? h("span.muted", view.subtitle) : null, view.legend ? h("span.muted.small", view.legend) : null),
     h("div.spacer"),
     h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(); } }, "Close")
   );
-  const viewHelp = view && h("aside.search-panel.side-help", h("h3", embed.title), view.legend ? h("p", view.legend) : null, h("p.muted.small", "Hover a card to see its details."));
+  // Sola lettura: niente colonna a destra (non c'è niente da cercare né da spostare), la legenda va sotto il titolo.
   const collectToolbar = collect && h(
     "div.editor-toolbar.side-toolbar",
     h("div.side-title", h("b", embed.title), h("span.muted", `${collect.subtitle ? `${collect.subtitle} · ` : ""}click a part to choose it, then click the cards found on the right`)),
@@ -834,6 +871,35 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     pick.block ? h("p.muted.small", "All the copies of a card move together; the cards stay in the Deck Builder order.") : null,
     pick.hint ? h("p.muted.small", pick.hint) : null,
     h("p.muted.small", `${pick.block ? "" : "Drag the cards to reorder them. "}Ctrl+Z undo, Reset goes back to the cards chosen before.`)
+  );
+
+  // Collezione (draft): mazzo dal pool; con lock il side tra i duelli (dimensioni fisse).
+  const poolDone = h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(poolResult()); } }, icon("check"), pool?.lock ? ` Start Game ${pool.game}` : " Done");
+  const poolLeftEl = h("span.side-swaps");
+  const poolResult = () => {
+    const rest = [...pool.cards];
+    for (const c of [...deck.main, ...deck.extra]) rest.splice(rest.indexOf(c), 1);
+    return { main: [...deck.main], extra: [...deck.extra], side: rest };
+  };
+  const poolPartBad = (p) => (pool.lock ? deck[p].length !== pool.lock[p] : p === "main" ? deck.main.length < 30 : deck.extra.length > 15);
+  const poolPartTitle = (p) => (pool.lock ? `Must stay at ${pool.lock[p]} cards` : p === "main" ? "At least 30 cards" : "At most 15 cards");
+  const poolToolbar = pool && h(
+    "div.editor-toolbar.side-toolbar",
+    h("div.side-title", h("b", embed.title), h("span.muted", pool.subtitle)),
+    poolLeftEl,
+    undoBtn,
+    redoBtn,
+    h("button.btn", { title: pool.lock ? "Back to the Deck of the previous Duel" : "Back to the Deck you opened", onclick: () => change(() => { deck.main = [...pool.start.main]; deck.extra = [...pool.start.extra]; }) }, icon("restart_alt"), " Reset"),
+    pool.lock ? null : h("button.btn", { title: "Every Main Deck card of the pool in the deck, and up to 15 Extra Deck monsters", onclick: () => change(() => {
+      deck.main = pool.cards.filter((c) => !isExtraDeckCard(getCard(c)));
+      deck.extra = pool.cards.filter((c) => isExtraDeckCard(getCard(c))).slice(0, 15);
+    }) }, icon("auto_awesome"), " Everything in"),
+    pool.lock ? null : h("button.btn.danger", { onclick: () => change(() => { deck.main = []; deck.extra = []; }) }, icon("clear_all"), " Clear"),
+    h("div.spacer"),
+    pool.lock
+      ? h("button.btn.danger", { title: "Give up the whole match", onclick: async () => { if (await confirmModal("Surrender the match?", "You lose the match: no more Duels are played.", "Surrender", "Cancel", { danger: true, top: true })) { unmount(); embed.onDone({ surrendered: true }); } } }, icon("flag"), " Surrender")
+      : h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel"),
+    poolDone
   );
 
   // ------------------------------------------------------------ area mazzo
@@ -958,11 +1024,22 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const c = getCard(code);
     if (!c || c.type & TYPE.TOKEN) return;
     if (collect) {
-      const key = PARTS.includes(target) ? target : activePart;
-      const part = collectPart(key);
+      let key = PARTS.includes(target) ? target : activePart;
+      let part = collectPart(key);
+      // Una carta che la parte attiva non accetta va nella prima parte che l'accetta (es. un bundle: i mostri
+      // dell'Extra Deck finiscono da soli nell'Extra Deck), se la ricerca non ha puntato una parte precisa.
+      if (part.filter && !part.filter(c) && !PARTS.includes(target)) {
+        const other = collect.parts.find((p) => p.filter?.(c));
+        if (other) [key, part] = [other.key, other];
+      }
       if (part.filter && !part.filter(c)) return toast(`${c.name} cannot go in "${part.label}"`, { kind: "error" });
       if (part.max && deck[key].length >= part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
       return change(() => deck[key].splice(at ?? deck[key].length, 0, code));
+    }
+    if (pool) {
+      if (poolLeft(code) <= 0) return toast(`No more copies of ${c.name} in your pool`, { kind: "error" });
+      const p = isExtraDeckCard(c) ? "extra" : "main";
+      return change(() => deck[p].splice(at ?? deck[p].length, 0, code));
     }
     const part = routePart(c, target ?? "main");
     // Oltre il massimo si può andare (es. per provare una lista): l'editor lo segnala come errore e il mazzo
@@ -1074,7 +1151,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       e.preventDefault();
       if (pointerKind === "touch" || longPressed) return; // su touch il menu arriva dalla pressione lunga
       if (pick) return pickMove(p, index, p === "hand" ? null : "hand");
-      if (collect) return;
+      if (collect?.contextNext) return collectMove(p, index, PARTS[(PARTS.indexOf(p) + 1) % PARTS.length]);
+      if (collect || pool) return;
       moveCard(p, index, p === "side" ? "main" : "side");
     });
     el.addEventListener("dragstart", (e) => {
@@ -1113,20 +1191,28 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       clear(head).append(
         h("b", cp ? cp.label : p === "hand" ? pick.label : `${PART_NAME[p]} Deck`),
         ...(cp?.hint ? [h("span.muted.small.collect-part-hint", cp.hint)] : []),
-        h(`span.count${MAX[p] && codes.length > MAX[p] ? ".over" : ""}`, { title: MAX[p] ? `${codes.length} / ${MAX[p]} cards maximum` : null }, `${codes.length}`),
+        pool
+          ? h(`span.count${poolPartBad(p) ? ".over" : ""}`, { title: poolPartTitle(p) }, `${codes.length}${pool.lock ? ` / ${pool.lock[p]}` : ""}`)
+          : h(`span.count${MAX[p] && codes.length > MAX[p] ? ".over" : ""}`, { title: MAX[p] ? `${codes.length} / ${MAX[p]} cards maximum` : null }, `${codes.length}`),
         h("span.spacer"),
         ...counts
       );
       clear(grid).append(...codes.map((code, index) => deckCard(code, p, index)));
     }
-    const errs = validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
+    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
+    if (pool) {
+      poolDone.disabled = !!errs.length;
+      poolDone.title = errs.join("\n");
+      poolLeftEl.textContent = `${pool.cards.length - deck.main.length - deck.extra.length} cards in the sideboard`;
+      if (results.isConnected) runSearch(true);
+    }
     if (side) swapsEl.textContent = `Swapped ${swapped()} / ${SIDE_SWAPS}`;
     if (pick) pickCount.textContent = `${deck.hand.length} / ${pick.max}`;
     // Banlist a punti (Genesys): totale del mazzo e tetto accanto alla validità.
     const pts = deckPoints(deck, banlist);
     const cap = side?.pointCap ?? banlist?.cap;
     validity.textContent = (errs.length ? `⚠ ${errs.length} issues` : "✓ Valid") + (pts != null ? ` · ${pts}/${cap} pts` : "");
-    validity.title = errs.length ? `${errs.slice(0, 12).join("\n")}\n\nThis Deck cannot be used in Duels with rules until it is fixed.` : "The deck follows the rules and the selected banlist";
+    validity.title = errs.length ? `${errs.slice(0, 12).join("\n")}${pool ? "" : "\n\nThis Deck cannot be used in Duels with rules until it is fixed."}` : pool ? "The deck follows the rules of the draft" : "The deck follows the rules and the selected banlist";
     validity.className = `validity ${errs.length ? "bad" : "ok"}`;
     refreshState();
   }
@@ -1178,7 +1264,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   let shown = 120;
   let found = [];
 
-  function runSearch() {
+  // keep: dopo un cambio del mazzo (collezione) la lista si aggiorna senza tornare in cima.
+  function runSearch(keep = false) {
     const text = q.value.trim().toLowerCase();
     const type = fType.value;
     const sub = +fSub.value || 0;
@@ -1187,12 +1274,14 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const lvl = fLevel.value === "" ? null : +fLevel.value;
     const atk = fAtk.value === "" ? null : +fAtk.value;
     const def = fDef.value === "" ? null : +fDef.value;
-    const lim = fLimit.value;
+    const lim = collect?.noBanlist ? "" : fLimit.value; // pool di un draft: niente banlist, niente filtro di stato
     const fmt = fFormat.value ? OT[fFormat.value] : 0;
     // Preferiti e cronologia: solo quelle carte, nel loro ordine.
     const own = tab === "bookmarks" ? settings.bookmarks : tab === "history" ? settings.editorHistory : null;
     const marks = own ? new Map((own ?? []).map((c, i) => [c, i])) : null;
-    found = (marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list).filter((c) => {
+    const base = pool ? [...poolCount.keys()].filter((c) => poolLeft(c) > 0).map(getCard).filter(Boolean) : marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list;
+    found = base.filter((c) => {
+      if (pool) return (!type || (type === "monster" ? c.type & TYPE.MONSTER : type === "spell" ? c.type & TYPE.SPELL : type === "trap" ? c.type & TYPE.TRAP : isExtraDeckCard(c))) && (!sub || c.type & sub) && (!attr || c.attribute & attr) && (!race || c.race & race) && (lvl == null || c.level === lvl) && (atk == null || c.atk >= atk) && (def == null || (!(c.type & TYPE.LINK) && c.def >= def)) && (!text || c.search.includes(text));
       if (!marks && (c.type & TYPE.TOKEN || c.type & TYPE.SKILL)) return false;
       if (!marks && !fUnoff.checked && c.source === 1) return false;
       if (!marks && c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
@@ -1216,12 +1305,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (text && !c.search.includes(text)) return false;
       return true;
     });
+    if (pool) found = sortDeckPart(found.map((c) => c.code)).map(getCard);
     if (text) {
       // Prima le carte il cui nome contiene il testo.
       found.sort((a, b) => (b.name.toLowerCase().includes(text) ? 1 : 0) - (a.name.toLowerCase().includes(text) ? 1 : 0));
     }
-    shown = 120;
+    if (!keep) shown = 120;
+    const top = results.scrollTop;
     renderResults();
+    if (keep) results.scrollTop = top;
     setFilters(settings.editorFilters); // contatore dei filtri e "Reset filters" (anche per il testo e le chip)
   }
 
@@ -1241,15 +1333,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
               { draggable: true },
               cardFace(c.code),
               h("div.result-text", h("div.result-name", c.name, regionBadge(c.code)), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))),
-              limitBadge(c.code),
-              bookmarkButton(c.code)
+              pool ? h("b.pool-left", `×${poolLeft(c.code)}`) : limitBadge(c.code),
+              pool ? null : bookmarkButton(c.code)
             )
-          : h("div.result-card", { draggable: true, title: c.name }, cardFace(c.code), limitBadge(c.code), regionBadge(c.code), bookmarkButton(c.code));
+          : h("div.result-card", { draggable: true, title: c.name }, cardFace(c.code), pool ? h("b.pool-left", `×${poolLeft(c.code)}`) : limitBadge(c.code), regionBadge(c.code), pool ? null : bookmarkButton(c.code));
         tile.addEventListener("mouseenter", () => detail.show(c.code));
         tile.addEventListener("click", () => addCard(c.code));
         tile.addEventListener("contextmenu", (e) => {
           e.preventDefault();
-          addCard(c.code, "side");
+          addCard(c.code, pool ? null : "side");
         });
         tile.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code: c.code })));
         return tile;
@@ -1269,6 +1361,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   // Filtri richiudibili: ridotti lasciano tutto lo spazio alla lista dei risultati.
   // Filtri di ogni scheda (Cards, Bookmarks, History): cambiando scheda si salvano e si riprendono quelli
   // dell'altra (all'inizio vuoti); "Reset filters" li azzera nella scheda aperta.
+  if (collect?.noBanlist || pool) fLimit.style.display = "none";
+  if (pool) fFormat.style.display = "none";
   const FILTER_ELS = { fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat };
   const filterStates = {};
   const readFilters = () => ({ q: q.value, unoff: fUnoff.checked, ...Object.fromEntries(Object.entries(FILTER_ELS).map(([k, el]) => [k, el.value])) });
@@ -1359,6 +1453,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     results.scrollTop = 0;
   }
   refreshTabs();
+  if (pool) {
+    tabMarks.hidden = tabHistory.hidden = true;
+    fUnoff.closest?.("label")?.remove();
+    clear(tabAll).append(icon("inventory_2"), h("span.tab-label", "Your collection"));
+  }
 
   const search = h(
     "aside.search-panel",
@@ -1369,7 +1468,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     results,
     h(
       "p.muted.small.hint",
-      "Search: click adds, right-click adds to Side, the bookmark icon (or dragging a card onto Bookmarks) saves it in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
+      pool
+        ? pool.help || "Your collection: click a card to put it in the deck (Main or Extra by its type), click a card of the deck to put it back. Only the cards you drafted, as many copies as you have. Ctrl+Z undo."
+        : collect
+        ? `Search: click adds to the chosen part, the bookmark icon saves a card in Bookmarks. Parts: click a card to remove it${collect.contextNext ? ", right-click moves it to the next part" : ""}, drag onto a card to reorder or onto another part to move it. Ctrl+Z undo.`
+        : "Search: click adds, right-click adds to Side, the bookmark icon (or dragging a card onto Bookmarks) saves it in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."
     )
   );
 
@@ -1385,9 +1488,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   // Sola lettura: le parti vuote non si mostrano.
   if (view) for (const p of PARTS) parts[p].el.hidden = !single.deck[p]?.length;
   const page = h(
-    `div.page.editor${side || pick || view ? ".side-mode" : ""}${collect ? ".collect-mode" : ""}`,
-    side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : embed ? embedToolbar : toolbar,
-    h("div.editor-body", detail.el, h("div.deck-area", area), side ? sideHelp : view ? viewHelp : pick ? pickHelp : search)
+    `div.page.editor${side || pick || view ? ".side-mode" : ""}${view ? ".view-mode" : ""}${collect ? ".collect-mode" : ""}${pool ? ".pool-mode" : ""}`,
+    side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : pool ? poolToolbar : embed ? embedToolbar : toolbar,
+    h("div.editor-body", detail.el, h("div.deck-area", area), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
   );
   root.append(page);
   openDeck(single ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);

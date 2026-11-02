@@ -19,7 +19,8 @@ const HOUR = 3600 * 1000;
 const SHAPES = {
   hello: (m) =>
     isInt(m.v, 0, 1000) && isStr(m.name ?? "", 200) && isStr(m.data ?? "", 100) && isStr(m.commit, 64) && HEX64.test(m.commit) &&
-    isObj(m.deck) && codes(m.deck.main, 60) && codes(m.deck.extra, 15) && (m.options === undefined || isObj(m.options)) &&
+    // Main Deck fino a 400: nei tornei Limited non c'è il massimo di 60 (le regole vere le controlla negotiate).
+    isObj(m.deck) && codes(m.deck.main, 400) && codes(m.deck.extra, 15) && (m.options === undefined || isObj(m.options)) &&
     (m.pk === undefined || (isStr(m.pk, 64) && HEX64.test(m.pk))) && (m.ranked === undefined || typeof m.ranked === "boolean") &&
     (m.moai == null || isObj(m.moai)),
   // Partite classificate (ELO): firme dello start e del risultato.
@@ -85,6 +86,8 @@ export function cleanOptions(o) {
     bestOf: o.bestOf,
     allowUnofficial: o.allowUnofficial === true,
     ranked: o.ranked === true,
+    // Partita di un torneo Limited: mazzi dal pool del draft (niente banlist né limite di copie).
+    limited: o.limited === true,
     ...(o.pointCap != null ? { pointCap: o.pointCap } : {}),
   };
 }

@@ -17,6 +17,12 @@ import { chooseField } from "../../data/fields3d.js";
 
 // Inclinazione del campo 3D nel duello con "Tilted view" (Settings → Field), in gradi.
 const FIELD_TILT = 30;
+// Modi della catena, nell'ordine in cui il pulsante li cicla: On → Auto → Off → On.
+const CHAIN_MODES = {
+  always: { label: "On", next: "auto", title: "Always ask (also hold the left mouse button)" },
+  auto: { label: "Auto", next: "never", title: "Ask only when a card or effect can be activated" },
+  never: { label: "Off", next: "always", title: "Never ask (also hold the right mouse button)" },
+};
 
 const PHASES = [
   [PHASE.DRAW, "DP"], [PHASE.STANDBY, "SP"], [PHASE.MAIN1, "M1"],
@@ -152,10 +158,14 @@ export class DuelView {
     this.paintChainMode();
   }
 
-  /** Un solo pulsante colorato: il modo attivo adesso (si sposta tenendo premuto il mouse). */
+  /** Pulsante della catena: mostra il modo attivo adesso (cambia anche tenendo premuto il mouse). */
   paintChainMode() {
     const now = this.chainModeNow();
-    for (const b of this.chainBtns ?? []) b.classList.toggle("on", b.dataset.mode === now);
+    for (const b of this.chainBtns ?? []) {
+      b.dataset.mode = now;
+      b.lastChild.textContent = CHAIN_MODES[now]?.label ?? now;
+      b.title = `${CHAIN_MODES[now]?.title ?? ""}. Click: ${CHAIN_MODES[CHAIN_MODES[now]?.next]?.label ?? "On"}`;
+    }
   }
 
   /** Pulsanti del mouse tenuti premuti (e.buttons): destro = never, sinistro = always ask. */
@@ -177,6 +187,19 @@ export class DuelView {
     this.peek.show(code);
     this.peekEl.classList.add("show");
     this.peekSticky = sticky;
+    this.syncPeekMini();
+  }
+
+  /**
+   * Con una finestra aperta (scelte, conferme...) la finestra della carta non si vede: per guardare una carta si riduce
+   * la finestra a icona.
+   */
+  syncPeekMini() {
+    // Finestre (anche quelle ridotte a icona contano come chiuse) e richieste compatte (catena, "usare l'effetto?").
+    const popup =
+      [...document.querySelectorAll(".modal-backdrop")].some((b) => !b.classList.contains("minimized") && !b.classList.contains("closing")) ||
+      !!document.querySelector(".prompt-pop");
+    this.peekEl?.classList.toggle("under-popup", popup);
   }
 
   hidePeek() {
@@ -185,8 +208,9 @@ export class DuelView {
   }
 
   /**
-   * Tenendo premuta una carta (sul campo, in mano, nelle finestre delle scelte) compare la sua finestra; lasciando
-   * sparisce. Il clic che segue non vale come azione sulla carta.
+   * Finestra della carta, a sinistra sopra il campo: compare cliccando una carta (sul campo, in mano, nelle finestre
+   * delle scelte, nel registro) e resta finché non si clicca altrove. Tenendo premuta una carta compare subito e
+   * il clic che segue non vale come azione sulla carta.
    */
   bindPeek() {
     const cardAt = (t) => {
@@ -196,7 +220,6 @@ export class DuelView {
       return t.closest?.(".pick-card, .action-row, .announce-row, .activate-card, .lingering-card") ? this.hoverCode : 0;
     };
     this.peekDown = (e) => {
-      if (this.peekSticky) this.hidePeek();
       if (e.button > 0) return;
       const t = e.target;
       if (!(this.el.contains(t) || t.closest?.(".modal-backdrop, .action-menu, .duel-float"))) return;
@@ -210,13 +233,23 @@ export class DuelView {
     };
     this.peekUp = () => {
       clearTimeout(this.peekTimer);
-      if (!this.peekSticky) this.hidePeek();
+      if (this.swallowClick) this.peekSticky = true;
     };
     this.peekClick = (e) => {
-      if (!this.swallowClick) return;
-      this.swallowClick = false;
-      e.stopPropagation();
-      e.preventDefault();
+      if (this.swallowClick) {
+        this.swallowClick = false;
+        e.stopPropagation();
+        e.preventDefault();
+        return;
+      }
+      const t = e.target;
+      // Ridurre a icona una finestra (o riaprirla) non chiude la carta: si riduce proprio per guardarla.
+      if (this.peekEl.contains(t) || t.closest?.(".modal-min, .modal-restore")) return;
+      const inDuel = this.el.contains(t) || t.closest?.(".modal-backdrop, .action-menu, .duel-float");
+      const code = inDuel ? cardAt(t) : 0;
+      // La carta cliccata nella finestra (l'azione sulla carta va avanti), un clic altrove la chiude.
+      if (code) this.peekCard(code, true);
+      else this.hidePeek();
     };
     this.peekKey = (e) => e.key === "Escape" && this.hidePeek();
     document.addEventListener("pointerdown", this.peekDown, true);
@@ -265,7 +298,25 @@ export class DuelView {
       },
     });
     const tabs = h("div.tabs");
-    const panes = { log: this.logEl, chat: h("div.chat", this.chatLog, chatInput) };
+    // Ricerca nel registro: restano le righe che contengono il testo (e i turni, per sapere quando è successo).
+    this.logQuery = "";
+    this.logCount = h("span.log-search-count");
+    const logSearch = h("input.input.log-search", {
+      type: "search",
+      placeholder: "Search the log…",
+      oninput: () => {
+        this.logQuery = logSearch.value.trim().toLowerCase();
+        this.filterLog();
+      },
+      onkeydown: (e) => {
+        if (e.key !== "Escape") return;
+        e.stopPropagation();
+        logSearch.value = "";
+        this.logQuery = "";
+        this.filterLog();
+      },
+    });
+    const panes = { log: h("div.log-pane", h("div.log-search-row", logSearch, this.logCount), this.logEl), chat: h("div.chat", this.chatLog, chatInput) };
     const tabList = [["log", "Log"], ["chat", "Chat"]];
     // Combo Trainer: scheda "Combo" con i passi, aperta all'inizio.
     if (this.opts.trainerEl) {
@@ -293,15 +344,20 @@ export class DuelView {
     tabs.firstChild.classList.add("on");
     Object.entries(panes).forEach(([k, p]) => (p.hidden = k !== tabList[0][0]));
 
-    // Catena: tre pulsanti esclusivi (auto / always ask / never). Tenendo premuto il mouse si cambia
-    // modo al volo: sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
-    const CHAIN_MODES = [["auto", "Auto", "Ask only when a card or effect can be activated"], ["always", "On", "Always ask (also hold the left mouse button)"], ["never", "Off", "Never ask (also hold the right mouse button)"]];
-    const chainBtn = ([mode, label, title]) =>
-      h("button.chain-btn", { dataset: { mode }, title, onclick: () => { settings.chainMode = mode; this.paintChainMode(); } }, label);
-    const mainBtns = CHAIN_MODES.map(chainBtn);
-    const floatBtns = CHAIN_MODES.map(chainBtn);
-    this.chainBtns = [...mainBtns, ...floatBtns];
-    this.chainMode = h("div.chain-mode", h("span.chain-label", "Chain"), h("div.chain-btns", mainBtns));
+    // Catena: un pulsante che cicla On → Auto → Off → On. Tenendo premuto il mouse si cambia modo al volo:
+    // sinistro = always ask, destro = never; rilasciando si torna a quello scelto.
+    const chainBtn = () =>
+      h("button.chain-cycle", {
+        onclick: (e) => {
+          e.stopPropagation();
+          settings.chainMode = CHAIN_MODES[settings.chainMode]?.next ?? "always";
+          this.paintChainMode();
+        },
+      }, h("span.chain-label", "Chain"), h("b", ""));
+    const mainBtn = chainBtn();
+    const floatBtn = chainBtn();
+    this.chainBtns = [mainBtn, floatBtn];
+    this.chainMode = h("div.chain-mode", mainBtn);
     // Barra sopra le finestre che oscurano il campo: timer di entrambi e priorità della catena restano visibili.
     const floatClock = (side) => h(`div.float-clock.side-${side}`, { hidden: true }, h("span.float-name", ""), h("span.icon", { "aria-hidden": "true" }, "timer"), h("b", ""), h("i", ""));
     this.floatClocks = [floatClock("me"), floatClock("op")];
@@ -312,13 +368,20 @@ export class DuelView {
     this.floatTrainer = h("div.float-trainer", { hidden: true });
     this.floatBar = h(
       "div.duel-float",
-      h("div.float-row", this.floatClocks[1], h("div.chain-mode.float", h("span.chain-label", "Chain"), h("div.chain-btns", floatBtns)), this.floatEffects, this.floatClocks[0]),
+      h("div.float-row", this.floatClocks[1], h("div.chain-mode.float", floatBtn), this.floatEffects, this.floatClocks[0]),
       this.floatTrainer
     );
     document.body.append(this.floatBar);
     // Finestra della carta (tenendo premuta una carta): sopra tutto, anche sopra le finestre delle scelte.
     this.peekEl = h("div.card-peek", this.peek.el);
     document.body.append(this.peekEl);
+    // Finestre che compaiono, spariscono o si riducono a icona: la finestra della carta si nasconde o ricompare.
+    this.popupClassObs = new MutationObserver(() => this.syncPeekMini());
+    this.popupObs = new MutationObserver(() => {
+      for (const b of document.querySelectorAll(".modal-backdrop")) this.popupClassObs.observe(b, { attributes: true, attributeFilter: ["class"] });
+      this.syncPeekMini();
+    });
+    this.popupObs.observe(document.body, { childList: true });
     if (this.opts.trainerEl) {
       const sync = () => {
         const st = this.opts.trainerEl.querySelector(".trainer-status");
@@ -335,18 +398,18 @@ export class DuelView {
     this.overlay = h("div.fx-layer");
     // Richieste compatte (catena, "usare l'effetto?"): non coprono il campo, che resta cliccabile.
     this.promptDock = h("div.prompt-dock");
+    this.popupObs.observe(this.promptDock, { childList: true });
     // Scelte sul campo (materiali, zona...): testo e conferma sopra la mano, sempre visibili finché servono.
     this.pickBar = h("div.pick-bar", { hidden: true });
-    // Medaglione al centro (turno e fase, vedi setTurn): cliccato apre le azioni di fase e l'auto-place.
+    // Medaglione al centro (turno e fase, vedi setTurn): cliccato apre le azioni di fase, al centro dello schermo.
     this.phaseBtns = h("div.center-phases");
-    this.centerMenu = h("div.center-menu", { hidden: true },
-      this.phaseBtns,
-      h("label.check.center-autoplace", h("input", { type: "checkbox", checked: settings.autoPlace, onchange: (e) => (settings.autoPlace = e.target.checked) }), "Auto-place"));
+    this.centerMenu = h("div.center-menu", { hidden: true }, this.phaseBtns);
     this.medallionEl = h("div.medallion-slot");
-    this.board.centerEl.append(this.medallionEl, this.centerMenu);
+    this.board.centerEl.append(this.medallionEl);
     this.medallionEl.addEventListener("click", (e) => {
       e.stopPropagation();
-      this.toggleMenu(this.centerMenu);
+      // Il menu si apre solo se ci sono azioni di fase (l'auto-place ora è in basso a destra).
+      if (this.phaseBtns.childElementCount || !this.centerMenu.hidden) this.toggleMenu(this.centerMenu);
       // Sul campo di Helios il medaglione sta sopra il sole: cliccato, il sole manda la sua onda.
       this.stage?.sunPulse();
     });
@@ -370,7 +433,20 @@ export class DuelView {
       h("button.btn.duel-leave", { onclick: () => { this.toggleMenu(null); this.opts.onLeave?.(); } }, "Leave"));
     this.settingsMenu.addEventListener("click", (e) => e.stopPropagation());
     const gear = h("button.gear-btn", { title: "Settings", onclick: (e) => { e.stopPropagation(); this.toggleMenu(this.settingsMenu); } }, h("span.icon", { "aria-hidden": "true" }, "settings"));
-    this.dock = h("div.duel-dock", this.chainMode, gear, this.settingsMenu);
+    // Auto-place: la zona per evocare/posizionare la sceglie il gioco.
+    const autoPlace = h("button.dock-btn.autoplace-btn", {
+      onclick: (e) => {
+        e.stopPropagation();
+        settings.autoPlace = !settings.autoPlace;
+        paintAutoPlace();
+      },
+    }, h("span.icon", { "aria-hidden": "true" }, "grid_view"));
+    const paintAutoPlace = () => {
+      autoPlace.classList.toggle("on", !!settings.autoPlace);
+      autoPlace.title = `Auto-place zones: ${settings.autoPlace ? "on" : "off"}`;
+    };
+    paintAutoPlace();
+    this.dock = h("div.duel-dock", this.chainMode, autoPlace, gear, this.settingsMenu);
     // A destra, a metà altezza: partita al meglio di N, stato (chi sta scegliendo) e amici che guardano.
     this.info = h("div.duel-info", this.matchEl, this.statusEl, this.watchersEl);
     this.closeMenus = () => this.toggleMenu(null);
@@ -387,6 +463,7 @@ export class DuelView {
         this.promptDock,
         this.pickBar,
         this.info,
+        this.centerMenu,
         this.dock,
         this.logBtn
       )),
@@ -468,7 +545,7 @@ export class DuelView {
     const short = { "Main Phase 1": "Main 1", "Main Phase 2": "Main 2", "Draw Phase": "Draw", "Standby Phase": "Standby", "Battle Phase": "Battle", "Damage Step": "Damage", "End Phase": "End" };
     const name = PHASE_NAMES[phase] ?? "";
     clear(this.medallionEl).append(
-      turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, { title: "Phase actions and Auto-place" }, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
+      turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, { title: "Phase actions" }, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
     );
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
@@ -701,8 +778,23 @@ export class DuelView {
     const line = h(`div.log-line.${entry.cls || "plain"}${entry.sub ? ".sub" : ""}`, this.logParts(entry.parts ?? [entry.text]));
     this.logEl.append(line);
     while (this.logEl.childElementCount > 400) this.logEl.firstChild.remove();
+    if (this.logQuery) this.filterLog();
     this.logEl.scrollTop = this.logEl.scrollHeight;
     return line;
+  }
+
+  /** Applica la ricerca del registro: nasconde le righe senza il testo cercato (i turni restano). */
+  filterLog() {
+    const q = this.logQuery;
+    let found = 0;
+    for (const line of this.logEl.children) {
+      const hit = !!q && line.textContent.toLowerCase().includes(q);
+      if (hit) found++;
+      line.classList.toggle("log-hit", hit);
+      line.hidden = !!q && !hit && !line.classList.contains("turn");
+    }
+    this.logCount.textContent = q ? `${found} found` : "";
+    this.logEl.scrollTop = this.logEl.scrollHeight;
   }
 
   /** Il Moai dell'avversario spara (messaggio "moai" dei duelli online). */
@@ -1133,7 +1225,41 @@ export class DuelView {
     const draw = winner === 2 || winner == null;
     const title = text ?? (draw ? "DRAW" : won ? "VICTORY" : "DEFEAT");
     const sub = extra || (reason != null ? victoryString(reason) : "");
-    this.overlay.append(h(`div.result.${draw ? "draw" : won ? "win" : "lose"}`, h(`div.result-title${title.length > 11 ? ".long" : ""}`, title), sub && h("div.result-sub", sub)));
+    // Un clic in qualsiasi punto della schermata del risultato esce dal duello (i pulsanti sopra fanno il loro).
+    this.overlay.append(
+      h(
+        `div.result.${draw ? "draw" : won ? "win" : "lose"}`,
+        { title: "Click to leave", onclick: () => this.opts.onLeave?.() },
+        h(`div.result-title${title.length > 11 ? ".long" : ""}`, title),
+        sub && h("div.result-sub", sub),
+        h("div.result-leave", "Click anywhere to leave")
+      )
+    );
+    this.showFieldToggle();
+  }
+
+  /**
+   * In alto a destra, a duello finito: "View the field" nasconde la schermata del risultato per guardare il campo
+   * com'era alla fine (le carte si possono ancora cliccare); il pulsante diventa "Show the result" e la fa riapparire.
+   */
+  showFieldToggle() {
+    this.el.classList.remove("viewing-field");
+    if (!this.fieldToggle) {
+      this.fieldToggle = h("button.btn.field-toggle", {
+        onclick: (e) => {
+          e.stopPropagation();
+          this.el.classList.toggle("viewing-field");
+          this.paintFieldToggle();
+        },
+      });
+      this.main.append(this.fieldToggle);
+    }
+    this.paintFieldToggle();
+  }
+
+  paintFieldToggle() {
+    const viewing = this.el.classList.contains("viewing-field");
+    this.fieldToggle.replaceChildren(h("span.icon", { "aria-hidden": "true" }, viewing ? "emoji_events" : "visibility"), viewing ? " Show the result" : " View the field");
   }
 
   destroy() {
@@ -1146,6 +1272,8 @@ export class DuelView {
     this.closeActionMenu();
     this.lingeringModal?.close();
     this.trainerObserver?.disconnect();
+    this.popupObs?.disconnect();
+    this.popupClassObs?.disconnect();
     this.floatBar.remove();
     this.peekEl?.remove();
     clearTimeout(this.peekTimer);

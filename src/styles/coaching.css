@@ -19,7 +19,7 @@
 .duel-watchers .icon { font-size: 16px; }
 
 /* Spettatore: i comandi per rispondere al core non servono */
-.duel-screen.spectating .chain-mode, .duel-screen.spectating .center-autoplace, .duel-float.spectating .chain-mode { display: none; }
+.duel-screen.spectating .chain-mode, .duel-screen.spectating .autoplace-btn, .duel-float.spectating .chain-mode { display: none; }
 
 /* Scheda "Coach" dello spettatore */
 .coach-panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; height: 100%; padding: 8px; overflow: hidden; }

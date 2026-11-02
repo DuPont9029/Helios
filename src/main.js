@@ -2,6 +2,7 @@ import "./styles/main.css";
 import "./styles/duel.css";
 import "./styles/field-crypt.css";
 import "./styles/field-3d.css";
+import "./styles/draft.css";
 import { h, clear, icon, measureRectScale } from "./ui/dom.js";
 import { loadDatabase, db, getCard } from "./data/db.js";
 import { settings } from "./data/settings.js";
@@ -17,6 +18,8 @@ import { toast, openModal } from "./ui/modal.js";
 import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
 import { showHdpc } from "./ui/hdpc.js";
+import { showDraft } from "./ui/draft-editor.js";
+import { loadFormats } from "./draft/format.js";
 import { initCoaching } from "./ui/coaching.js";
 import { version } from "../package.json";
 
@@ -94,7 +97,7 @@ function friendsBadge(go) {
   return b;
 }
 
-/** Home; section "training" = sottomenu con le modalità di allenamento. */
+/** Home; section "duel" o "training" = sottomenu (duelli online e Limited; modalità di allenamento). */
 function home(section = null) {
   leaveCurrent();
   const root = clear(app.root);
@@ -102,11 +105,19 @@ function home(section = null) {
   const item = (title, sub, onClick) =>
     h("button.menu-item", { onclick: go(onClick) }, h("span.menu-title", title), h("span.menu-sub", sub));
   const m = db.manifest ?? {};
-  const training = section === "training";
-  const nav = training
+  const back = () => h("button.btn.ghost.round.page-back.menu-back", { title: "Back (right-click)", onclick: () => home() }, icon("chevron_left"));
+  const nav = section === "duel"
     ? h(
         "nav.menu",
-        h("button.btn.ghost.round.page-back.menu-back", { title: "Back (right-click)", onclick: () => home() }, icon("chevron_left")),
+        back(),
+        h("div.menu-section", "Duel"),
+        item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
+        item("Limited", `Draft decks from a pool you curate · ${loadFormats().length} formats`, () => showDraft(app))
+      )
+    : section === "training"
+    ? h(
+        "nav.menu",
+        back(),
         h("div.menu-section", "Training"),
         item("Test Duel", "You control both players", () => showLocalSetup(app, { vsCpu: false })),
         item("Trainer", "Write, record and practice your combos, play around hand traps", () => showComboTrainer(app)),
@@ -115,7 +126,7 @@ function home(section = null) {
       )
     : h(
         "nav.menu",
-        item("Online Duel", "P2P via WebRTC · STUN/TURN", () => showOnline(app)),
+        h("button.menu-item", { onclick: () => home("duel") }, h("span.menu-title", "Duel"), h("span.menu-sub", "Online Duel · Limited")),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
         h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Trainer · Vs CPU · HDPC")),
         item("Settings", "Name, network, graphics", () => showSettings(app))
