@@ -157,7 +157,8 @@
 .hdpc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
 .hdpc-main, .hdpc-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .hdpc-side { position: sticky; top: 0; }
-.hdpc-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+/* .card-box.…: più specifica di .card-box (flex in colonna), che in produzione arriva da un altro file CSS e vincerebbe */
+.card-box.hdpc-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
 .hdpc-hand { white-space: nowrap; padding-bottom: 2px; }
 .hdpc-setup .field { margin: 0; }
 .hdpc-quick-hand { grid-column: 1 / -1; display: flex; gap: 6px; }
@@ -426,7 +427,7 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .profile-box .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 
 /* Matchmaking (scheda Find a Duel) */
-.mm-box { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+.card-box.mm-box { flex-direction: row; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
 .mm-status { margin: 0; }
 .mm-queues h3 { margin-top: 4px; }
 
