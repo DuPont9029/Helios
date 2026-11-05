@@ -62,7 +62,7 @@
 .tag { padding: 1px 6px; font-size: 11px; color: var(--muted); border: 1px solid var(--line); }
 
 /* bundle */
-.draft-bundles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.draft-bundles { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; }
 .draft-bundle { display: flex; flex-direction: column; gap: 6px; padding: 10px; text-align: left; font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--line); border-left: 4px solid var(--rc); cursor: pointer; }
 .draft-bundle:hover { border-color: var(--rc); }
 .draft-bundle.bad { border-color: var(--danger); }
@@ -70,7 +70,7 @@
 .draft-bundle-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .draft-bundle-head b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .draft-bundle-cards { display: flex; flex-wrap: wrap; gap: 3px; align-items: center; }
-.draft-bundle-cards .card { width: 36px; }
+.draft-bundle-cards .card { width: 54px; }
 .draft-stack { position: relative; display: inline-block; }
 .draft-copies { position: absolute; right: -3px; bottom: -3px; padding: 0 4px; font: 700 11px var(--mono); color: #fff; background: rgba(5, 8, 14, 0.9); border: 1px solid var(--line-strong); }
 .draft-group.drop { outline: 2px dashed var(--accent); outline-offset: 4px; }
@@ -90,7 +90,7 @@
 
 /* carte singole */
 .draft-singles, .draft-sample { display: flex; flex-wrap: wrap; gap: 8px; }
-.draft-single { position: relative; width: 82px; padding: 0; background: none; border: none; cursor: pointer; }
+.draft-single { position: relative; width: 112px; padding: 0; background: none; border: none; cursor: pointer; }
 .draft-single .card { width: 100%; box-shadow: 0 0 0 2px var(--rc), 0 4px 12px rgba(0, 0, 0, 0.5); }
 .draft-single:hover .card { box-shadow: 0 0 0 2px var(--rc), 0 0 14px var(--rc); }
 .draft-single.sample { cursor: default; }
@@ -325,3 +325,61 @@
 .ds-timers { display: grid; grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 1fr)); gap: 8px 12px; align-items: center; }
 .ds-timers input { width: 100%; min-width: 0; }
 @media (max-width: 520px) { .ds-grid { grid-template-columns: 1fr; } }
+
+/* cube editor: in fondo a ogni rarità, un nuovo bundle (o nuove carte) di quella rarità */
+.draft-add-here { display: grid; place-items: center; gap: 4px; min-height: 90px; font: inherit; font-size: 12px; color: var(--muted); background: none; border: 2px dashed var(--line-strong); border-radius: 6px; cursor: pointer; }
+.draft-add-here:hover { color: var(--text); border-color: var(--rc, var(--accent)); }
+.draft-add-here .icon { font-size: 28px; }
+.draft-singles .draft-add-here { width: 112px; min-height: 160px; }
+/* rarità con + e − (più alta / più bassa) */
+.rarity-step { display: flex; align-items: stretch; gap: 4px; }
+.rarity-step .select { flex: 1; }
+.rarity-step .btn { padding: 0 10px; }
+/* copertina del bundle: la carta scelta */
+.draft-stack.cover-pick { cursor: pointer; }
+.draft-stack.is-cover .card { outline: 3px solid var(--gold); outline-offset: 1px; }
+.draft-stack .cover-mark { position: absolute; left: 2px; top: 2px; padding: 0 4px; font: 700 9px var(--mono); color: var(--on-gold, #000); background: var(--gold); border-radius: 3px; pointer-events: none; }
+.draft-bundle-cover { flex: none; width: 54px; }
+.draft-bundle-head { align-items: center; }
+
+/* binder laterale del draft: riducibile a una striscia (si riapre trascinandoci sopra una scelta) */
+.dt-main { transition: grid-template-columns 0.2s; }
+.dt-main.binder-min { grid-template-columns: minmax(0, 1fr) 44px; }
+.dt-side-head { display: flex; align-items: center; gap: 6px; }
+.dt-side-head .spacer { flex: 1; }
+.dt-side-open { display: none; }
+.dt-main.binder-min .dt-side > :not(.dt-side-open) { display: none; }
+.dt-main.binder-min .dt-side-open {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; padding: 10px 0; font: 600 12px var(--display); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--muted); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); cursor: pointer;
+}
+.dt-main.binder-min .dt-side-open span:last-child { writing-mode: vertical-rl; }
+.dt-main.binder-min .dt-side-open:hover { color: var(--text); border-color: var(--accent); }
+/* binder: il mazzo (Main ed Extra nella stessa scheda) */
+.pool-deck { display: flex; flex-direction: column; gap: 6px; }
+.pool-part-head { display: flex; align-items: baseline; gap: 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+.pool-hint { margin: 0; }
+.dt-item-head b { min-width: 0; overflow: hidden; }
+
+/* cube editor: versione, cambiamenti tra versioni, statistiche */
+.draft-rev { padding: 2px 8px; font: 700 12px var(--mono); color: var(--accent); border: 1px solid var(--accent); border-radius: 10px; }
+.draft-version { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.draft-version.current { border-color: var(--accent); }
+.draft-version-head { display: flex; align-items: baseline; gap: 8px; }
+.draft-diff { display: flex; flex-direction: column; gap: 10px; }
+.draft-diff-sec { display: flex; flex-direction: column; gap: 4px; }
+.draft-diff-sec > b { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.draft-diff-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.draft-diff-sub { display: flex; align-items: center; gap: 6px; width: 100%; padding-left: 20px; }
+.draft-diff-mark { width: 14px; font: 700 14px var(--mono); text-align: center; }
+.add > .draft-diff-mark { color: #6dff9e; }
+.del > .draft-diff-mark { color: #ff6d7d; }
+.draft-diff-cards { display: flex; flex-wrap: wrap; gap: 3px; }
+.draft-diff-cards .card { width: 38px; }
+.draft-stats { display: flex; flex-direction: column; gap: 6px; }
+.draft-stats-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.draft-stats-table th, .draft-stats-table td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+.draft-stats-table th:nth-child(2), .draft-stats-table td:nth-child(2) { text-align: left; }
+.draft-stats-name { display: flex; align-items: center; gap: 8px; }
+.draft-stats-name .card { width: 30px; }
+.draft-stats-rank { color: var(--muted); }

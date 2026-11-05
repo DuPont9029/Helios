@@ -47,6 +47,8 @@ const BUILTIN_PRESETS = [
   ["Genesys (100 points)", () => ({ mode: "MR5", banlist: banlistLike(/^Genesys$/), pointCap: 100, lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
   ["Speed Duel", () => ({ mode: "SPEED", banlist: banlistLike(/Speed/), lp: 4000, hand: 4, draw: 1, bestOf: 1 })],
   ["No banlist", () => ({ mode: "MR5", banlist: "", lp: 8000, hand: 5, draw: 1, bestOf: 1 })],
+  // Per provare i mazzi del draft: nessun limite di deck building (numero di carte, copie, banlist).
+  ["Draft testing (no Deck limits)", () => ({ mode: "MR5", banlist: "", lp: 8000, hand: 5, draw: 1, bestOf: 1, noLimits: true })],
 ];
 const userPresets = () => (Array.isArray(settings.gamePresets) ? settings.gamePresets.filter((p) => p?.name && p.values) : []);
 
@@ -58,6 +60,7 @@ function optionsForm({ host = true } = {}) {
   const hand = h("input.input", { type: "number", value: 5, min: 0, max: 20 });
   const draw = h("input.input", { type: "number", value: 1, min: 0, max: 10 });
   const unofficial = h("input", { type: "checkbox" });
+  const noLimits = h("input", { type: "checkbox" });
   const timer = h("select.select", Object.entries(TIMER_PRESETS).map(([k, t]) => h("option", { value: k }, t ? t.label : "Off")));
   // Partita al meglio di 3 o 5 duelli (online la sceglie l'host).
   // Partita al meglio di N duelli (N a scelta; 1 = duello singolo). Con N > 1 tra i duelli si fa il side deck.
@@ -73,7 +76,7 @@ function optionsForm({ host = true } = {}) {
   banlist.addEventListener("change", drawCap);
   const capValue = () => Math.max(0, Math.min(10000, Math.round(+pointCap.value) || 0));
 
-  const values = () => ({ mode: mode.value, banlist: banlist.value, lp: +lp.value, hand: +hand.value, draw: +draw.value, timer: timer.value, bestOf: clampBestOf(bestOf.value), unofficial: unofficial.checked, ...(pointsList() ? { pointCap: capValue() } : {}) });
+  const values = () => ({ mode: mode.value, banlist: banlist.value, lp: +lp.value, hand: +hand.value, draw: +draw.value, timer: timer.value, bestOf: clampBestOf(bestOf.value), unofficial: unofficial.checked, noLimits: noLimits.checked, ...(pointsList() ? { pointCap: capValue() } : {}) });
   const apply = (v) => {
     if (v.mode in DUEL_MODES) mode.value = v.mode;
     if (v.banlist === "" || db.banlists.some((b) => b.name === v.banlist)) banlist.value = v.banlist;
@@ -83,6 +86,7 @@ function optionsForm({ host = true } = {}) {
     if (v.timer in TIMER_PRESETS) timer.value = v.timer;
     if (v.bestOf) bestOf.value = clampBestOf(v.bestOf);
     unofficial.checked = !!v.unofficial;
+    noLimits.checked = !!v.noLimits;
     if (Number.isInteger(v.pointCap)) pointCap.value = v.pointCap;
     drawCap();
   };
@@ -105,7 +109,7 @@ function optionsForm({ host = true } = {}) {
     settings.lastPreset = k.startsWith("u") ? userPresets()[+k.slice(1)].name : k;
   });
   // Un campo cambiato a mano: non è più il preset scelto.
-  for (const x of [mode, banlist, lp, hand, draw, timer, bestOf, unofficial, pointCap]) x.addEventListener("change", () => { drawPresets(""); settings.lastPreset = ""; });
+  for (const x of [mode, banlist, lp, hand, draw, timer, bestOf, unofficial, noLimits, pointCap]) x.addEventListener("change", () => { drawPresets(""); settings.lastPreset = ""; });
   const savePreset = h("button.btn.small.ghost", {
     title: "Save these settings as a preset",
     onclick: async () => {
@@ -132,6 +136,8 @@ function optionsForm({ host = true } = {}) {
   drawPresets(start);
   if (start.startsWith("u")) apply(userPresets()[lastUser].values);
   else if (start) apply(BUILTIN_PRESETS[+start.slice(1)][1]());
+  // Custom: le ultime regole usate (mano iniziale, Life Points, pescate... non tornano ai valori predefiniti).
+  else if (settings.lastRules) apply(settings.lastRules);
 
   const el = h(
     "div.form-grid",
@@ -144,7 +150,8 @@ function optionsForm({ host = true } = {}) {
     h("label.field", h("span", "Draws per turn"), draw),
     h("label.field", h("span", "Timer"), timer),
     h("label.field", h("span", "Match: best of"), bestOf),
-    h("label.check", unofficial, "Allow unofficial cards (anime/custom)")
+    h("label.check", unofficial, "Allow unofficial cards (anime/custom)"),
+    h("label.check", { title: "Any number of cards and copies, no banlist: to test the Decks of a draft" }, noLimits, "No Deck building limits")
   );
   if (!host) el.hidden = true;
   drawCap();
@@ -156,6 +163,7 @@ function optionsForm({ host = true } = {}) {
       drawPresets("");
     },
     read() {
+      settings.lastRules = values();
       settings.lastBanlist = banlist.value;
       settings.lastTimer = timer.value;
       settings.lastBestOf = clampBestOf(bestOf.value);
@@ -169,6 +177,7 @@ function optionsForm({ host = true } = {}) {
         hand: Math.max(0, +hand.value || 0),
         draw: Math.max(0, +draw.value || 0),
         allowUnofficial: unofficial.checked,
+        noLimits: noLimits.checked,
         timer: timer.value,
         ...(pointsList() ? { pointCap: capValue() } : {}),
       };
@@ -177,7 +186,7 @@ function optionsForm({ host = true } = {}) {
 }
 
 function checkDeck(deck, options) {
-  const errors = validateDeck(deck, options.banlist ? banlistByName(options.banlist) : null, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap });
+  const errors = validateDeck(deck, options.banlist ? banlistByName(options.banlist) : null, { allowUnofficial: options.allowUnofficial, pointCap: options.pointCap, noLimits: options.noLimits });
   if (errors.length) {
     alertModal("Invalid Deck", errors.slice(0, 10).join("\n"));
     return false;
@@ -313,7 +322,7 @@ export function showLocalSetup(app, { vsCpu }) {
               onNextGame: async (old) => {
                 const p1 = old.cfg.me;
                 const next = old.winner === p1 ? false : old.winner === 1 - p1 ? true : meFirst;
-                const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, pointCap: options.pointCap, game: series.game };
+                const side = { banlist: options.banlist, allowUnofficial: options.allowUnofficial, pointCap: options.pointCap, noLimits: options.noLimits, game: series.game };
                 // Formato con side deck: la schermata si apre sempre, anche con il Side Deck vuoto.
                 // Dal side deck ci si può arrendere: la partita finisce (nel Test Duel perde chi si arrende).
                 const sa = await openSideEditor(a, { ...side, who: vsCpu ? "" : "Player 1" });
@@ -473,7 +482,7 @@ async function playMatch(app, match, old = null) {
     // Torneo Limited: side nel deck builder del pool, con Main ed Extra Deck della stessa dimensione.
     side = match.sideEditor
       ? match.sideEditor(match.deck, match.series.game)
-      : openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, pointCap: opts?.pointCap, game: match.series.game });
+      : openSideEditor(match.deck, { banlist: opts?.banlist, allowUnofficial: opts?.allowUnofficial, pointCap: opts?.pointCap, noLimits: opts?.noLimits, game: match.series.game });
     const d = await Promise.race([side, opponentConceded.then(() => ({ opponent: true }))]);
     if (d?.opponent || conceded) return endByConcede();
     if (d?.surrendered) {
@@ -646,7 +655,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     const match = { mux, host, deck: getDeck(), options: host ? opts.read() : undefined };
     // Mazzo non valido (es. oltre il massimo di carte): non si gioca. L'host lo controlla con le sue regole,
     // l'ospite senza banlist (quella dell'host la controlla l'host).
-    const errors = validateDeck(match.deck, host && match.options.banlist ? banlistByName(match.options.banlist) : null, { allowUnofficial: host ? match.options.allowUnofficial : true, pointCap: host ? match.options.pointCap : undefined });
+    const errors = validateDeck(match.deck, host && match.options.banlist ? banlistByName(match.options.banlist) : null, { allowUnofficial: host ? match.options.allowUnofficial : true, pointCap: host ? match.options.pointCap : undefined, noLimits: host ? match.options.noLimits : false });
     if (errors.length) {
       setStatus(`Your Deck cannot be used: ${errors.slice(0, 3).join(" · ")}`, "error");
       link.close();

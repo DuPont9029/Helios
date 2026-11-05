@@ -4,6 +4,7 @@
 // alla prima partita; poi resta fisso e tra un duello e l'altro si scambiano carte con il sideboard una per una
 // (Main ed Extra Deck tengono la loro dimensione per tutta la partita).
 import { getCard, isExtraDeckCard } from "../data/db.js";
+import { artBase } from "../deck/deck.js";
 import { newId } from "./format.js";
 import { poolCards } from "./table.js";
 import { seededRandom } from "./packs.js";
@@ -39,23 +40,49 @@ export function deleteRun(id) {
 }
 
 /** Draft finito: un run con i pool dei posti (dal tavolo) e il mio mazzo di partenza (tutto nel sideboard). */
-export function newRun(table, { me = 0, bestOf = 3, botDecks = [] } = {}) {
+export function newRun(table, { me = 0, bestOf = 3, botDecks = [], side = null } = {}) {
   const f = table.format;
   return {
     id: newId(),
     created: Date.now(),
-    format: { id: f.id, name: f.name, mode: f.mode, rarities: f.rarities },
+    format: { id: f.id, name: f.name, mode: f.mode, rarities: f.rarities, rev: f.rev ?? 1, hash: f.hash ?? null },
     bestOf,
     me,
     seats: table.seats.map((s, i) => ({ name: s.name, bot: s.bot, binder: s.binder.map(stripItem), deck: s.bot ? botDecks[i] : null })),
-    deck: emptyDraftDeck(table.seats[me].binder),
+    deck: side ? trackedDraftDeck(table.seats[me].binder, side) : emptyDraftDeck(table.seats[me].binder),
     locked: false,
     results: [], // le mie partite: { id, opp: posto, wins: [mie, sue], won, at, replay: null }
     botMatches: null, // partite tra bot (testa o croce), vedi botMatches()
   };
 }
 
-const stripItem = (x) => ({ uid: x.uid, id: x.id, round: x.round, label: x.label, rarity: x.rarity, main: x.main, extra: x.extra, pickNo: x.pickNo });
+const stripItem = (x) => ({ uid: x.uid, id: x.id, round: x.round, label: x.label, rarity: x.rarity, main: x.main, extra: x.extra, pickNo: x.pickNo, ...(x.cover ? { cover: x.cover } : {}) });
+
+/** Mazzo tenuto durante il draft: tutto il pool nel mazzo tranne le carte messe nel Side (side: codici, con le copie). */
+export function trackedDraftDeck(binder, side) {
+  const { main, extra } = poolCards(binder);
+  const left = new Map();
+  for (const c of side) left.set(c, (left.get(c) ?? 0) + 1);
+  const keep = (c) => {
+    const n = left.get(c) ?? 0;
+    if (!n) return true;
+    left.set(c, n - 1);
+    return false;
+  };
+  const deckMain = main.filter(keep);
+  const deckExtra = extra.filter(keep);
+  return { main: deckMain, extra: deckExtra, side: [...withoutOnce([...main, ...extra], [...deckMain, ...deckExtra])] };
+}
+const withoutOnce = (codes, minus) => {
+  const left = new Map();
+  for (const c of minus) left.set(c, (left.get(c) ?? 0) + 1);
+  return codes.filter((c) => {
+    const n = left.get(c) ?? 0;
+    if (!n) return true;
+    left.set(c, n - 1);
+    return false;
+  });
+};
 
 /** Mazzo vuoto: tutto il pool nel sideboard. */
 export function emptyDraftDeck(binder) {
@@ -79,9 +106,10 @@ export function draftDeckErrors(deck, binder) {
   if (wrongMain.length) errs.push(`Extra Deck monsters in the Main Deck: ${[...new Set(wrongMain)].map((c) => getCard(c)?.name).join(", ")}.`);
   if (wrongExtra.length) errs.push(`Main Deck cards in the Extra Deck: ${[...new Set(wrongExtra)].map((c) => getCard(c)?.name).join(", ")}.`);
   // Solo carte del pool, nel numero draftato.
+  // Per carta base: un artwork alternativo scelto nel deck builder è la stessa carta del pool.
   const { main, extra } = poolCards(binder);
-  const have = count([...main, ...extra]);
-  const used = count([...deck.main, ...deck.extra, ...deck.side]);
+  const have = count([...main, ...extra].map(artBase));
+  const used = count([...deck.main, ...deck.extra, ...deck.side].map(artBase));
   for (const [c, n] of used) if (n > (have.get(c) ?? 0)) errs.push(`${getCard(c)?.name ?? c}: ${n} copies used, ${have.get(c) ?? 0} drafted.`);
   return errs;
 }

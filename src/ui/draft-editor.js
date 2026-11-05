@@ -8,7 +8,8 @@ import { openCardCollector } from "./editor.js";
 import { getCard, isExtraDeckCard } from "../data/db.js";
 import {
   DRAFT_MODES, BUNDLE_MIN_MAIN, RULE_KINDS, PACK_SIZE, modeOf, newFormat, newBundle, newSingle, newId,
-  loadFormats, storeFormat, deleteFormat, exportFormat, importFormat, roundItems, rarityOf, allTags, misplaced,
+  loadFormats, storeFormat, deleteFormat, exportFormat, importFormat, roundItems, rarityOf, allTags, misplaced, bundleCover,
+  newVersion, forkFormat, formatDiff, formatContent, formatHash,
 } from "../draft/format.js";
 import { makePack, formatErrors, readiness, ruleText } from "../draft/packs.js";
 import { loadRuns, deleteRun, runRecord, storeRun } from "../draft/runs.js";
@@ -61,7 +62,7 @@ export function showDraft(app) {
         "div.draft-format-info",
         h("b.draft-format-name", f.name),
         h("span.muted.small", mode.name),
-        h("span.small", `${f.bundles.length} bundles · ${f.singles.length} singles · ${f.rarities.length} rarities`),
+        h("span.small", `v${f.rev ?? 1}${f.parent ? ` · fork of ${f.parent.name}` : ""} · ${f.bundles.length} bundles · ${f.singles.length} singles · ${f.rarities.length} rarities`),
         status
       ),
       h(
@@ -264,7 +265,21 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
       [...f.rarities].reverse().map((r) => h("option", { value: r.id }, r.name))
     );
     s.value = value ?? "";
-    return s;
+    // − e +: la rarità sotto e quella sopra ("No rarity" è sotto tutte).
+    const step = (d) => {
+      const ids = [null, ...f.rarities.map((r) => r.id)];
+      const i = Math.max(0, ids.indexOf(s.value || null));
+      const j = Math.max(0, Math.min(ids.length - 1, i + d));
+      if (j === i) return;
+      s.value = ids[j] ?? "";
+      onchange(ids[j]);
+    };
+    return h(
+      "div.rarity-step",
+      h("button.btn.small", { type: "button", title: "Lower rarity", onclick: () => step(-1) }, "−"),
+      s,
+      h("button.btn.small", { type: "button", title: "Higher rarity", onclick: () => step(1) }, "+")
+    );
   };
   // Gruppi per rarità, dalla più alta (in fondo "senza rarità", solo se serve). Ci sono anche le rarità vuote: si
   // trascina un oggetto su un gruppo per dargli quella rarità.
@@ -285,11 +300,13 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     el.addEventListener("dragend", () => el.classList.remove("dragging"));
     return el;
   };
-  const rarityGroup = (g, list, tile, empty) => {
+  // add(rarity): il "+" in fondo al gruppo crea un oggetto nuovo di quella rarità.
+  const rarityGroup = (g, list, tile, empty, add = null) => {
+    const plus = add && h("button.draft-add-here", { style: `--rc: ${g.r?.color ?? "#5b6070"}`, title: `New, with rarity "${g.r?.name ?? "No rarity"}"`, onclick: () => add(g.r?.id ?? null) }, icon("add"), add.label ?? "New");
     const box = h(
       "div.draft-group",
       h("div.draft-group-head", rarityLabel(g.r?.id), h("span.muted.small", `${g.items.length}`)),
-      g.items.length ? h(list, g.items.map(tile)) : h("div.draft-drop-hint.muted.small", empty)
+      g.items.length || plus ? h(list, g.items.map(tile), plus) : h("div.draft-drop-hint.muted.small", empty)
     );
     box.addEventListener("dragover", (e) => {
       if (!e.dataTransfer.types.includes(DRAG)) return;
@@ -386,6 +403,8 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     ["rarities", () => `Rarities (${f.rarities.length})`],
     ["rules", () => `Pack rules (${f.rules.length})`],
     ["sample", () => "Sample pack"],
+    ["versions", () => `Versions (v${f.rev ?? 1})`],
+    ["stats", () => "Stats"],
   ];
   function renderTabs() {
     clear(tabsEl).append(
@@ -393,7 +412,7 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     );
   }
   function render() {
-    clear(body).append(...({ bundles: bundlesView, singles: singlesView, rarities: raritiesView, rules: rulesView, sample: sampleView })[tab]().filter(Boolean));
+    clear(body).append(...({ bundles: bundlesView, singles: singlesView, rarities: raritiesView, rules: rulesView, sample: sampleView, versions: versionsView, stats: statsView })[tab]().filter(Boolean));
   }
   const update = () => {
     changed();
@@ -409,30 +428,32 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     return [
       h(
         "div.draft-toolbar",
-        h("button.btn.primary", { onclick: createBundle }, icon("add"), " New bundle"),
+        h("button.btn.primary", { onclick: () => createBundle() }, icon("add"), " New bundle"),
         search,
         h("span.muted.small", `Each bundle is one pick in Round 1 and gives all its cards (at least ${BUNDLE_MIN_MAIN} Main Deck cards). Drag a bundle onto a rarity to change it.`)
       ),
       f.bundles.length && !shown.length ? h("p.muted.draft-empty", "No bundle matches the search.") : null,
       !f.bundles.length ? h("p.muted.draft-empty", "No bundles yet: add the packages of Round 1 (a core of Main Deck cards plus its Extra Deck bosses).") : null,
-      ...(f.bundles.length ? byRarity(shown).map((g) => rarityGroup(g, "div.draft-bundles", bundleTile, "Drop a bundle here")) : []),
+      ...(f.bundles.length ? byRarity(shown).map((g) => rarityGroup(g, "div.draft-bundles", bundleTile, "Drop a bundle here", addBundleHere)) : []),
     ];
   }
+  const addBundleHere = Object.assign((rarity) => createBundle(rarity), { label: "New bundle" });
   function bundleTile(b) {
     const bad = b.main.length < BUNDLE_MIN_MAIN;
     const cards = stacked([...b.main, ...b.extra]);
+    const cover = bundleCover(b);
     return draggable(h(
       `button.draft-bundle${bad ? ".bad" : ""}`,
       { style: `--rc: ${rarityOf(f, b.rarity)?.color ?? "#5b6070"}`, onclick: () => editBundle(b) },
-      h("div.draft-bundle-head", h("b", b.name), h("span.muted.small", `Main ${b.main.length} · Extra ${b.extra.length}`)),
+      h("div.draft-bundle-head", cover ? h("span.draft-bundle-cover", { title: "Cover" }, cardFace(cover)) : null, h("b", b.name), h("span.muted.small", `Main ${b.main.length} · Extra ${b.extra.length}`)),
       h("div.draft-bundle-cards", cards.slice(0, 10), cards.length > 10 ? h("span.more", `+${cards.length - 10}`) : null),
       b.tags.length ? h("div.draft-tags", b.tags.map((t) => h("span.tag", t))) : null,
       bad ? h("span.draft-bundle-warn", icon("error"), ` Needs ${BUNDLE_MIN_MAIN}+ Main Deck cards`) : null
     ), b);
   }
   // Bundle nuovo: prima le carte (si apre subito la ricerca), poi nome, rarità e tag. Annullato senza carte: niente bundle.
-  async function createBundle() {
-    const b = newBundle(f.rarities[0]?.id ?? null);
+  async function createBundle(rarity = undefined) {
+    const b = newBundle(rarity !== undefined ? rarity : f.rarities[0]?.id ?? null);
     if (!(await editCards(b, true))) return;
     f.bundles.unshift(b);
     const first = getCard(b.main[0] ?? b.extra[0]);
@@ -445,6 +466,7 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
       title: fresh ? "New bundle" : b.name,
       subtitle: "Bundle cards",
       noBanlist: true,
+      sortable: true,
       parts: [
         { key: "main", label: "Main Deck", hint: `at least ${BUNDLE_MIN_MAIN}`, cards: b.main, filter: (c) => !isExtraDeckCard(c) },
         { key: "extra", label: "Extra Deck", hint: "bosses of the bundle", cards: b.extra, filter: (c) => isExtraDeckCard(c) },
@@ -458,12 +480,24 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
   }
   function editBundle(b) {
     const cardsEl = h("div.draft-bundle-detail");
+    // Un clic su una carta la fa diventare la copertina del bundle (senza scelta: la prima).
+    const coverRow = (codes) =>
+      stacked(codes).map((el) => {
+        const code = Number(el.querySelector(".card")?.dataset.code) || 0;
+        const isCover = bundleCover(b) === code;
+        el.classList.add("cover-pick");
+        if (isCover) el.classList.add("is-cover"), el.append(h("span.cover-mark", "COVER"));
+        el.title = `${el.title}${isCover ? " · cover" : " · click: make it the cover"}`;
+        el.addEventListener("click", () => { b.cover = code; update(); paint(); });
+        return el;
+      });
     const paint = () =>
       clear(cardsEl).append(
+        h("div.small.muted", "Click a card to make it the cover of the bundle (without a choice: the first card)."),
         h("div.small.muted", `Main Deck (${b.main.length})`),
-        h("div.draft-card-row", stacked(b.main)),
+        h("div.draft-card-row", coverRow(b.main)),
         h("div.small.muted", `Extra Deck (${b.extra.length})`),
-        h("div.draft-card-row", stacked(b.extra))
+        h("div.draft-card-row", coverRow(b.extra))
       );
     paint();
     const nameIn = h("input.input", { value: b.name, maxLength: 60, oninput: (e) => { b.name = e.target.value || "Bundle"; update(); } });
@@ -497,27 +531,32 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     return [
       h(
         "div.draft-toolbar",
-        h("button.btn.primary", { onclick: editSingles }, icon("library_add"), " Add or move cards"),
+        h("button.btn.primary", { onclick: () => editSingles() }, icon("library_add"), " Add or move cards"),
         search,
         h("span.muted.small", "One pick = one card. Click a card for its rarity and tags, or drag it onto another rarity.")
       ),
       f.singles.length && !shown.length ? h("p.muted.draft-empty", "No card matches the search.") : null,
       !f.singles.length ? h("p.muted.draft-empty", "No single cards yet: add the generic Extra Deck monsters and the staples of Round 2.") : null,
-      ...(f.singles.length ? byRarity(shown).map((g) => rarityGroup(g, "div.draft-singles", singleTile, "Drop a card here")) : []),
+      ...(f.singles.length ? byRarity(shown).map((g) => rarityGroup(g, "div.draft-singles", singleTile, "Drop a card here", addSinglesHere)) : []),
     ];
   }
   function singleTile(s) {
     return draggable(h("button.draft-single", { title: getCard(s.code)?.name ?? "", style: `--rc: ${rarityOf(f, s.rarity)?.color ?? "#5b6070"}`, onclick: () => editSingle(s) }, cardFace(s.code), s.tags.length ? h("span.draft-single-tags", s.tags.join(", ")) : null), s);
   }
+  const addSinglesHere = Object.assign((rarity) => editSingles(rarity), { label: "Add cards" });
   // Tutte le singole nella ricerca carte, una parte per rarità: si aggiungono, si tolgono e si spostano di rarità.
-  async function editSingles() {
+  async function editSingles(rarity = undefined) {
     const groups = [...f.rarities].reverse().map((r) => ({ key: `r_${r.id}`, label: r.name, rarity: r.id }));
     groups.push({ key: "none", label: "No rarity", rarity: null });
     const out = await openCardCollector({
+      // Dal "+" di una rarità: le carte trovate vanno in quella rarità.
+      active: rarity !== undefined ? groups.find((g) => g.rarity === rarity)?.key : undefined,
       title: f.name,
-      subtitle: "Round 2 cards by rarity · right-click a card to move it to the next rarity",
+      subtitle: "Round 2 cards by rarity · right-click a card to move it (with all its copies) to the next rarity",
       noBanlist: true,
       contextNext: true,
+      together: true,
+      sortable: true,
       parts: groups.map((g) => ({ key: g.key, label: g.label, cards: f.singles.filter((s) => (rarityOf(f, s.rarity) ? s.rarity : null) === g.rarity).map((s) => s.code) })),
     });
     if (!out) return;
@@ -670,6 +709,144 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
     ];
   }
 
+  // ------------------------------------------------------------ versioni e fork
+  // Prima di congelare una versione o fare un fork le modifiche si salvano (la versione congelata è quella salvata).
+  async function savedFirst(what) {
+    if (!dirty()) return true;
+    if (!(await confirmModal("Save first?", `${what} uses the saved format: save your changes now?`, "Save", "Cancel"))) return false;
+    save();
+    return !dirty();
+  }
+  async function makeVersion() {
+    if (!(await savedFirst("A new version"))) return;
+    const rev = f.rev ?? 1;
+    if (!(await confirmModal(`Freeze v${rev}?`, `v${rev} stays as it is (with its stats); you go on editing v${rev + 1}. The players of a draft always get the version you are editing.`, `New version v${rev + 1}`, "Cancel"))) return;
+    newVersion(f);
+    storeFormat(f);
+    saved = JSON.stringify(f);
+    toast(`v${rev} frozen: you are editing v${rev + 1}`);
+    changed();
+    render();
+    renderRev();
+  }
+  async function makeFork() {
+    if (!(await savedFirst("A fork"))) return;
+    const fork = forkFormat(f);
+    storeFormat(fork);
+    toast(`Fork created: "${fork.name}"`);
+    window.removeEventListener("beforeunload", onUnload);
+    showDraftEditor(app, fork);
+  }
+  const revEl = h("span.draft-rev");
+  const renderRev = () => {
+    revEl.textContent = `v${f.rev ?? 1}`;
+    revEl.title = f.parent ? `Fork of "${f.parent.name}" v${f.parent.rev}` : `Version ${f.rev ?? 1}`;
+  };
+  renderRev();
+
+  /** Mini carte (la regola del progetto: le carte si mostrano con l'immagine). */
+  const minis = (codes) => h("div.draft-diff-cards", stacked(codes));
+  function diffView(d) {
+    if (d.empty) return h("p.muted.small", "No changes.");
+    const sec = (label, ...content) => h("div.draft-diff-sec", h("b", label), ...content);
+    const out = [];
+    if (d.rarities.added.length) out.push(sec("Rarities added", h("span", d.rarities.added.join(", "))));
+    if (d.rarities.removed.length) out.push(sec("Rarities removed", h("span", d.rarities.removed.join(", "))));
+    if (d.bundles.added.length) out.push(sec(`Bundles added (${d.bundles.added.length})`, ...d.bundles.added.map((b) => h("div.draft-diff-row.add", h("span.draft-diff-mark", "+"), h("span", b.name), minis([...b.main, ...b.extra])))));
+    if (d.bundles.removed.length) out.push(sec(`Bundles removed (${d.bundles.removed.length})`, ...d.bundles.removed.map((b) => h("div.draft-diff-row.del", h("span.draft-diff-mark", "−"), h("span", b.name), minis([...b.main, ...b.extra])))));
+    if (d.bundles.changed.length)
+      out.push(sec(`Bundles changed (${d.bundles.changed.length})`, ...d.bundles.changed.map((c) => h(
+        "div.draft-diff-row",
+        h("span.draft-diff-mark", "~"),
+        h("span", c.bundle.name, c.renamed ? h("span.muted.small", ` (was "${c.renamed}")`) : null, c.rarity ? h("span.muted.small", ` · rarity ${c.rarity[0]} → ${c.rarity[1]}`) : null),
+        c.cardsIn.length ? h("div.draft-diff-sub.add", h("span.draft-diff-mark", "+"), minis(c.cardsIn)) : null,
+        c.cardsOut.length ? h("div.draft-diff-sub.del", h("span.draft-diff-mark", "−"), minis(c.cardsOut)) : null
+      ))));
+    if (d.singles.added.length) out.push(sec(`Single cards added (${d.singles.added.length})`, h("div.draft-diff-row.add", h("span.draft-diff-mark", "+"), minis(d.singles.added))));
+    if (d.singles.removed.length) out.push(sec(`Single cards removed (${d.singles.removed.length})`, h("div.draft-diff-row.del", h("span.draft-diff-mark", "−"), minis(d.singles.removed))));
+    if (d.singles.rarity.length) out.push(sec(`Single cards with another rarity (${d.singles.rarity.length})`, ...d.singles.rarity.map((x) => h("div.draft-diff-row", minis([x.code]), h("span.muted.small", `${x.from} → ${x.to}`)))));
+    if (d.rulesChanged) out.push(sec("Pack rules", h("span.muted.small", "The pack rules changed.")));
+    return h("div.draft-diff", out);
+  }
+  function versionsView() {
+    const rev = f.rev ?? 1;
+    const hist = f.history ?? [];
+    const date = (t) => (t ? new Date(t).toLocaleDateString() : "");
+    const blocks = [];
+    // Dalla più recente: la versione in modifica rispetto all'ultima congelata, poi ogni versione rispetto alla precedente.
+    const prev = hist.at(-1);
+    blocks.push(h("div.draft-version.current", h("div.draft-version-head", h("b", `v${rev}`), h("span.muted.small", "the version you are editing"), prev ? h("span.muted.small", `· changes since v${prev.rev}`) : null), prev ? diffView(formatDiff(prev.data, formatContent(f))) : null));
+    for (let i = hist.length - 1; i >= 0; i--) {
+      const v = hist[i];
+      const before = hist[i - 1];
+      blocks.push(h("div.draft-version", h("div.draft-version-head", h("b", `v${v.rev}`), h("span.muted.small", `frozen ${date(v.at)}`), before ? h("span.muted.small", `· changes since v${before.rev}`) : null), before ? diffView(formatDiff(before.data, v.data)) : h("p.muted.small", "The first version.")));
+    }
+    if (f.parent?.data) {
+      const first = hist[0]?.data ?? formatContent(f);
+      blocks.push(h("div.draft-version", h("div.draft-version-head", h("b", "Fork"), h("span.muted.small", `of "${f.parent.name}" v${f.parent.rev} · changes from the original`)), diffView(formatDiff(f.parent.data, first))));
+    }
+    return [
+      h(
+        "div.draft-toolbar",
+        h("button.btn.primary", { onclick: makeVersion }, icon("bookmark_add"), ` New version (v${rev + 1})`),
+        h("button.btn", { onclick: makeFork }, icon("call_split"), " Fork"),
+        h("span.muted.small", "New version: this one is frozen with its stats and you edit the next. Fork: a separate format that remembers where it comes from.")
+      ),
+      ...blocks,
+    ];
+  }
+
+  // ------------------------------------------------------------ statistiche (globali, dai relay Nostr)
+  let stats = null;
+  let statsState = "";
+  function statsView() {
+    const hash = formatHash(f);
+    const load = async () => {
+      statsState = "loading";
+      render();
+      try {
+        const { fetchCubeStats } = await import("../net/cube-stats.js");
+        stats = { hash, data: await fetchCubeStats(hash, f) };
+        statsState = "";
+      } catch (e) {
+        statsState = `error: ${e?.message ?? e}`;
+      }
+      render();
+    };
+    const head = h(
+      "div.draft-toolbar",
+      h("button.btn.primary", { disabled: statsState === "loading", onclick: load }, icon("query_stats"), statsState === "loading" ? " Loading…" : ` Load the stats of v${f.rev ?? 1}`),
+      h("span.muted.small", "From every draft played online or offline with this exact version, by anyone (each player publishes their picks, deck and results on the Nostr relays, without names). Bots are not counted.")
+    );
+    if (dirty()) return [head, h("p.draft-issue.warn", icon("pending"), "Save the format: the stats are for the saved version.")];
+    if (statsState.startsWith("error")) return [head, h("p.draft-issue.bad", icon("error"), statsState)];
+    if (!stats || stats.hash !== hash) return [head];
+    const d = stats.data;
+    if (!d.drafts) return [head, h("p.muted.draft-empty", "No drafts of this version yet.")];
+    const pct = (x) => (x == null ? "—" : `${Math.round(x * 100)}%`);
+    const row = (x, codes) => h(
+      "tr",
+      h("td.draft-stats-rank", `${x.rank}`),
+      h("td", h("div.draft-stats-name", minis(codes), h("span", x.label))),
+      h("td", x.picked),
+      h("td", x.avgPick == null ? "—" : x.avgPick.toFixed(1)),
+      h("td", `${pct(x.winRate)}${x.games ? ` (${x.wins}-${x.games - x.wins})` : ""}`),
+      h("td", x.score.toFixed(2))
+    );
+    const table = (title, list, codesOf) => h(
+      "section.draft-stats",
+      h("h3", title),
+      h("table.draft-stats-table", h("thead", h("tr", h("th", "#"), h("th", ""), h("th", { title: "How many times it was picked" }, "Picked"), h("th", { title: "Average pick number (1 = first pick of the round)" }, "Avg pick"), h("th", { title: "Match win rate of the decks that played it" }, "Win rate"), h("th", { title: "Win rate (adjusted for few matches) and how early it is picked" }, "Score"))), h("tbody", list.slice(0, 60).map((x) => row(x, codesOf(x)))))
+    );
+    return [
+      head,
+      h("p.muted.small", `${d.drafts} drafts by ${d.players} players · ${d.matches} matches recorded · updated ${new Date(d.at).toLocaleString()}`),
+      table("Strongest bundles", d.bundles, (x) => x.cover ? [x.cover] : []),
+      table("Strongest single cards (Round 2)", d.singles, (x) => [x.code]),
+      table("Strongest cards (in the decks)", d.cards, (x) => [x.code]),
+    ];
+  }
+
   // ------------------------------------------------------------ pagina
   root.append(
     h(
@@ -679,7 +856,10 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
         h("button.btn.ghost.round.page-back", { title: "Back (right-click)", onclick: leave }, icon("chevron_left")),
         nameIn,
         h("span.draft-mode-badge", { title: modeOf(f.mode).full ?? "" }, modeOf(f.mode).name),
+        revEl,
         h("span.grow"),
+        h("button.btn", { title: "Freeze this version and edit the next one", onclick: makeVersion }, icon("bookmark_add"), " New version"),
+        h("button.btn", { title: "A separate copy of this format that remembers where it comes from", onclick: makeFork }, icon("call_split"), " Fork"),
         h("button.btn", { title: "Save as a file to share", onclick: () => download(fileName(f), exportFormat(f), "application/json") }, icon("download"), " Export"),
         saveBtn
       ),

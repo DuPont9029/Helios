@@ -224,6 +224,15 @@ export class Board {
       const isLink = ((info.type ?? c?.type ?? 0) & TYPE.LINK) !== 0;
       const atkCls = info.attack > info.baseAttack ? "up" : info.attack < info.baseAttack ? "down" : "";
       const defCls = info.defense > info.baseDefense ? "up" : info.defense < info.baseDefense ? "down" : "";
+      // Livello (o Rank degli Xyz) attuale: si vede sempre, verde/rosso se un effetto l'ha cambiato.
+      const type = info.type ?? c?.type ?? 0;
+      const isXyz = (type & TYPE.XYZ) !== 0;
+      const lvl = isXyz ? info.rank : info.level;
+      if (!isLink && lvl > 0) {
+        const base = c?.level ?? lvl;
+        const lvlCls = lvl > base ? "up" : lvl < base ? "down" : "";
+        z.append(h(`div.stat-level.${lvlCls}`, { title: `${isXyz ? "Rank" : "Level"} ${lvl}${lvl !== base ? ` (originally ${base})` : ""}` }, h("span.lvl-star", isXyz ? "☆" : "★"), lvl));
+      }
       z.append(
         h("div.stat", h(`span.atk.${atkCls}`, v(info.attack)), !isLink && h("span.sep", "/"), !isLink && h(`span.def.${defCls}`, v(info.defense)), isLink && h("span.link", `L${info.link?.rating ?? ""}`))
       );

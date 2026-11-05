@@ -27,6 +27,7 @@ export async function editDraftDeck(run) {
     title: "Your draft deck",
     subtitle: `Main ${DRAFT_DECK.minMain}+ · Extra max ${DRAFT_DECK.maxExtra} · the rest is your sideboard`,
     pool: poolOf(binder),
+    binder,
     deck: run.deck,
     validate: (d) => draftDeckErrors({ ...d, side: [] }, binder),
   });
@@ -34,6 +35,7 @@ export async function editDraftDeck(run) {
   run.deck = out;
   storeRun(run);
   if (run.online) backupRun(run).catch(() => {});
+  import("../net/cube-stats.js").then((m) => m.shareRunStats(run));
   return true;
 }
 
@@ -43,6 +45,7 @@ function draftSide(run, deck, game) {
     title: `Side deck · Game ${game}`,
     subtitle: "Swap one for one: Main and Extra keep their size",
     pool: poolOf(run.seats[run.me].binder),
+    binder: run.seats[run.me].binder,
     deck,
     lock: { main: run.deck.main.length, extra: run.deck.extra.length },
     game,
@@ -160,6 +163,8 @@ export function showDraftDeck(app, runId) {
     if (run.results.some((r) => r.opp === opp)) return;
     run.results.push({ id: Math.random().toString(36).slice(2, 10), opp, wins: result.wins, won: result.won, at: Date.now(), replay: null });
     save();
+    // Statistiche globali del cube: il mazzo e il risultato (pubblici, senza nomi).
+    import("../net/cube-stats.js").then((m) => m.shareRunStats(run));
     tour?.result(opp, result.wins).catch(() => toast("The result could not reach the relays: it will be sent again next time", { kind: "error" }));
     toast(result.won ? `Match won ${result.wins[0]}–${result.wins[1]}` : `Match lost ${result.wins[0]}–${result.wins[1]}`);
   }

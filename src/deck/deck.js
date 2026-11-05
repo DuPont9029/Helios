@@ -272,15 +272,51 @@ const baseCode = (code) => {
   // Le versioni alternative (alias) contano come la stessa carta.
   return c?.alias && Math.abs(c.alias - code) < 20 ? c.alias : code;
 };
+/** Copertina del mazzo: la carta scelta (se è ancora nel mazzo), altrimenti la prima del Main (o dell'Extra) Deck. */
+export function deckCover(deck) {
+  const all = [...(deck?.main ?? []), ...(deck?.extra ?? []), ...(deck?.side ?? [])];
+  if (deck?.cover && all.includes(deck.cover) && getCard(deck.cover)) return deck.cover;
+  return deck?.main?.find((c) => getCard(c)) ?? deck?.extra?.find((c) => getCard(c)) ?? null;
+}
+
+/** Codice base di una stampa: gli artwork alternativi (alias vicino) sono la stessa carta. */
+export const artBase = baseCode;
+
+// Artwork della stessa carta: le stampe con lo stesso codice base (NON lo stesso nome: carte diverse possono avere
+// lo stesso nome, es. le versioni di "Fallen of the White Dragon"). Indice costruito alla prima richiesta.
+let variantIndex = null;
+/** Tutti gli artwork della carta (il codice base per primo), solo carte ufficiali. */
+export function artVariants(code) {
+  if (!variantIndex) {
+    variantIndex = new Map();
+    for (const c of db.list) {
+      if (c.source === 1) continue;
+      const b = baseCode(c.code);
+      if (!variantIndex.has(b)) variantIndex.set(b, []);
+      variantIndex.get(b).push(c.code);
+    }
+    for (const list of variantIndex.values()) list.sort((a, b) => a - b);
+  }
+  const b = baseCode(code);
+  const list = variantIndex.get(b) ?? [code];
+  return [b, ...list.filter((c) => c !== b)];
+}
 
 /** Restituisce l'elenco dei problemi del mazzo (vuoto = valido). */
-export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap } = {}) {
+/**
+ * Errori del mazzo con queste regole. noLimits: nessun limite di deck building (numero di carte, copie, banlist,
+ * TCG/OCG, punti), per provare i mazzi del draft; restano i controlli sulle carte (sconosciute, token, Extra Deck).
+ */
+export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap, noLimits = false } = {}) {
   const errors = [];
-  if (deck.main.length < 40) errors.push(`Main Deck: ${deck.main.length}/40 cards minimum`);
-  if (deck.main.length > 60) errors.push(`Main Deck: ${deck.main.length}/60 cards maximum`);
-  if (deck.extra.length > 15) errors.push(`Extra Deck: ${deck.extra.length}/15 cards maximum`);
-  if (deck.side.length > 15) errors.push(`Side Deck: ${deck.side.length}/15 cards maximum`);
-  const format = banlistFormat(banlist);
+  if (noLimits) banlist = null;
+  if (!noLimits) {
+    if (deck.main.length < 40) errors.push(`Main Deck: ${deck.main.length}/40 cards minimum`);
+    if (deck.main.length > 60) errors.push(`Main Deck: ${deck.main.length}/60 cards maximum`);
+    if (deck.extra.length > 15) errors.push(`Extra Deck: ${deck.extra.length}/15 cards maximum`);
+    if (deck.side.length > 15) errors.push(`Side Deck: ${deck.side.length}/15 cards maximum`);
+  }
+  const format = noLimits ? null : banlistFormat(banlist);
   const counts = new Map();
   for (const code of [...deck.main, ...deck.extra, ...deck.side]) {
     const c = getCard(code);
@@ -299,11 +335,11 @@ export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap 
   }
   for (const code of deck.main) if (isExtraDeckCard(getCard(code))) errors.push(`${getCard(code).name} belongs in the Extra Deck`);
   for (const code of deck.extra) if (getCard(code) && !isExtraDeckCard(getCard(code))) errors.push(`${getCard(code).name} is not an Extra Deck card`);
-  for (const [code, n] of counts) {
+  for (const [code, n] of noLimits ? [] : counts) {
     const limit = Math.min(3, cardLimit(banlist, code));
     if (n > limit) errors.push(`${getCard(code)?.name}: ${n} copies (maximum ${limit})`);
   }
-  const points = deckPoints(deck, banlist);
+  const points = noLimits ? null : deckPoints(deck, banlist);
   const cap = pointCap ?? banlist?.cap;
   if (points != null && points > cap) errors.push(`${banlist.name}: ${points} points (maximum ${cap})`);
   return [...new Set(errors)];
