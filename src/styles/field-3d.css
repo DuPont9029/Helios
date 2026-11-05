@@ -62,8 +62,9 @@
 .duel-main.field3d .zone.deck .pile-top, .duel-main.field3d .zone.extra .pile-top {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6), 0 calc(var(--zh) * 0.03) calc(var(--zh) * 0.12) rgba(0, 0, 0, 0.75) !important;
 }
-/* Campo inclinato: le zone salgono all'altezza dei supporti (--pile-lift, dallo stage). */
-.duel-main.field3d .zone.deck, .duel-main.field3d .zone.extra { transform: translateZ(var(--pile-lift, 0px)); }
+/* Campo inclinato: le zone salgono all'altezza dei supporti (--pile-lift, dallo stage) più lo spessore della pila
+   di carte (--stack-lift, vedi FieldStage.setPiles). */
+.duel-main.field3d .zone.deck, .duel-main.field3d .zone.extra { transform: translateZ(calc(var(--pile-lift, 0px) + var(--stack-lift, 0px))); }
 .duel-main.field3d .zone.deck.side-0 { translate: calc(var(--zh) * 0.193) calc(var(--zh) * 0.812); rotate: -20deg; }
 .duel-main.field3d .zone.extra.side-0 { translate: calc(var(--zh) * -0.193) calc(var(--zh) * 0.812); rotate: 20deg; }
 .duel-main.field3d .zone.deck.side-1 { translate: calc(var(--zh) * -0.193) calc(var(--zh) * -0.812); rotate: -20deg; }

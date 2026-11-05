@@ -7,6 +7,16 @@ import { TYPE } from "../core/constants.js";
 import { cardRegion } from "../deck/deck.js";
 
 const failed = new Set();
+// Immagini già caricate in questa sessione: si tiene un riferimento all'immagine (resta nella cache del browser,
+// già decodificata) e le carte disegnate di nuovo (es. il cube editor che ridisegna la griglia a ogni modifica)
+// la mostrano subito invece di ricaricarla. Al massimo LOADED_MAX, le più vecchie escono.
+const loaded = new Map();
+const LOADED_MAX = 4000;
+function remember(url, img) {
+  loaded.delete(url);
+  loaded.set(url, img);
+  if (loaded.size > LOADED_MAX) loaded.delete(loaded.keys().next().value);
+}
 
 export function frameClass(c) {
   if (!c) return "frame-back";
@@ -56,7 +66,9 @@ export function cardFace(code, opts = {}) {
   if (!sources.length) {
     el.append(fallbackFace(c));
   } else {
-    const img = h("img", { src: sources[0], alt: c.name, loading: "lazy", draggable: false, decoding: "async" });
+    const known = loaded.has(sources[0]);
+    const img = h("img", { src: sources[0], alt: c.name, loading: known ? "eager" : "lazy", draggable: false, decoding: known ? "sync" : "async" });
+    if (!known) img.addEventListener("load", () => remember(img.currentSrc || img.src, img.cloneNode()), { once: true });
     let i = 0;
     let retried = false;
     img.onerror = () => {

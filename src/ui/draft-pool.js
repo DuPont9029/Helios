@@ -45,30 +45,50 @@ export function cardStacks(codes, { onClick, onHover, onContext, fresh = null } 
   });
 }
 
+/** Toglie da `codes` una copia di ogni codice di `minus` (multinsiemi). */
+export function withoutCopies(codes, minus) {
+  const left = new Map();
+  for (const c of minus) left.set(c, (left.get(c) ?? 0) + 1);
+  return codes.filter((c) => {
+    const n = left.get(c) ?? 0;
+    if (!n) return true;
+    left.set(c, n - 1);
+    return false;
+  });
+}
+
 /**
- * Vista di un pool con le schede Main / Extra e l'interruttore "Group by bundle".
- * state: { tab, grouped } (condiviso tra un render e l'altro); rarityOf(id) → { name, color } per i bundle.
+ * Vista del binder durante il draft: il mazzo che si sta costruendo, con le schede "Deck" (Main ed Extra Deck nella
+ * stessa schermata) e "Side". Una scelta va nella scheda aperta in quel momento (vedi draft-table.js); un clic su
+ * una carta la sposta tra Deck e Side. state: { tab: "deck" | "side", grouped, side: [codici nel Side] }.
+ * rarityOf(id) → { name, color } per i bundle.
  */
-export function poolView(codes, binder, state, { onClick, onHover, onContext, rarityOf = () => null, empty = "No cards", rerender, fresh = null }) {
-  const main = codes.filter((c) => !isExtra(c));
-  const extra = codes.filter(isExtra);
-  const shown = state.tab === "extra" ? extra : main;
+export function poolView(codes, binder, state, { onHover, onContext, rarityOf = () => null, empty = "No cards", rerender, fresh = null }) {
+  const side = state.side ?? (state.side = []);
+  const deck = withoutCopies(codes, side);
+  const main = deck.filter((c) => !isExtra(c));
+  const extra = deck.filter(isExtra);
+  const onSide = state.tab === "side";
   const hasBundles = binder.some((x) => x.round === 1);
+  const move = (code) => {
+    if (onSide) side.splice(side.indexOf(code), 1);
+    else side.push(code);
+    rerender();
+  };
   const tabs = h(
     "div.pool-tabs",
-    h(`button.draft-tab${state.tab !== "extra" ? ".on" : ""}`, { onclick: () => { state.tab = "main"; rerender(); } }, `Main Deck (${main.length})`),
-    h(`button.draft-tab${state.tab === "extra" ? ".on" : ""}`, { onclick: () => { state.tab = "extra"; rerender(); } }, `Extra Deck (${extra.length})`),
+    h(`button.draft-tab${!onSide ? ".on" : ""}`, { title: "Your deck: the picks made with this tab open go here", onclick: () => { state.tab = "deck"; rerender(); } }, `Deck (${main.length} + ${extra.length})`),
+    h(`button.draft-tab${onSide ? ".on" : ""}`, { title: "Your side: the picks made with this tab open go here", onclick: () => { state.tab = "side"; rerender(); } }, `Side (${side.length})`),
     hasBundles
       ? h("label.check.pool-grouping", h("input", { type: "checkbox", checked: !!state.grouped, onchange: (e) => { state.grouped = e.target.checked; rerender(); } }), "Group by bundle")
       : null
   );
-  const opts = { onClick, onHover, onContext, fresh };
-  let body;
-  if (!shown.length) body = h("p.muted.small.pool-empty", empty);
-  else if (state.grouped && hasBundles) {
-    body = h(
+  const opts = { onClick: move, onHover, onContext, fresh };
+  const cardsOf = (list) => {
+    if (!state.grouped || !hasBundles) return h("div.pool-cards", cardStacks(list, opts));
+    return h(
       "div.pool-groups",
-      groupByBundle(shown, binder).map((g) => {
+      groupByBundle(list, binder).map((g) => {
         const r = g.item ? rarityOf(g.item.rarity) : null;
         // Per bundle: si evidenzia solo il gruppo dell'ultima scelta (lo stesso bundle preso prima resta normale).
         const last = !!fresh && (g.item ? g.item === binder.at(-1) : binder.at(-1)?.round !== 1);
@@ -80,6 +100,18 @@ export function poolView(codes, binder, state, { onClick, onHover, onContext, ra
         );
       })
     );
-  } else body = h("div.pool-cards", cardStacks(shown, opts));
-  return h("div.pool-view", tabs, body);
+  };
+  const hint = h("p.muted.small.pool-hint", onSide ? "Picks go to your Side · click a card to put it in your Deck · right-click: details" : "Picks go to your Deck · click a card to move it to your Side · right-click: details");
+  let body;
+  if (onSide) body = side.length ? cardsOf(side) : h("p.muted.small.pool-empty", "Nothing in your Side yet.");
+  else if (!deck.length) body = h("p.muted.small.pool-empty", empty);
+  else
+    body = h(
+      "div.pool-deck",
+      h("div.pool-part-head", h("b", "Main Deck"), h("span.muted.small", `${main.length}`)),
+      main.length ? cardsOf(main) : h("p.muted.small.pool-empty", "No Main Deck cards."),
+      h("div.pool-part-head", h("b", "Extra Deck"), h("span.muted.small", `${extra.length}`)),
+      extra.length ? cardsOf(extra) : h("p.muted.small.pool-empty", "No Extra Deck cards.")
+    );
+  return h("div.pool-view", tabs, hint, body);
 }

@@ -9,7 +9,7 @@ import { settings } from "./data/settings.js";
 import { showEditor, showDeckList } from "./ui/editor.js";
 import { showLocalSetup, showOnline } from "./ui/play.js";
 import { showSettings } from "./ui/settings-page.js";
-import { loadDecks } from "./deck/deck.js";
+import { loadDecks, deckCover } from "./deck/deck.js";
 import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks, pruneForbiddenBookmarks } from "./data/bookmarks.js";
@@ -165,7 +165,7 @@ function deckPanel(go) {
       { onchange: (e) => { settings.lastDeck = e.target.value; render(); } },
       decks.map((d) => h("option", { value: d.id, selected: d.id === deck?.id }, d.name))
     );
-    const lead = deck?.main.find((c) => getCard(c)) ?? 0;
+    const lead = deckCover(deck) ?? 0;
     clear(box).append(
       ...[
         h("div.home-deck-card", cardFace(lead)),

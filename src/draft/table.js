@@ -35,7 +35,7 @@ const uid = () => `i${(++uidSeq).toString(36)}${Math.random().toString(36).slice
 function packItem(x, round) {
   const main = x.codes.filter((c) => !isExtraDeckCard(getCard(c)));
   const extra = x.codes.filter((c) => isExtraDeckCard(getCard(c)));
-  return { uid: uid(), id: x.id, round, label: x.label, rarity: x.rarity, main, extra };
+  return { uid: uid(), id: x.id, round, label: x.label, rarity: x.rarity, main, extra, ...(x.cover ? { cover: x.cover } : {}) };
 }
 
 export class DraftTable {

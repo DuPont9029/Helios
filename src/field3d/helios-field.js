@@ -278,13 +278,15 @@ export class HeliosField {
     const plateTop = new THREE.MeshStandardMaterial({ color: 0x0b0b10, roughness: 0.5, metalness: 0.6 });
     // Bordo luminoso del colore del lato, come il bordo del tabellone: il mio in basso, quello dell'avversario in alto.
     const glowMats = [new THREE.MeshBasicMaterial({ color: T.frame }), new THREE.MeshBasicMaterial({ color: T.edgeTheirs.clone().multiplyScalar(1.05) })];
-    const frameGeo = new THREE.BoxGeometry(8.5, 0.3, 11.5);
+    // La cornice arriva quasi in cima alla piastra: dal campo inclinato si vede tutto il contorno, anche il lato
+    // lontano (prima era più bassa della piastra e quel lato restava nascosto, ad esempio con un supporto vuoto).
+    const frameGeo = new THREE.BoxGeometry(8.5, 0.84, 11.5);
     for (const [sx, sz, rot] of [[-1, -1, 1], [1, -1, -1], [1, 1, 1], [-1, 1, -1]]) {
       const g = new THREE.Group();
       g.position.set(sx * PILE[0], 0.15, sz * PILE[1]);
       g.rotation.y = rot * PILE[2];
       const frame = new THREE.Mesh(frameGeo, glowMats[sz < 0 ? 0 : 1]);
-      frame.position.y = -0.05;
+      frame.position.y = 0.02;
       const plate = new THREE.Mesh(plateGeo, plateTop);
       plate.position.y = 0.1;
       g.add(frame, plate);

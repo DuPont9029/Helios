@@ -8,7 +8,7 @@ import { settings, artUrl } from "../data/settings.js";
 import { BASE_READY, BASE_DECKS_READY, baseDecks, hideBaseDeck, restoreBaseDecks, hiddenBaseDecks } from "../data/base-content.js";
 import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
-  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType,
+  loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType, artBase, artVariants, deckCover,
 } from "../deck/deck.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
@@ -61,9 +61,9 @@ function pasteModal() {
   return m.result.then((v) => (v == null ? null : String(v)));
 }
 
-// Scatola del mazzo disegnata in CSS, con l'artwork della prima carta sul fronte.
+// Scatola del mazzo disegnata in CSS, con l'artwork della copertina sul fronte (scelta, o la prima carta).
 function deckBox(deck) {
-  const lead = deck.main.find((c) => getCard(c)) ?? deck.extra.find((c) => getCard(c));
+  const lead = deckCover(deck);
   const hue = [...deck.id].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 0);
   const art = lead && h("img", { src: artUrl(lead), alt: "", loading: "lazy", draggable: false, onerror: (e) => e.target.remove() });
   return h("div.deck-box", { style: { "--hue": hue } }, h("div.deck-box-front", art), h("div.deck-box-side"), h("div.deck-box-top"));
@@ -224,7 +224,7 @@ const LONG_PRESS = 450;
  * { surrendered: true } se il giocatore abbandona la partita da qui.
  * La promessa ha .close(value): chiude la schermata dall'esterno (es. l'avversario si è arreso).
  */
-export function openSideEditor(deck, { banlist = null, allowUnofficial = false, pointCap, game = 2, who = "", canSurrender = true } = {}) {
+export function openSideEditor(deck, { banlist = null, allowUnofficial = false, pointCap, noLimits = false, game = 2, who = "", canSurrender = true } = {}) {
   let finish;
   const promise = new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
@@ -238,7 +238,7 @@ export function openSideEditor(deck, { banlist = null, allowUnofficial = false, 
       layer.remove();
       resolve(v);
     };
-    showEditor(host, { side: { deck, banlist, allowUnofficial, pointCap, game, who, canSurrender, onDone: finish } });
+    showEditor(host, { side: { deck, banlist, allowUnofficial, pointCap, noLimits, game, who, canSurrender, onDone: finish } });
   });
   promise.close = (v) => finish?.(v);
   return promise;
@@ -301,6 +301,29 @@ export function openDeckPicker({ main, extra = [], side = [], picked = [], title
 }
 
 /**
+ * Scelta di UNA carta da una decklist (es. una carta della board finale nel Combo Editor): la schermata del deck
+ * builder in sola lettura, un clic su una carta la sceglie. filter(card): le carte che non vanno bene restano
+ * grigie e non si possono scegliere. Restituisce il codice o null.
+ */
+export function openCardChooser({ main = [], extra = [], side = [], title, subtitle = "Click a card to choose it", filter = null }) {
+  return new Promise((resolve) => {
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    const finish = (code) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(code ?? null);
+    };
+    const deck = { id: "choose", name: title, main: sortDeckPart(main), extra: sortDeckPart(extra), side: sortDeckPart(side) };
+    showEditor(host, { embed: { deck, title, onDone: finish, view: { subtitle, choose: { filter, onPick: finish } } } });
+  });
+}
+
+/**
  * Una decklist da guardare (es. le carte che servono a uno spreadsheet): la schermata del deck builder in
  * sola lettura. marks: Map codice -> { kind: "used" | "short", count } (count copie evidenziate, le prime);
  * legend: testo del pannello a destra.
@@ -329,7 +352,12 @@ export function openDeckViewer({ main = [], extra = [], side = [], title, subtit
  * Carte dal database in parti con un nome. noBanlist: nessuna banlist (niente limiti né filtro di stato, es. il pool di
  * un draft); contextNext: il tasto destro su una carta la sposta nella parte successiva (es. alla rarità dopo).
  */
-export function openCardCollector({ title, subtitle = "", parts, active = null, noBanlist = false, contextNext = false }) {
+/**
+ * together: le copie della stessa carta stanno sempre nella stessa parte (es. le rarità delle carte singole di un
+ * cube: due copie non possono avere rarità diverse), e si spostano insieme. sortable: bottone "Sort" che ordina
+ * le carte dentro ogni parte (come il deck builder).
+ */
+export function openCardCollector({ title, subtitle = "", parts, active = null, noBanlist = false, contextNext = false, together = false, sortable = false }) {
   return new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
     document.body.append(layer);
@@ -343,7 +371,7 @@ export function openCardCollector({ title, subtitle = "", parts, active = null, 
       resolve(v ? Object.fromEntries(parts.map((p) => [p.key, [...v[p.key]]])) : null);
     };
     const deck = { id: "collect", name: title, main: [], extra: [], side: [], ...Object.fromEntries(parts.map((p) => [p.key, [...(p.cards ?? [])]])) };
-    showEditor(host, { embed: { deck, title, onDone: finish, collect: { parts, active: active ?? parts[0].key, subtitle, noBanlist, contextNext } } });
+    showEditor(host, { embed: { deck, title, onDone: finish, collect: { parts, active: active ?? parts[0].key, subtitle, noBanlist, contextNext, together, sortable } } });
   });
 }
 
@@ -353,7 +381,7 @@ export function openCardCollector({ title, subtitle = "", parts, active = null, 
  * oltre a quelle del pool. validate(deck) → errori; lock { main, extra }: side tra i duelli a dimensioni fisse.
  * Risolve con { main, extra, side } (side = il resto del pool), null (annullato) o { surrendered: true }.
  */
-export function openPoolEditor({ title, subtitle = "", pool, deck, validate, lock = null, game = null, help = "" }) {
+export function openPoolEditor({ title, subtitle = "", pool, deck, validate, lock = null, game = null, help = "", binder = null }) {
   let finish;
   const promise = new Promise((resolve) => {
     const layer = h("div.side-editor-layer");
@@ -368,7 +396,7 @@ export function openPoolEditor({ title, subtitle = "", pool, deck, validate, loc
       resolve(v);
     };
     const d = { id: "pool", name: title, main: [...deck.main], extra: [...deck.extra], side: [] };
-    showEditor(host, { embed: { deck: d, title, onDone: finish, pool: { cards: pool, subtitle, validate, lock, game, help, start: { main: [...deck.main], extra: [...deck.extra] } } } });
+    showEditor(host, { embed: { deck: d, title, onDone: finish, pool: { cards: pool, subtitle, validate, lock, game, help, binder, start: { main: [...deck.main], extra: [...deck.extra] } } } });
   });
   // Come openSideEditor: .close(value) chiude la schermata dall'esterno (es. l'avversario si è arreso).
   promise.close = (v) => finish?.(v);
@@ -388,9 +416,13 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const collect = embed?.collect ?? null;
   // Collezione (pool di un draft): vedi openPoolEditor.
   const pool = embed?.pool ?? null;
+  // Collezione del draft: le copie si contano per carta base (un artwork alternativo è la stessa carta).
   const poolCount = new Map();
-  for (const c of pool?.cards ?? []) poolCount.set(c, (poolCount.get(c) ?? 0) + 1);
-  const poolLeft = (code) => (poolCount.get(code) ?? 0) - deck.main.filter((x) => x === code).length - deck.extra.filter((x) => x === code).length;
+  for (const c of pool?.cards ?? []) poolCount.set(artBase(c), (poolCount.get(artBase(c)) ?? 0) + 1);
+  const poolLeft = (code) => {
+    const b = artBase(code);
+    return (poolCount.get(b) ?? 0) - deck.main.filter((x) => artBase(x) === b).length - deck.extra.filter((x) => artBase(x) === b).length;
+  };
   const collectPart = (key) => collect?.parts.find((p) => p.key === key);
   let activePart = collect?.active ?? null;
   // Parti del mazzo (in ordine di visualizzazione).
@@ -443,7 +475,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const detail = createDetailPanel();
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
-  const snap = () => JSON.stringify({ name: deck.name, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
+  const snap = () => JSON.stringify({ name: deck.name, cover: deck.cover ?? null, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
   const isDirty = () => snap() !== baseline;
 
   function openDeck(d) {
@@ -641,7 +673,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     runSearch();
   });
   const validity = h("button.validity", { onclick: () => {
-    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
+    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap, noLimits: side?.noLimits });
     alertModal(errs.length ? "Deck issues" : "Valid deck", errs.length ? errs.join("\n") : "The deck follows the rules and the selected banlist.");
   } });
   const saveBtn = h("button.btn.primary.save-btn", { title: "Save the deck (Ctrl+S)", onclick: () => save() });
@@ -757,6 +789,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
         addDeck({ ...cloneDeck(deck), id: crypto.randomUUID(), name: deck.name + " (copy)" });
       }],
       ["Sort", () => change(() => { for (const p of ["main", "extra", "side"]) deck[p] = sortDeckPart(deck[p]); })],
+      // Copertina del mazzo (la scatola nell'elenco dei mazzi, il mazzo attivo nella home): senza scelta la prima carta.
+      ["Choose cover…", async () => {
+        const code = await openCardChooser({ main: deck.main, extra: deck.extra, side: deck.side, title: `${deck.name}: cover`, subtitle: "Click the card to show on the deck box" });
+        if (code) change(() => (deck.cover = code));
+      }],
       ["Clear", async () => { if (await confirmModal("Clear the deck?", deck.name, "Clear", "Cancel", { danger: true })) change(() => { deck.main = []; deck.extra = []; deck.side = []; }); }],
       ["Manage decks…", manageDecks],
     ]),
@@ -771,6 +808,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       ["Copy Omega code", async () => navigator.clipboard?.writeText(await toOmega(deck)).then(() => toast("Omega deck code copied"))],
       ["Clipboard (Recipe)", () => navigator.clipboard?.writeText(toRecipe(deck)).then(() => toast("Card list copied (Omega Recipe format)"))],
       ["Copy YDK text (Ctrl+C)", copyDeck],
+      ["Image (.png)", async () => {
+        toast("Preparing the image…");
+        const { exportDeckImage } = await import("./deck-image.js");
+        await exportDeckImage(deck);
+      }],
     ]),
     h("div.spacer"),
     banSel,
@@ -786,6 +828,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     undoBtn,
     redoBtn,
     h("button.btn", { title: "Back to the Deck of the previous Duel", onclick: () => change(() => { const d = cloneDeck(side.deck); deck.main = d.main; deck.extra = d.extra; deck.side = d.side ?? []; }) }, icon("restart_alt"), " Reset"),
+    h("button.btn", { title: "Sort the Main, Extra and Side Deck", onclick: () => change(() => { for (const p of ["main", "extra", "side"]) deck[p] = sortDeckPart(deck[p]); }) }, icon("sort"), " Sort"),
     h("div.spacer"),
     side.canSurrender && h("button.btn.danger", {
       title: "Give up the whole match",
@@ -796,7 +839,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     validity,
     h("button.btn.primary", {
       onclick: () => {
-        const errs = validateDeck(deck, banlist, { allowUnofficial: side.allowUnofficial, pointCap: side.pointCap });
+        const errs = validateDeck(deck, banlist, { allowUnofficial: side.allowUnofficial, pointCap: side.pointCap, noLimits: side.noLimits });
         if (errs.length) return alertModal("Invalid Deck", errs.slice(0, 8).join("\n"));
         side.onDone(cloneDeck(deck));
       },
@@ -840,7 +883,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     "div.editor-toolbar.side-toolbar",
     h("div.side-title", h("b", embed.title), view.subtitle ? h("span.muted", view.subtitle) : null, view.legend ? h("span.muted.small", view.legend) : null),
     h("div.spacer"),
-    h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(); } }, "Close")
+    view?.choose
+      ? h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel")
+      : h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(); } }, "Close")
   );
   // Sola lettura: niente colonna a destra (non c'è niente da cercare né da spostare), la legenda va sotto il titolo.
   const collectToolbar = collect && h(
@@ -848,6 +893,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     h("div.side-title", h("b", embed.title), h("span.muted", `${collect.subtitle ? `${collect.subtitle} · ` : ""}click a part to choose it, then click the cards found on the right`)),
     undoBtn,
     redoBtn,
+    collect.sortable ? h("button.btn", { title: "Sort the cards inside each part, as in the Deck Builder", onclick: () => change(() => { for (const k of PARTS) deck[k] = sortDeckPart(deck[k]); }) }, icon("sort"), " Sort") : null,
     h("div.spacer"),
     h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel"),
     h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(cloneDeck(deck)); } }, icon("check"), " Done")
@@ -878,9 +924,33 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const poolLeftEl = h("span.side-swaps");
   const poolResult = () => {
     const rest = [...pool.cards];
-    for (const c of [...deck.main, ...deck.extra]) rest.splice(rest.indexOf(c), 1);
+    for (const c of [...deck.main, ...deck.extra]) {
+      const i = rest.findIndex((x) => artBase(x) === artBase(c));
+      if (i >= 0) rest.splice(i, 1);
+    }
     return { main: [...deck.main], extra: [...deck.extra], side: rest };
   };
+  // Artwork di una carta del mazzo (collezione del draft): le altre stampe della stessa carta; si cambia per tutte
+  // le copie nel mazzo.
+  async function chooseArt(code) {
+    const variants = artVariants(code);
+    if (variants.length < 2) return toast(`${getCard(code)?.name}: no other artwork`);
+    const b = artBase(code);
+    const m = openModal({
+      title: `Artwork · ${getCard(code)?.name ?? ""}`,
+      className: "wide art-choice",
+      body: [
+        h("p.muted.small", "The same card with another artwork: it changes all the copies in your deck."),
+        h("div.art-variants", variants.map((c) => h(`button.art-variant${c === code ? ".on" : ""}`, { title: `#${c}`, onclick: () => m.close(c) }, cardFace(c)))),
+      ],
+      actions: [{ label: "Cancel", value: null }],
+    });
+    const pickArt = await m.result;
+    if (!pickArt || pickArt === code) return;
+    change(() => {
+      for (const p of ["main", "extra"]) deck[p] = deck[p].map((x) => (artBase(x) === b ? pickArt : x));
+    });
+  }
   const poolPartBad = (p) => (pool.lock ? deck[p].length !== pool.lock[p] : p === "main" ? deck.main.length < 30 : deck.extra.length > 15);
   const poolPartTitle = (p) => (pool.lock ? `Must stay at ${pool.lock[p]} cards` : p === "main" ? "At least 30 cards" : "At most 15 cards");
   // Import nel mazzo del draft: entrano solo le carte della collezione, nel numero di copie che ci sono.
@@ -891,11 +961,11 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const extra = [];
     let skipped = 0;
     for (const c of [...d.main, ...d.extra]) {
-      if (!(left.get(c) > 0)) {
+      if (!(left.get(artBase(c)) > 0)) {
         skipped++;
         continue;
       }
-      left.set(c, left.get(c) - 1);
+      left.set(artBase(c), left.get(artBase(c)) - 1);
       (isExtraDeckCard(getCard(c)) ? extra : main).push(c);
     }
     if (!main.length && !extra.length) return toast("None of those cards is in your collection", { kind: "error" });
@@ -1016,7 +1086,14 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     }
     const part = collectPart(target);
     if (part.filter && !part.filter(getCard(code))) return toast(`${getCard(code)?.name} cannot go in "${part.label}"`, { kind: "error" });
-    if (part.max && deck[target].length >= part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
+    // Copie insieme: si spostano tutte.
+    const n = collect.together ? deck[from].filter((x) => x === code).length : 1;
+    if (part.max && deck[target].length + n > part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
+    if (n > 1) return change(() => {
+      deck[from] = deck[from].filter((x) => x !== code);
+      const i = at ?? deck[target].length;
+      deck[target].splice(i, 0, ...Array(n).fill(code));
+    });
     change(() => {
       deck[from].splice(index, 1);
       deck[target].splice(at ?? deck[target].length, 0, code);
@@ -1070,6 +1147,15 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (part.filter && !part.filter(c) && !PARTS.includes(target)) {
         const other = collect.parts.find((p) => p.filter?.(c));
         if (other) [key, part] = [other.key, other];
+      }
+      // Copie insieme: una copia in più va dove sono già le altre (accanto a loro).
+      if (collect.together) {
+        const home = PARTS.find((k) => deck[k].includes(code));
+        if (home && home !== key) {
+          toast(`${c.name} is already in "${collectPart(home).label}": the copies stay together`);
+          [key, part] = [home, collectPart(home)];
+        }
+        if (home && at == null) at = deck[key].lastIndexOf(code) + 1;
       }
       if (part.filter && !part.filter(c)) return toast(`${c.name} cannot go in "${part.label}"`, { kind: "error" });
       if (part.max && deck[key].length >= part.max) return toast(`"${part.label}" is full (${part.max})`, { kind: "error" });
@@ -1150,6 +1236,12 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (left > 0) markLeft.set(code, left - 1);
       const el = h(`div.deck-card${mark && left > 0 ? `.mark-${mark.kind}` : ""}`, cardFace(code), regionBadge(code));
       el.addEventListener("mouseenter", () => detail.show(code));
+      // Scelta di una carta (openCardChooser): un clic la sceglie; quelle che non vanno bene restano grigie.
+      if (view.choose) {
+        const ok = !view.choose.filter || view.choose.filter(getCard(code));
+        el.classList.add(ok ? "choosable" : "not-choosable");
+        if (ok) el.addEventListener("click", () => { unmount(); view.choose.onPick(code); });
+      }
       return el;
     }
     const el = h("div.deck-card", { draggable: true, dataset: { part: p, index } }, cardFace(code), limitBadge(code), regionBadge(code));
@@ -1191,7 +1283,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (pointerKind === "touch" || longPressed) return; // su touch il menu arriva dalla pressione lunga
       if (pick) return pickMove(p, index, p === "hand" ? null : "hand");
       if (collect?.contextNext) return collectMove(p, index, PARTS[(PARTS.indexOf(p) + 1) % PARTS.length]);
-      if (collect || pool) return;
+      // Collezione del draft: il tasto destro sceglie l'artwork (le altre stampe della stessa carta).
+      if (pool) return chooseArt(code);
+      if (collect) return;
       moveCard(p, index, p === "side" ? "main" : "side");
     });
     el.addEventListener("dragstart", (e) => {
@@ -1238,7 +1332,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       );
       clear(grid).append(...codes.map((code, index) => deckCard(code, p, index)));
     }
-    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap });
+    const errs = pool ? pool.validate(deck) : validateDeck(deck, banlist, { allowUnofficial: side?.allowUnofficial, pointCap: side?.pointCap, noLimits: side?.noLimits });
     if (pool) {
       poolDone.disabled = !!errs.length;
       poolDone.title = errs.join("\n");
@@ -1263,10 +1357,22 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const fSub = h("select.select", SUBTYPES.map(([v, l]) => h("option", { value: v }, l)));
   const fAttr = h("select.select", h("option", { value: "" }, "Attribute"), ATTRIBUTES.map(([v, l]) => h("option", { value: v }, l)));
   const fRace = h("select.select", h("option", { value: "" }, "Type"), RACES.map(([v, l]) => h("option", { value: v }, l)));
-  const fLevel = h("input.input", { placeholder: "Lv.", type: "number", min: 0, max: 13 });
+  // Intervalli (come il database Konami): Livello / Rank / valore Link, ATK e DEF da… a….
+  const fLevel = h("input.input", { placeholder: "from", title: "Level, Rank or Link rating: from", type: "number", min: 0, max: 13 });
+  const fLevelMax = h("input.input", { placeholder: "to", title: "Level, Rank or Link rating: to", type: "number", min: 0, max: 13 });
   const fAtk = h("input.input", { placeholder: "ATK ≥", type: "number", min: 0, step: 100 });
+  const fAtkMax = h("input.input", { placeholder: "ATK ≤", type: "number", min: 0, step: 100 });
   const fDef = h("input.input", { placeholder: "DEF ≥", type: "number", min: 0, step: 100 });
-  const fLimit = h("select.select", h("option", { value: "" }, "Any status"), h("option", { value: "0" }, "Forbidden"), h("option", { value: "1" }, "Limited"), h("option", { value: "2" }, "Semi-Limited"), h("option", { value: "legal" }, "Legal only"), h("option", { value: "points" }, "With points (Genesys)"));
+  const fDefMax = h("input.input", { placeholder: "DEF ≤", type: "number", min: 0, step: 100 });
+  const fScale = h("input.input", { placeholder: "from", title: "Pendulum Scale: from", type: "number", min: 0, max: 13 });
+  const fScaleMax = h("input.input", { placeholder: "to", title: "Pendulum Scale: to", type: "number", min: 0, max: 13 });
+  // Dove cercare il testo: nome e testo, solo nome, solo testo.
+  const fScope = h("select.select", { title: "Where to look for the search text" }, h("option", { value: "" }, "Name and text"), h("option", { value: "name" }, "Name only"), h("option", { value: "text" }, "Card text only"));
+  // Tipi di carta (più d'uno, tutti o almeno uno) e frecce Link: valori in campi nascosti (si salvano con gli altri filtri).
+  const fSubs = h("input", { type: "hidden" });
+  const fSubMode = h("input", { type: "hidden" });
+  const fArrows = h("input", { type: "hidden" });
+  const fLimit = h("select.select", h("option", { value: "" }, "Any status"), h("option", { value: "0" }, "Forbidden"), h("option", { value: "1" }, "Limited"), h("option", { value: "2" }, "Semi-Limited"), h("option", { value: "3" }, "Unlimited"), h("option", { value: "legal" }, "Legal only"), h("option", { value: "points" }, "With points (Genesys)"));
   const fFormat = h("select.select.format-filter", h("option", { value: "" }, "Any format"), h("option", { value: "TCG" }, "TCG legal"), h("option", { value: "OCG" }, "OCG legal"));
   const fUnoff = h("input", { type: "checkbox" });
   // Pulsanti colorati per tipo e attributo (pilotano i select nascosti fType e fAttr).
@@ -1286,8 +1392,76 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const typeChips = chipRow(fType, [["monster", "Monsters", "monster"], ["spell", "Spells", "spell"], ["trap", "Traps", "trap"], ["extra", "Extra", "extra"]], "types");
   const ATTR_CLS = { 0x01: "earth", 0x02: "water", 0x04: "fire", 0x08: "wind", 0x10: "light", 0x20: "dark", 0x40: "divine" };
   const attrChips = chipRow(fAttr, ATTRIBUTES.map(([v, l]) => [v, l, ATTR_CLS[v]]), "attrs");
+  // Tipi di carta come nel database Konami: "m:<bit>" mostri, "s:<bit>" magie, "t:<bit>" trappole (0 = Normale).
+  const SUB_GROUPS = [
+    ["Monster", [[TYPE.NORMAL, "Normal"], [TYPE.EFFECT, "Effect"], [TYPE.RITUAL, "Ritual"], [TYPE.FUSION, "Fusion"], [TYPE.SYNCHRO, "Synchro"], [TYPE.XYZ, "Xyz"], [TYPE.PENDULUM, "Pendulum"], [TYPE.LINK, "Link"], [TYPE.TUNER, "Tuner"], [TYPE.FLIP, "Flip"], [TYPE.TOON, "Toon"], [TYPE.SPIRIT, "Spirit"], [TYPE.UNION, "Union"], [TYPE.GEMINI, "Gemini"], [TYPE.SPSUMMON, "Special Summon"]].map(([b, l]) => [`m:${b}`, l])],
+    ["Spell", [[0, "Normal"], [TYPE.QUICKPLAY, "Quick-Play"], [TYPE.CONTINUOUS, "Continuous"], [TYPE.EQUIP, "Equip"], [TYPE.FIELD, "Field"], [TYPE.RITUAL, "Ritual"]].map(([b, l]) => [`s:${b}`, l])],
+    ["Trap", [[0, "Normal"], [TYPE.CONTINUOUS, "Continuous"], [TYPE.COUNTER, "Counter"]].map(([b, l]) => [`t:${b}`, l])],
+  ];
+  const subsSet = () => new Set(fSubs.value ? fSubs.value.split(",") : []);
+  const subChips = h("div.adv-subs");
+  const drawSubs = () => {
+    const on = subsSet();
+    clear(subChips).append(
+      ...SUB_GROUPS.map(([label, items]) => h("div.adv-sub-row", h("span.muted.small.adv-label", label), h("div.chips.subs", items.map(([k, l]) => h(`button.chip${on.has(k) ? ".on" : ""}`, {
+        onclick: () => {
+          const set = subsSet();
+          set.has(k) ? set.delete(k) : set.add(k);
+          fSubs.value = [...set].join(",");
+          drawSubs();
+          runSearch();
+          setFilters(settings.editorFilters);
+        },
+      }, l))))),
+      h("div.adv-sub-row", h("span.muted.small.adv-label", "Match"), h("div.chips", [["", "Any of them"], ["and", "All of them"]].map(([v, l]) => h(`button.chip${fSubMode.value === v ? ".on" : ""}`, { onclick: () => { fSubMode.value = v; drawSubs(); runSearch(); } }, l))))
+    );
+  };
+  drawSubs();
+  const ARROWS = [[0x40, "↖"], [0x80, "↑"], [0x100, "↗"], [0x8, "←"], [0, ""], [0x20, "→"], [0x1, "↙"], [0x2, "↓"], [0x4, "↘"]];
+  const arrowGrid = h("div.adv-arrows", { title: "Link Arrows: the cards with all the chosen arrows" });
+  const drawArrows = () => {
+    const mask = +fArrows.value || 0;
+    clear(arrowGrid).append(...ARROWS.map(([b, l]) => (b ? h(`button.adv-arrow${mask & b ? ".on" : ""}`, { onclick: () => { fArrows.value = String(mask ^ b || ""); drawArrows(); runSearch(); setFilters(settings.editorFilters); } }, l) : h("span.adv-arrow-mid", "LINK"))));
+  };
+  drawArrows();
+  /** Filtri avanzati: tipi di carta, intervalli, scala Pendulum, frecce Link. */
+  const advOk = (c) => {
+    const subs = subsSet();
+    if (subs.size) {
+      const t = c.type;
+      const test = (k) => {
+        const [kind, bits] = k.split(":");
+        const b = +bits;
+        if (kind === "m") return !!(t & TYPE.MONSTER) && !!(t & b);
+        const base = kind === "s" ? TYPE.SPELL : TYPE.TRAP;
+        if (!(t & base)) return false;
+        if (b) return !!(t & b);
+        return !(t & (TYPE.QUICKPLAY | TYPE.CONTINUOUS | TYPE.EQUIP | TYPE.FIELD | TYPE.RITUAL | TYPE.COUNTER));
+      };
+      if (fSubMode.value === "and" ? ![...subs].every(test) : ![...subs].some(test)) return false;
+    }
+    const num = (el) => (el.value === "" ? null : +el.value);
+    const isMon = !!(c.type & TYPE.MONSTER);
+    const [lo, hi] = [num(fLevel), num(fLevelMax)];
+    if ((lo != null || hi != null) && (!isMon || (lo != null && c.level < lo) || (hi != null && c.level > hi))) return false;
+    const [aLo, aHi] = [num(fAtk), num(fAtkMax)];
+    if ((aLo != null || aHi != null) && (!isMon || (aLo != null && !(c.atk >= aLo)) || (aHi != null && !(c.atk >= 0 && c.atk <= aHi)))) return false;
+    const [dLo, dHi] = [num(fDef), num(fDefMax)];
+    if ((dLo != null || dHi != null) && (!isMon || c.type & TYPE.LINK || (dLo != null && !(c.def >= dLo)) || (dHi != null && !(c.def >= 0 && c.def <= dHi)))) return false;
+    const [sLo, sHi] = [num(fScale), num(fScaleMax)];
+    if ((sLo != null || sHi != null) && (!(c.type & TYPE.PENDULUM) || (sLo != null && c.lscale < sLo) || (sHi != null && c.lscale > sHi))) return false;
+    const arrows = +fArrows.value || 0;
+    if (arrows && (!(c.type & TYPE.LINK) || (c.linkMarker & arrows) !== arrows)) return false;
+    return true;
+  };
+  /** Testo cercato nel nome, nel testo o in entrambi. */
+  const textOk = (c, text) => !text || (fScope.value === "name" ? c.name.toLowerCase().includes(text) : fScope.value === "text" ? (c.desc ?? "").toLowerCase().includes(text) : c.search.includes(text));
   const results = h("div.results");
   const resultInfo = h("div.muted.small");
+  // Collezione del draft: le carte rimaste raggruppate per bundle d'origine (le carte singole del round 2 a parte).
+  const poolGroupToggle = pool?.binder?.some((x) => x.round === 1)
+    ? h("label.check.pool-grouping", h("input", { type: "checkbox", checked: !!settings.poolGrouped, onchange: (e) => { settings.poolGrouped = e.target.checked; renderResults(); } }), "By bundle")
+    : null;
   // Vista dei risultati: griglia di carte o lista (ricordata nelle impostazioni).
   const viewToggle = h("div.view-toggle", ["grid", "list"].map((v) =>
     h(`button.view-btn${v === (settings.editorView === "list" ? "list" : "grid") ? ".on" : ""}`, {
@@ -1310,9 +1484,6 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const sub = +fSub.value || 0;
     const attr = +fAttr.value || 0;
     const race = +fRace.value || 0;
-    const lvl = fLevel.value === "" ? null : +fLevel.value;
-    const atk = fAtk.value === "" ? null : +fAtk.value;
-    const def = fDef.value === "" ? null : +fDef.value;
     const lim = collect?.noBanlist ? "" : fLimit.value; // pool di un draft: niente banlist, niente filtro di stato
     const fmt = fFormat.value ? OT[fFormat.value] : 0;
     // Preferiti e cronologia: solo quelle carte, nel loro ordine.
@@ -1320,7 +1491,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const marks = own ? new Map((own ?? []).map((c, i) => [c, i])) : null;
     const base = pool ? [...poolCount.keys()].filter((c) => poolLeft(c) > 0).map(getCard).filter(Boolean) : marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list;
     found = base.filter((c) => {
-      if (pool) return (!type || (type === "monster" ? c.type & TYPE.MONSTER : type === "spell" ? c.type & TYPE.SPELL : type === "trap" ? c.type & TYPE.TRAP : isExtraDeckCard(c))) && (!sub || c.type & sub) && (!attr || c.attribute & attr) && (!race || c.race & race) && (lvl == null || c.level === lvl) && (atk == null || c.atk >= atk) && (def == null || (!(c.type & TYPE.LINK) && c.def >= def)) && (!text || c.search.includes(text));
+      if (pool) return (!type || (type === "monster" ? c.type & TYPE.MONSTER : type === "spell" ? c.type & TYPE.SPELL : type === "trap" ? c.type & TYPE.TRAP : isExtraDeckCard(c))) && (!sub || c.type & sub) && (!attr || c.attribute & attr) && (!race || c.race & race) && advOk(c) && textOk(c, text);
       if (!marks && (c.type & TYPE.TOKEN || c.type & TYPE.SKILL)) return false;
       if (!marks && !fUnoff.checked && c.source === 1) return false;
       if (!marks && c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
@@ -1332,22 +1503,20 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (sub && !(c.type & sub)) return false;
       if (attr && !(c.attribute & attr)) return false;
       if (race && !(c.race & race)) return false;
-      if (lvl != null && c.level !== lvl) return false;
-      if (atk != null && !(c.atk >= atk)) return false;
-      if (def != null && (c.type & TYPE.LINK || !(c.def >= def))) return false;
+      if (!advOk(c)) return false;
       if (lim) {
         const l = bannedType(banlist, c) ? 0 : cardLimit(banlist, c.code);
         if (lim === "points") {
           if (!cardPoints(banlist, c.code)) return false;
-        } else if (lim === "legal" ? l === 0 : l !== +lim) return false;
+        } else if (lim === "legal" ? l === 0 : Math.min(3, l) !== +lim) return false;
       }
-      if (text && !c.search.includes(text)) return false;
+      if (!textOk(c, text)) return false;
       return true;
     });
     if (pool) found = sortDeckPart(found.map((c) => c.code)).map(getCard);
     if (text) {
       // Prima le carte il cui nome contiene il testo.
-      found.sort((a, b) => (b.name.toLowerCase().includes(text) ? 1 : 0) - (a.name.toLowerCase().includes(text) ? 1 : 0));
+      if (fScope.value !== "text") found.sort((a, b) => (b.name.toLowerCase().includes(text) ? 1 : 0) - (a.name.toLowerCase().includes(text) ? 1 : 0));
     }
     if (!keep) shown = 120;
     const top = results.scrollTop;
@@ -1364,6 +1533,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       : `${found.length} cards`;
     const list = settings.editorView === "list";
     results.classList.toggle("as-list", list);
+    if (poolGroupToggle && settings.poolGrouped) return renderPoolGroups(list);
     clear(results).append(
       ...found.slice(0, shown).map((c) => {
         const tile = list
@@ -1389,20 +1559,48 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     );
   }
 
+  /** Collezione del draft per bundle: per ogni bundle preso le sue carte ancora libere (che passano i filtri). */
+  function renderPoolGroups(list) {
+    const ok = new Set(found.map((c) => artBase(c.code)));
+    const tile = (code) => {
+      const c = getCard(code);
+      const el = list
+        ? h("div.result-row", { draggable: true }, cardFace(code), h("div.result-text", h("div.result-name", c.name), h("div.muted.small", statLine(c) || (c.type & TYPE.SPELL ? "Spell" : "Trap"))), h("b.pool-left", `×${poolLeft(code)}`))
+        : h("div.result-card", { draggable: true, title: c.name }, cardFace(code), h("b.pool-left", `×${poolLeft(code)}`));
+      el.addEventListener("mouseenter", () => detail.show(code));
+      el.addEventListener("click", () => addCard(code));
+      el.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code })));
+      return el;
+    };
+    const groups = [];
+    for (const item of pool.binder.filter((x) => x.round === 1)) {
+      const codes = sortDeckPart([...new Set([...item.main, ...item.extra])]).filter((code) => getCard(code) && ok.has(artBase(code)) && poolLeft(code) > 0);
+      if (codes.length) groups.push({ label: item.label, codes });
+    }
+    const singles = sortDeckPart([...new Set(pool.binder.filter((x) => x.round !== 1).flatMap((x) => [...x.main, ...x.extra]))]).filter((code) => getCard(code) && ok.has(artBase(code)) && poolLeft(code) > 0);
+    if (singles.length) groups.push({ label: "Single cards", codes: singles });
+    clear(results).append(
+      ...(groups.length ? groups : [{ label: "Nothing left", codes: [] }]).map((g) =>
+        h("div.result-group", h("div.result-group-head", icon(g.label === "Single cards" ? "style" : "inventory_2"), h("b", g.label), h("span.muted.small", `${g.codes.length}`)), h("div.result-group-cards", g.codes.map(tile)))
+      )
+    );
+  }
+
   let timer;
   const debounced = () => {
     clearTimeout(timer);
     timer = setTimeout(runSearch, 150);
   };
-  for (const el of [q, fLevel, fAtk, fDef]) el.addEventListener("input", debounced);
-  for (const el of [fType, fSub, fAttr, fRace, fLimit, fFormat, fUnoff]) el.addEventListener("change", runSearch);
+  const RANGE_ELS = [fLevel, fLevelMax, fAtk, fAtkMax, fDef, fDefMax, fScale, fScaleMax];
+  for (const el of [q, ...RANGE_ELS]) el.addEventListener("input", debounced);
+  for (const el of [fType, fSub, fAttr, fRace, fLimit, fFormat, fUnoff, fScope]) el.addEventListener("change", runSearch);
 
   // Filtri richiudibili: ridotti lasciano tutto lo spazio alla lista dei risultati.
   // Filtri di ogni scheda (Cards, Bookmarks, History): cambiando scheda si salvano e si riprendono quelli
   // dell'altra (all'inizio vuoti); "Reset filters" li azzera nella scheda aperta.
   if (collect?.noBanlist || pool) fLimit.style.display = "none";
   if (pool) fFormat.style.display = "none";
-  const FILTER_ELS = { fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat };
+  const FILTER_ELS = { fType, fSub, fAttr, fRace, fLevel, fLevelMax, fAtk, fAtkMax, fDef, fDefMax, fScale, fScaleMax, fScope, fSubs, fSubMode, fArrows, fLimit, fFormat };
   const filterStates = {};
   const readFilters = () => ({ q: q.value, unoff: fUnoff.checked, ...Object.fromEntries(Object.entries(FILTER_ELS).map(([k, el]) => [k, el.value])) });
   const writeFilters = (st = {}) => {
@@ -1411,6 +1609,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     for (const [k, el] of Object.entries(FILTER_ELS)) el.value = st[k] ?? "";
     typeChips.draw();
     attrChips.draw();
+    drawSubs();
+    drawArrows();
     setFilters(settings.editorFilters);
   };
   const resetBtn = h("button.btn.small.ghost.filter-reset", { title: "Clear all the filters and the search of this tab", onclick: () => { writeFilters({}); runSearch(); } }, icon("filter_alt_off"), " Reset filters");
@@ -1419,11 +1619,24 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     resetBtn,
     typeChips,
     attrChips,
-    h("div.filter-grid", fSub, fRace, fLevel, fAtk, fDef, fLimit, fFormat),
+    h("div.filter-grid", fSub, fRace, fLimit, fFormat),
+    // Altri filtri (come il database Konami, senza la data di uscita che non abbiamo).
+    h(
+      `details.adv-filters${settings.editorAdvanced ? "" : ""}`,
+      { open: !!settings.editorAdvanced, ontoggle: (e) => (settings.editorAdvanced = e.target.open) },
+      h("summary", "More filters"),
+      h("div.adv-grid", h("span.muted.small.adv-label", "Search in"), fScope),
+      h("div.adv-grid", h("span.muted.small.adv-label", "Lv./Rank/Link"), fLevel, fLevelMax),
+      h("div.adv-grid", h("span.muted.small.adv-label", "ATK"), fAtk, fAtkMax),
+      h("div.adv-grid", h("span.muted.small.adv-label", "DEF"), fDef, fDefMax),
+      h("div.adv-grid", h("span.muted.small.adv-label", "Pendulum Scale"), fScale, fScaleMax),
+      subChips,
+      h("div.adv-sub-row", h("span.muted.small.adv-label", "Link Arrows"), arrowGrid)
+    ),
     h("label.check.small", fUnoff, "Include unofficial cards")
   );
   const activeFilters = () =>
-    [fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat].filter((el) => el.value !== "").length + (fUnoff.checked ? 1 : 0);
+    [fType, fSub, fAttr, fRace, ...RANGE_ELS, fScope, fSubs, fArrows, fLimit, fFormat].filter((el) => el.value !== "").length + (fUnoff.checked ? 1 : 0);
   const filterCount = h("b.filter-count");
   const filterToggle = h("button.search-tab.filter-toggle", { title: "Show or hide the filters", onclick: () => setFilters(!settings.editorFilters) });
   function setFilters(open) {
@@ -1435,8 +1648,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     // Filters non è una scheda ma apre/chiude i filtri: solo icona (con il contatore e la freccia).
     clear(filterToggle).append(icon("tune"), filterCount, icon(open ? "expand_less" : "expand_more"));
   }
-  for (const el of [fType, fSub, fAttr, fRace, fLevel, fAtk, fDef, fLimit, fFormat, fUnoff]) el.addEventListener("change", () => setFilters(settings.editorFilters));
-  for (const el of [fLevel, fAtk, fDef]) el.addEventListener("input", () => setFilters(settings.editorFilters));
+  for (const el of [fType, fSub, fAttr, fRace, ...RANGE_ELS, fScope, fLimit, fFormat, fUnoff]) el.addEventListener("change", () => setFilters(settings.editorFilters));
+  for (const el of RANGE_ELS) el.addEventListener("input", () => setFilters(settings.editorFilters));
   setFilters(settings.editorFilters !== false);
 
   const tabAll = h("button.search-tab", { title: "Cards", onclick: () => setTab("all") }, icon("view_module"), h("span.tab-label", "Cards"));
@@ -1503,12 +1716,12 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     h("div.search-tabs", tabAll, tabMarks, tabHistory, filterToggle),
     q,
     filters,
-    h("div.results-head", resultInfo, viewToggle),
+    h("div.results-head", resultInfo, poolGroupToggle, viewToggle),
     results,
     h(
       "p.muted.small.hint",
       pool
-        ? pool.help || "Your collection: click a card to put it in the deck (Main or Extra by its type), click a card of the deck to put it back. Only the cards you drafted, as many copies as you have. Ctrl+Z undo."
+        ? pool.help || "Your collection: click a card to put it in the deck (Main or Extra by its type), click a card of the deck to put it back, right-click it to choose its artwork. Only the cards you drafted, as many copies as you have. Ctrl+Z undo."
         : collect
         ? `Search: click adds to the chosen part, the bookmark icon saves a card in Bookmarks. Parts: click a card to remove it${collect.contextNext ? ", right-click moves it to the next part" : ""}, drag onto a card to reorder or onto another part to move it. Ctrl+Z undo.`
         : "Search: click adds, right-click adds to Side, the bookmark icon (or dragging a card onto Bookmarks) saves it in Bookmarks. Deck: click removes, right-click moves to/from Side, hold adds a copy, drag onto a card to reorder. Ctrl+C / Ctrl+V copy & paste the deck, Ctrl+Z undo, Ctrl+S save."

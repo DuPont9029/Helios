@@ -27,7 +27,7 @@ const rid = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.to
 function packItem(x, round) {
   const main = x.codes.filter((c) => !isExtraDeckCard(getCard(c)));
   const extra = x.codes.filter((c) => isExtraDeckCard(getCard(c)));
-  return { uid: rid(), id: x.id, round, label: x.label, rarity: x.rarity, main, extra };
+  return { uid: rid(), id: x.id, round, label: x.label, rarity: x.rarity, main, extra, ...(x.cover ? { cover: x.cover } : {}) };
 }
 
 export async function sha256(text) {

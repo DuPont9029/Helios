@@ -2,14 +2,14 @@
 // rarità, timer, coda dei pacchetti in attesa, giro del tavolo e binder privato (Main / Extra, per bundle).
 // Contro i bot (DraftTable) o online con altri giocatori (NetDraft, vedi draft-online.js); finito il draft si passa al
 // mazzo (draft-deck.js).
-import { h, clear, icon } from "./dom.js";
+import { h, clear, icon, scrollText } from "./dom.js";
 import { openModal, toast, confirmModal } from "./modal.js";
 import { cardFace, frameClass } from "./card.js";
 import { getCard } from "../data/db.js";
 import { artUrl } from "../data/settings.js";
 import { createDetailPanel } from "./detail.js";
 import { settings } from "../data/settings.js";
-import { PACK_SIZE, rarityOf, rarityRank, loadFormats } from "../draft/format.js";
+import { PACK_SIZE, rarityOf, rarityRank, loadFormats, draftFormat } from "../draft/format.js";
 import { formatErrors, readiness } from "../draft/packs.js";
 import { DraftTable, DEFAULT_TIMER, botDeck, poolCards } from "../draft/table.js";
 import { newRun, storeRun } from "../draft/runs.js";
@@ -83,7 +83,8 @@ export function openBotDraftSetup(app, { online = false } = {}) {
         label: online ? "Open the room" : "Start the draft",
         primary: true,
         onClick: (close) => {
-          const f = ready.find((x) => x.id === fmt.value);
+          // Al tavolo va la versione attuale del formato (senza le precedenti), con la sua impronta per le statistiche.
+          const f = draftFormat(ready.find((x) => x.id === fmt.value));
           const n = Math.max(online ? 0 : 1, Math.min(11, Math.round(+bots.value) || (online ? 0 : 7)));
           const t = timers.map((x) => {
             const start = Math.max(5, +x.start.value || DEFAULT_TIMER.start);
@@ -108,6 +109,23 @@ export function openBotDraftSetup(app, { online = false } = {}) {
   });
 }
 
+/** Fine del draft andata storta: si mostra l'errore e si apre il draft salvato (o la pagina Limited). */
+export async function finishFailed(app, e, run) {
+  console.error("Draft finish:", e);
+  const { alertModal } = await import("./modal.js");
+  await alertModal("Draft complete, but something went wrong", `${e?.message ?? e}${run ? "\n\nYour draft was saved: you can build your deck from the Limited page." : "\n\nThe draft could not be saved."}`);
+  try {
+    if (run) {
+      const { showDraftDeck } = await import("./draft-deck.js");
+      return showDraftDeck(app, run.id);
+    }
+  } catch (e2) {
+    console.error("Draft page:", e2);
+  }
+  const { showDraft } = await import("./draft-editor.js");
+  showDraft(app);
+}
+
 /**
  * Schermata del tavolo. Al termine del draft salva il run e apre il mazzo. online: { onDone(), onLeave() } per il
  * draft con altri giocatori (table è un NetDraft: posti fantasma, rientri, annullamento).
@@ -117,7 +135,9 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   const f = table.format;
   const seat = table.seats[me];
   const detail = createDetailPanel();
-  const poolState = { tab: "main", grouped: false };
+  // Binder: il mazzo che si costruisce durante il draft (scheda Deck o Side, vedi poolView); il Side resta sul tavolo
+  // (table.trackedSide) e a fine draft il deck builder si apre con questo mazzo.
+  const poolState = { tab: "deck", grouped: false, side: (table.trackedSide ??= []) };
   let shownPack = null; // id del pacchetto mostrato (per l'animazione di apertura solo all'arrivo)
 
   const head = h("div.dt-head");
@@ -196,7 +216,8 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
       },
       x.round === 1
         ? [
-            h("div.dt-item-head", h("b", x.label), r ? h("span.rarity-chip", r.name) : null),
+            // Nome lungo: scorre con il mouse sopra (scrollText).
+            h("div.dt-item-head", h("b", scrollText(x.label)), r ? h("span.rarity-chip", r.name) : null),
             bundleCover(x),
             bundleStrips(x),
           ]
@@ -206,7 +227,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   }
 
   // Bundle: copertina (l'artwork della prima carta del bundle, come per i mazzi) e una striscia per carta.
-  const coverOf = (x) => [...x.main, ...x.extra].find((c) => getCard(c));
+  const coverOf = (x) => (x.cover && getCard(x.cover) ? x.cover : [...x.main, ...x.extra].find((c) => getCard(c)));
   function bundleCover(x) {
     return h("div.dt-cover", h("span.dt-cover-count", `Main ${x.main.length} · Extra ${x.extra.length}`));
   }
@@ -294,7 +315,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   function renderBinder() {
     const { main, extra } = poolCards(seat.binder);
     clear(binderEl).append(
-      poolView([...main, ...extra], seat.binder, poolState, { fresh: lastPick(), rarityOf: rarity, empty: "Your picks appear here.", rerender: renderBinder })
+      poolView([...main, ...extra], seat.binder, poolState, { fresh: lastPick(), rarityOf: rarity, empty: "Your picks appear here.", rerender: renderBinder, onContext: showCard })
     );
   }
 
@@ -319,6 +340,8 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   };
 
   const off = table.onChange((ev) => {
+    // La scelta va nella scheda del binder aperta in quel momento: con "Side" tutte le sue carte vanno nel Side.
+    if (ev.type === "pick" && ev.seat === me && poolState.tab === "side") poolState.side.push(...ev.item.main, ...ev.item.extra);
     if (ev.type === "pick" && ev.seat === me && ev.auto) toast(`Time's up: you took ${ev.item.label}`);
     if (ev.type === "round" && ev.round === 2) toast("Round 2: single cards, passing right");
     if (ev.type === "done") return void finish();
@@ -329,9 +352,17 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     // L'animazione di apertura riparte solo per un pacchetto nuovo (vedi shownPack).
     renderAll();
   });
+  // Un errore nel tavolo (es. un pacchetto che non si riesce a fare) non deve fermare tutto in silenzio.
+  let tickError = false;
   const timer = setInterval(() => {
     if (!root.isConnected) return stop();
-    table.tick();
+    try {
+      table.tick();
+    } catch (e) {
+      console.error("Draft table:", e);
+      if (!tickError) toast(`Draft error: ${e?.message ?? e}`, { kind: "error" });
+      tickError = true;
+    }
     renderTimer();
   }, 200);
   // Bundle con più carte di quelle che stanno nella cella: la lista scorre da sola, avanti e indietro, con una pausa
@@ -367,6 +398,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   requestAnimationFrame(autoScroll);
   const stop = () => {
     clearInterval(timer);
+    offReclose();
     document.removeEventListener("click", onCardClick, true);
     off();
   };
@@ -385,15 +417,24 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   }
 
   // Fine del draft: si salva e si apre subito il deck builder sulla collezione.
+  // Un errore qui (salvataggio, mazzi dei bot, deck builder) lasciava il tavolo fermo dopo l'ultima scelta: ora si
+  // dice cosa è successo e si va avanti (alla pagina del draft se è stato salvato, altrimenti a Limited).
   async function finish() {
     stop();
     if (online) return online.onDone();
-    const botDecks = table.seats.map((s) => (s.bot ? botDeck(s.binder) : null));
-    const run = storeRun(newRun(table, { me, bestOf, botDecks }));
-    toast("Draft complete: build your deck");
-    const { showDraftDeck, editDraftDeck } = await import("./draft-deck.js");
-    await editDraftDeck(run);
-    showDraftDeck(app, run.id);
+    let run = null;
+    try {
+      const botDecks = table.seats.map((s) => (s.bot ? botDeck(s.binder) : null));
+      run = storeRun(newRun(table, { me, bestOf, botDecks, side: poolState.side }));
+      // Statistiche globali del cube: le mie scelte (pubbliche, senza nomi).
+      import("../net/cube-stats.js").then((m) => m.shareRunStats(run));
+      toast("Draft complete: build your deck");
+      const { showDraftDeck, editDraftDeck } = await import("./draft-deck.js");
+      await editDraftDeck(run);
+      showDraftDeck(app, run.id);
+    } catch (e) {
+      await finishFailed(app, e, run);
+    }
   }
 
   // A destra c'è il binder; cliccando una carta (nel pacchetto o nel binder) al suo posto compaiono i dettagli della
@@ -403,9 +444,15 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     detailBox.hidden = true;
     binderEl.hidden = false;
   };
+  // Carta del binder: il clic la sposta tra Deck e Side, il tasto destro ne mostra i dettagli.
+  const showCard = (code) => {
+    detail.show(code);
+    detailBox.hidden = false;
+    binderEl.hidden = true;
+  };
   const onCardClick = (e) => {
     if (!root.isConnected) return document.removeEventListener("click", onCardClick, true);
-    if (detailBox.contains(e.target)) return;
+    if (detailBox.contains(e.target) || binderEl.contains(e.target)) return;
     const code = Number(e.target.closest?.(".dt-main .card[data-code], .dt-main .dt-strip[data-code]")?.dataset.code) || 0;
     if (!code) return showBinder();
     detail.show(code);
@@ -438,7 +485,45 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
 
   if (!online) table.start();
   // Una schermata sola, senza scorrere: pacchetto a sinistra; a destra il binder (o i dettagli della carta cliccata).
-  root.append(h("div.page.draft-table", head, ring, h("div.dt-main", packEl, h("div.dt-side", binderEl, detailBox))));
+  // Binder laterale riducibile: chiuso resta una striscia; trascinando un oggetto verso di essa si riapre (e si
+  // richiude dopo la scelta, se era chiuso).
+  const dtMain = h("div.dt-main");
+  let autoOpened = false;
+  const setMin = (v) => {
+    settings.draftBinderMin = v;
+    dtMain.classList.toggle("binder-min", v);
+  };
+  const sideEl = h(
+    "div.dt-side",
+    h(
+      "div.dt-side-head",
+      h("b", "Binder"),
+      h("span.muted.small.dt-side-count", ""),
+      h("span.spacer"),
+      h("button.btn.ghost.small.dt-side-min", { title: "Minimize the binder", onclick: () => setMin(true) }, icon("right_panel_close"))
+    ),
+    h("button.dt-side-open", { title: "Open the binder (or drag a pick here)", onclick: () => setMin(false) }, icon("left_panel_open"), h("span", "Binder")),
+    binderEl,
+    detailBox
+  );
+  sideEl.addEventListener("dragenter", (e) => {
+    if (!e.dataTransfer.types.includes(DRAG) || !dtMain.classList.contains("binder-min")) return;
+    autoOpened = true;
+    dtMain.classList.remove("binder-min");
+  });
+  const reclose = () => {
+    if (!autoOpened) return;
+    autoOpened = false;
+    // Dopo un attimo: si vede dove è finita la scelta.
+    setTimeout(() => settings.draftBinderMin && dtMain.classList.add("binder-min"), 900);
+  };
+  document.addEventListener("dragend", reclose);
+  function offReclose() {
+    document.removeEventListener("dragend", reclose);
+  }
+  setMin(!!settings.draftBinderMin);
+  dtMain.append(packEl, sideEl);
+  root.append(h("div.page.draft-table", head, ring, dtMain));
   renderAll();
 }
 

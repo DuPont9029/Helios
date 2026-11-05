@@ -36,8 +36,8 @@
 }
 .log-btn:hover { border-color: var(--accent); color: #fff; }
 .duel-main.log3d .log-btn { display: none; }
-/* sul campo 3D a metà altezza a sinistra c'è il Moai: il pulsante sale in alto, dove sta quello del campo */
-.duel-main.field3d .log-btn { top: 96px; transform: none; }
+/* sul campo 3D a metà altezza a sinistra ci sono il Moai e il dettaglio della carta: il pulsante sta in alto a sinistra */
+.duel-main.field3d .log-btn { top: 14px; transform: none; }
 .log-btn-badge { position: absolute; right: -4px; top: -4px; min-width: 18px; padding: 0 4px; border-radius: 9px; background: var(--danger); color: #fff; font: 700 11px/18px var(--font); }
 .duel-main.over-log { cursor: pointer; }
 .log-pane { display: flex; flex-direction: column; }
@@ -161,6 +161,15 @@
 }
 .stat .atk { color: #ffd38a; } .stat .def { color: #9fd0ff; } .stat .link { color: #7fb0ff; } .stat .sep { color: #666; margin: 0 1px; }
 .stat .up { color: #6dff9e; } .stat .down { color: #ff6d7d; }
+/* livello / rank del mostro (in alto al centro della carta: ai lati ci sono contatori e materiali): colorato se un effetto l'ha cambiato */
+.stat-level {
+  position: absolute; top: -2px; left: 50%; transform: translateX(-50%); z-index: 2; display: flex; align-items: center; gap: 1px;
+  background: rgba(0, 0, 0, 0.85); border: 1px solid rgba(255, 200, 90, 0.45); border-radius: 6px;
+  font: 700 calc(var(--zh) * 0.12) var(--display); color: #ffd38a; padding: 0 4px; white-space: nowrap; pointer-events: none;
+}
+.stat-level .lvl-star { color: #ffb43a; }
+.stat-level.up { color: #6dff9e; border-color: rgba(109, 255, 158, 0.6); }
+.stat-level.down { color: #ff6d7d; border-color: rgba(255, 109, 125, 0.6); }
 .field-center { display: grid; place-items: center; }
 
 /* ------------------------------------------------------------------ mani */
@@ -617,3 +626,5 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .fd-badge { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 2; padding: 1px 7px; font: 700 10px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; background: #1a1d27; border: 1px solid var(--line-strong); color: #ffd23a; white-space: nowrap; }
 /* finestra della carta nascosta mentre c'è una finestra aperta (si vede riducendo la finestra a icona) */
 .card-peek.show.under-popup { opacity: 0; pointer-events: none; }
+/* carta guardata da una finestra (es. l'elenco del Cimitero): la finestra si sposta a destra della carta */
+body.peek-beside .modal-backdrop:not(.minimized) { padding-left: calc(clamp(240px, 21vw, 320px) + 28px); transition: padding 0.12s; }
