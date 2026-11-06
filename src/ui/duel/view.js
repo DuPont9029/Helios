@@ -569,9 +569,18 @@ export class DuelView {
     // Medaglione al centro del campo (turno + fase) e bagliore dal lato di chi è di turno.
     const short = { "Main Phase 1": "Main 1", "Main Phase 2": "Main 2", "Draw Phase": "Draw", "Standby Phase": "Standby", "Battle Phase": "Battle", "Damage Step": "Damage", "End Phase": "End" };
     const name = PHASE_NAMES[phase] ?? "";
+    // Si ridisegna solo quando cambiano turno, fase o giocatore: ogni medaglione nuovo rifà l'animazione d'entrata,
+    // e setTurn arriva a ogni aggiornamento del campo (il medaglione "pulsava" di continuo).
+    const key = `${turn}:${turnPlayer === this.me}:${phase}`;
+    if (key === this.medallionKey) return this.syncTurnGlow(turn, turnPlayer);
+    this.medallionKey = key;
     clear(this.medallionEl).append(
       turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, { title: "Phase actions" }, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
     );
+    this.syncTurnGlow(turn, turnPlayer);
+  }
+
+  syncTurnGlow(turn, turnPlayer) {
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
   }
