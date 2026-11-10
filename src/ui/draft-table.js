@@ -315,7 +315,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   function renderBinder() {
     const { main, extra } = poolCards(seat.binder);
     clear(binderEl).append(
-      poolView([...main, ...extra], seat.binder, poolState, { fresh: lastPick(), rarityOf: rarity, empty: "Your picks appear here.", rerender: renderBinder, onContext: showCard })
+      poolView([...main, ...extra], seat.binder, poolState, { fresh: lastPick(), rarityOf: rarity, empty: "Your picks appear here.", rerender: renderBinder, onDetail: showCard })
     );
   }
 
@@ -444,7 +444,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     detailBox.hidden = true;
     binderEl.hidden = false;
   };
-  // Carta del binder: il clic la sposta tra Deck e Side, il tasto destro ne mostra i dettagli.
+  // Carta del binder: il clic ne mostra i dettagli (come nel pacchetto), il tasto destro la sposta tra Deck e Side.
   const showCard = (code) => {
     detail.show(code);
     detailBox.hidden = false;
@@ -523,7 +523,10 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
   }
   setMin(!!settings.draftBinderMin);
   dtMain.append(packEl, sideEl);
-  root.append(h("div.page.draft-table", head, ring, dtMain));
+  // Durante il draft il tasto destro non porta fuori dalla pagina (vedi main.js): nel binder apre i dettagli.
+  const page = h("div.page.draft-table", head, ring, dtMain);
+  page.addEventListener("contextmenu", (e) => !e.target.closest?.("input, textarea") && e.preventDefault());
+  root.append(page);
   renderAll();
 }
 

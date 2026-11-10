@@ -91,6 +91,35 @@ export const viewportSize = () => ({ width: window.innerWidth / rectScale, heigh
 export const pointer = (e) => ({ x: e.clientX / rectScale, y: e.clientY / rectScale });
 
 /**
+ * Durante un trascinamento (drag and drop HTML) il contenitore scorre da solo quando il puntatore è vicino al bordo
+ * in alto o in basso. Lo scorrimento automatico dei browser scatta solo a pochi pixel dal bordo e non sempre nei
+ * pannelli annidati: con una parte lunga (es. una rarità con 50 carte) le altre restavano irraggiungibili.
+ */
+export function dragAutoScroll(el, { edge = 80, speed = 22 } = {}) {
+  let v = 0;
+  let last = 0;
+  let raf = 0;
+  const tick = () => {
+    // dragover arriva di continuo finché si trascina sopra il contenitore: se smette, ci si ferma.
+    if (!v || performance.now() - last > 250) return void ((v = 0), (raf = 0));
+    el.scrollTop += v;
+    raf = requestAnimationFrame(tick);
+  };
+  el.addEventListener("dragover", (e) => {
+    const r = rect(el);
+    const y = pointer(e).y;
+    const zone = Math.min(edge, r.height / 4);
+    const k = (d) => Math.min(1, Math.max(0, 1 - d / zone));
+    v = y < r.top + zone ? -speed * k(y - r.top) : y > r.bottom - zone ? speed * k(r.bottom - y) : 0;
+    v = Math.round(v) || Math.sign(v);
+    last = performance.now();
+    if (v && !raf) raf = requestAnimationFrame(tick);
+  });
+  el.addEventListener("drop", () => (v = 0));
+  return el;
+}
+
+/**
  * Testo su una riga che, se non ci sta, scorre (avanti e indietro) passandoci sopra con il mouse invece di
  * finire con "…". Il contenitore che reagisce è il pulsante o la riga che lo contiene.
  */

@@ -487,7 +487,11 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
 .search-panel { background: rgba(8, 9, 14, 0.88); border: 1px solid var(--line-strong); gap: 9px; }
 .search-tabs { display: flex; margin: -10px -10px 2px; }
 .search-tab { flex: 1; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 9px; font: 700 14px var(--display); letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
-.search-filters { display: flex; flex-direction: column; gap: 9px; }
+/* Con "More filters" aperto i filtri possono superare l'altezza del pannello: scorrono da soli (prima venivano tagliati),
+   lasciando sempre un po' di spazio ai risultati. */
+.search-filters { display: flex; flex-direction: column; gap: 9px; flex: 0 1 auto; min-height: 0; max-height: 70%; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.search-filters > * { flex-shrink: 0; }
+.search-panel .results { min-height: 96px; }
 .search-filters[hidden] { display: none; }
 .filter-toggle { flex: 0 0 auto; border: 0; background: none; cursor: pointer; padding: 9px 12px; }
 .filter-toggle:hover { color: var(--accent); }

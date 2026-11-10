@@ -1,7 +1,7 @@
 // Draft: la pagina con i formati di draft dell'host e l'editor (ispirato a CubeCobra). Un formato ha una modalità
 // (per ora l'Helios Bundle Draft), le rarità decise dal creatore, il pool dei due round e le regole dei pacchetti.
 // Il gioco vero e proprio (tavolo, bot, partite) arriva nelle fasi successive.
-import { h, clear, icon, download, pickFile } from "./dom.js";
+import { h, clear, icon, download, pickFile, dragAutoScroll } from "./dom.js";
 import { openModal, confirmModal, alertModal, toast } from "./modal.js";
 import { cardFace } from "./card.js";
 import { openCardCollector } from "./editor.js";
@@ -848,8 +848,9 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
   }
 
   // ------------------------------------------------------------ pagina
+  // Trascinando un oggetto verso un'altra rarità la pagina scorre da sola vicino ai bordi.
   root.append(
-    h(
+    dragAutoScroll(h(
       "div.page.draft-editor",
       h(
         "div.page-head",
@@ -866,7 +867,7 @@ export function showDraftEditor(app, original, { isNew = false } = {}) {
       issuesEl,
       tabsEl,
       body
-    )
+    ))
   );
   changed();
   render();

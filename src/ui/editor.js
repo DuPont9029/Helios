@@ -1,5 +1,5 @@
 // Deck Editor: ricerca carte, costruzione del mazzo, banlist, import/export.
-import { h, clear, download, pickFile, icon, rect, scrollText } from "./dom.js";
+import { h, clear, download, pickFile, icon, rect, scrollText, dragAutoScroll } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
@@ -1742,7 +1742,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const page = h(
     `div.page.editor${side || pick || view ? ".side-mode" : ""}${view ? ".view-mode" : ""}${collect ? ".collect-mode" : ""}${pool ? ".pool-mode" : ""}`,
     side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : pool ? poolToolbar : embed ? embedToolbar : toolbar,
-    h("div.editor-body", detail.el, h("div.deck-area", area), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
+    h("div.editor-body", detail.el, dragAutoScroll(h("div.deck-area", area)), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
   );
   root.append(page);
   openDeck(single ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
