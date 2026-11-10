@@ -635,3 +635,24 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .scroll-text.scrolling .scroll-inner { animation: scroll-text var(--scroll-time, 4s) ease-in-out infinite alternate; }
 @keyframes scroll-text { 0%, 12% { transform: translateX(0); } 88%, 100% { transform: translateX(var(--scroll-dist, 0)); } }
 @media (prefers-reduced-motion: reduce) { .scroll-text.scrolling .scroll-inner { animation-duration: 0.01s; animation-iteration-count: 1; animation-fill-mode: forwards; } }
+
+/* deck builder: altri filtri (come il database Konami) */
+.adv-filters { border-top: 1px solid var(--line); padding-top: 6px; }
+.adv-filters > summary { cursor: pointer; font: 600 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); list-style: none; }
+.adv-filters > summary::before { content: "▸ "; }
+.adv-filters[open] > summary::before { content: "▾ "; }
+.adv-filters[open] > summary { margin-bottom: 6px; }
+.adv-grid { display: grid; grid-template-columns: 96px 1fr 1fr; gap: 6px; align-items: center; margin-bottom: 5px; }
+.adv-grid .select { grid-column: span 2; }
+.adv-grid .input { min-width: 0; }
+.adv-label { white-space: nowrap; }
+.adv-subs { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; }
+.adv-sub-row { display: grid; grid-template-columns: 96px 1fr; gap: 6px; align-items: start; }
+.chips.subs .chip { font-size: 10px; padding: 3px 6px; }
+.adv-arrows { display: grid; grid-template-columns: repeat(3, 26px); gap: 2px; }
+.adv-arrow { width: 26px; height: 26px; padding: 0; font-size: 14px; color: var(--muted); background: rgba(255, 255, 255, 0.04); border: 1px solid var(--line); cursor: pointer; }
+.adv-arrow.on { color: #fff; background: #2f78d0; border-color: #5aa0ff; }
+.adv-arrow-mid { display: grid; place-items: center; font: 700 8px var(--mono); color: var(--muted); }
+.chips.subs { display: flex; flex-wrap: wrap; gap: 3px; grid-template-columns: none; }
+.chips.subs .chip, .adv-sub-row .chips .chip { flex: none; width: auto; }
+.adv-sub-row > .chips { display: flex; flex-wrap: wrap; gap: 3px; }

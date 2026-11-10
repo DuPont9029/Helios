@@ -9,11 +9,11 @@ import { resolveIceServers } from "../net/signaling.js";
 import { copyText } from "../net/clipboard.js";
 import { NetDraft, sha256 } from "../draft/net-draft.js";
 import { botDeck } from "../draft/table.js";
-import { storeRun, emptyDraftDeck } from "../draft/runs.js";
+import { storeRun, emptyDraftDeck, trackedDraftDeck, loadRuns, getRun } from "../draft/runs.js";
 import { newId } from "../draft/format.js";
 import { identity } from "../net/identity.js";
 import { backupRun } from "../net/tournament-store.js";
-import { showDraftTable, BOT_NAMES } from "./draft-table.js";
+import { showDraftTable, BOT_NAMES, finishFailed } from "./draft-table.js";
 import { version } from "../../package.json";
 
 const LIVE_KEY = "ygoweb.draftLive";
@@ -317,27 +317,48 @@ function runDraft(app, net, start, me, myToken, early = [], restored = null) {
         backToLimited(app);
       },
       onDone: async () => {
-        // Fine: si condividono i pool dei bot (servono per giocarci contro) e, con il pool aperto, quelli dei
-        // giocatori (non dei fantasmi: chi non è tornato è fuori). Poi si aspettano quelli degli altri.
-        for (const s of draft.seats) {
-          if (!draft.hosted(s.index) || s.ghost) continue;
-          if (s.bot || (start.pool !== "closed" && s.index !== draft.me)) net.broadcast({ t: "pool", seat: s.index, binder: s.binder });
+        let run = null;
+        try {
+          // Fine: si condividono i pool dei bot (servono per giocarci contro) e, con il pool aperto, quelli dei
+          // giocatori (non dei fantasmi: chi non è tornato è fuori). Poi si aspettano quelli degli altri.
+          const share = (msg) => {
+            try {
+              net.broadcast(msg);
+            } catch (e) {
+              console.warn("Draft: pool not shared", e);
+            }
+          };
+          for (const s of draft.seats) {
+            if (!draft.hosted(s.index) || s.ghost) continue;
+            if (s.bot || (start.pool !== "closed" && s.index !== draft.me)) share({ t: "pool", seat: s.index, binder: s.binder });
+          }
+          if (start.pool !== "closed") share({ t: "pool", seat: draft.me, binder: draft.seats[draft.me].binder });
+          const expected = draft.seats.filter((s) => !s.ghost && s.index !== draft.me && (s.bot || start.pool !== "closed") && !draft.hosted(s.index));
+          toast("Draft complete: collecting the pools…");
+          const t0 = Date.now();
+          while (expected.some((s) => !pools.has(s.index)) && Date.now() - t0 < POOLS_WAIT_MS) await new Promise((r) => setTimeout(r, 200));
+          run = buildRun(draft, start, pools);
+          storeRun(run);
+          backupRun(run).catch(() => {});
+          import("../net/cube-stats.js").then((m) => m.shareRunStats(run));
+        } catch (e) {
+          // Il draft è finito comunque: non resta "in corso" (il Rejoin non porterebbe da nessuna parte).
+          forgetLiveDraft();
+          cleanup();
+          setTimeout(() => net.leave(), 20000);
+          return finishFailed(app, e, run && getRun(run.id) ? run : null);
         }
-        if (start.pool !== "closed") net.broadcast({ t: "pool", seat: draft.me, binder: draft.seats[draft.me].binder });
-        const expected = draft.seats.filter((s) => !s.ghost && s.index !== draft.me && (s.bot || start.pool !== "closed") && !draft.hosted(s.index));
-        toast("Draft complete: collecting the pools…");
-        const t0 = Date.now();
-        while (expected.some((s) => !pools.has(s.index)) && Date.now() - t0 < POOLS_WAIT_MS) await new Promise((r) => setTimeout(r, 200));
-        const run = buildRun(draft, start, pools);
-        storeRun(run);
-        backupRun(run).catch(() => {});
         forgetLiveDraft();
         cleanup();
         // La stanza resta aperta ancora un po' per chi aspetta ancora i pool.
         setTimeout(() => net.leave(), 20000);
-        const { showDraftDeck, editDraftDeck } = await import("./draft-deck.js");
-        await editDraftDeck(run);
-        showDraftDeck(app, run.id);
+        try {
+          const { showDraftDeck, editDraftDeck } = await import("./draft-deck.js");
+          await editDraftDeck(run);
+          showDraftDeck(app, run.id);
+        } catch (e) {
+          finishFailed(app, e, run);
+        }
       },
     },
   });
@@ -351,12 +372,12 @@ const stripStart = (s) => ({ code: s.code, host: s.host, hostPk: s.hostPk, forma
 function buildRun(draft, start, pools) {
   const f = start.format;
   const binderOf = (s) => (draft.hosted(s.index) && (s.index === draft.me || s.bot) ? s.binder : pools.get(s.index) ?? []);
-  const strip = (x) => ({ uid: x.uid, id: x.id, round: x.round, label: x.label, rarity: x.rarity, main: x.main, extra: x.extra, pickNo: x.pickNo });
+  const strip = (x) => ({ uid: x.uid, id: x.id, round: x.round, label: x.label, rarity: x.rarity, main: x.main, extra: x.extra, pickNo: x.pickNo, ...(x.cover ? { cover: x.cover } : {}) });
   const mine = draft.seats[draft.me].binder.map(strip);
   return {
     id: newId(),
     created: Date.now(),
-    format: { id: f.id, name: f.name, mode: f.mode, rarities: f.rarities },
+    format: { id: f.id, name: f.name, mode: f.mode, rarities: f.rarities, rev: f.rev ?? 1, hash: f.hash ?? null },
     bestOf: start.bestOf,
     me: draft.me,
     seed: start.seed,
@@ -365,7 +386,7 @@ function buildRun(draft, start, pools) {
       const binder = binderOf(s).map(strip);
       return { name: s.name, bot: s.bot, pk: start.seats[s.index]?.pk ?? null, gone: s.ghost, binder, deck: s.bot && binder.length ? botDeck(binder) : null };
     }),
-    deck: emptyDraftDeck(mine),
+    deck: draft.trackedSide ? trackedDraftDeck(mine, draft.trackedSide) : emptyDraftDeck(mine),
     locked: false,
     results: [],
     botMatches: null,
@@ -378,6 +399,13 @@ function buildRun(draft, start, pools) {
 export async function rejoinDraft(app) {
   const live = liveDraft();
   if (!live) return;
+  // Il draft di quella stanza è già finito e salvato: si apre (non c'è più nessuno a cui chiedere il posto).
+  const saved = loadRuns().find((r) => r.online?.code === live.code && r.seed === live.start?.seed);
+  if (saved) {
+    forgetLiveDraft();
+    const { showDraftDeck } = await import("./draft-deck.js");
+    return showDraftDeck(app, saved.id);
+  }
   let net;
   try {
     net = await room(live.code);

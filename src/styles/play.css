@@ -157,7 +157,8 @@
 .hdpc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
 .hdpc-main, .hdpc-side { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .hdpc-side { position: sticky; top: 0; }
-.hdpc-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+/* .card-box.…: più specifica di .card-box (flex in colonna), che in produzione arriva da un altro file CSS e vincerebbe */
+.card-box.hdpc-setup { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; }
 .hdpc-hand { white-space: nowrap; padding-bottom: 2px; }
 .hdpc-setup .field { margin: 0; }
 .hdpc-quick-hand { grid-column: 1 / -1; display: flex; gap: 6px; }
@@ -167,6 +168,7 @@
 .hdpc-dot { width: 10px; height: 10px; flex: none; background: hsl(calc(var(--i) * 47 + 190), 80%, 60%); }
 .hdpc-name { flex: 1; }
 .hdpc-copies { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.hdpc-copies[hidden] { display: none; }
 .hdpc-count { width: 64px; }
 .hdpc-cards { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
 .hdpc-card { position: relative; width: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
@@ -299,6 +301,10 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 /* Decklist in sola lettura nel deck builder: carte evidenziate. */
 .deck-card.mark-used { outline: 2px solid var(--accent); outline-offset: 1px; }
 .deck-card.mark-short { outline: 2px solid var(--danger); outline-offset: 1px; }
+/* scelta di una carta dalla decklist (openCardChooser) */
+.deck-card.choosable { cursor: pointer; }
+.deck-card.choosable:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
+.deck-card.not-choosable { opacity: 0.3; filter: grayscale(1); cursor: not-allowed; }
 /* Deck builder con parti con un nome (stato di partenza, hand trap): la parte attiva riceve la ricerca. */
 .collect-mode .deck-part { cursor: pointer; }
 .collect-mode .deck-part.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(56, 198, 255, 0.25); }
@@ -421,7 +427,7 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .profile-box .row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; }
 
 /* Matchmaking (scheda Find a Duel) */
-.mm-box { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
+.card-box.mm-box { flex-direction: row; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-bottom: 12px; }
 .mm-status { margin: 0; }
 .mm-queues h3 { margin-top: 4px; }
 
@@ -476,3 +482,16 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
   .mm-scene-side { top: auto; bottom: 150px; right: 16px; left: 16px; width: auto; max-height: 22vh; }
   .mm-scene-head { left: 16px; }
 }
+/* scelta dell'artwork (deck builder del draft) */
+.art-variants { display: flex; flex-wrap: wrap; gap: 10px; }
+.art-variant { width: 120px; padding: 0; background: none; border: 2px solid transparent; cursor: pointer; }
+.art-variant .card { width: 100%; }
+.art-variant:hover { border-color: var(--accent); }
+.art-variant.on { border-color: var(--gold); }
+/* collezione del draft per bundle (deck builder del draft) */
+.result-group { display: flex; flex-direction: column; gap: 6px; padding: 6px 0 10px; border-bottom: 1px solid var(--line); grid-column: 1 / -1; }
+.result-group-head { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.result-group-head .icon { font-size: 16px; color: var(--muted); }
+.result-group-cards { display: grid; grid-template-columns: inherit; gap: 6px; }
+.results:not(.as-list) .result-group-cards { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+.results.as-list .result-group-cards { display: flex; flex-direction: column; }

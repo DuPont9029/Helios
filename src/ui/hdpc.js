@@ -103,8 +103,9 @@ export function showHdpc(app) {
   const decks = loadDecks();
   let all = loadState();
   // La dimensione del mazzo viene dal mazzo scelto (Main Deck): non si scrive a mano.
-  const deckSel = h("select.select", decks.map((d) => h("option", { value: d.id }, `${d.name} (${d.main.length})`)));
-  deckSel.value = decks.some((d) => d.id === settings.lastDeck) ? settings.lastDeck : decks[0]?.id ?? "";
+  // "No deck": come stattrek.com, si scrivono a mano la dimensione del mazzo e le copie di ogni gruppo.
+  const deckSel = h("select.select", h("option", { value: "" }, "No deck (type the numbers)"), decks.map((d) => h("option", { value: d.id }, `${d.name} (${d.main.length})`)));
+  deckSel.value = settings.hdpcNoDeck ? "" : decks.some((d) => d.id === settings.lastDeck) ? settings.lastDeck : decks[0]?.id ?? "";
   const deck = () => decks.find((d) => d.id === deckSel.value) ?? null;
   const fresh = () => ({
     hand: 5,
@@ -122,7 +123,9 @@ export function showHdpc(app) {
   const scenEl = h("div.hdpc-scenarios");
   const result = h("div.hdpc-result");
 
-  const N = () => deck()?.main.length ?? 40;
+  const sizeIn = h("input.input.hdpc-count", { type: "number", min: 1, max: 100, value: 40, title: "Cards in the Deck" });
+  const sizeField = h("label.hdpc-copies.hdpc-size", sizeIn, " cards in the Deck");
+  const N = () => deck()?.main.length ?? Math.max(1, Math.min(100, +sizeIn.value || 40));
   const copiesInDeck = (code) => deck()?.main.filter((c) => c === code).length ?? 0;
   /** Copie del gruppo: le carte scelte dal mazzo, oppure il numero scritto a mano. */
   const fromDeck = (g) => !!(deck() && g.cards.length);
@@ -243,13 +246,20 @@ export function showHdpc(app) {
   const sync = () => {
     st = all[deckSel.value || "_"] ?? fresh();
     handIn.value = st.hand;
+    sizeField.hidden = !!deck();
+    sizeIn.value = st.size ?? 40;
     renderGroups();
     renderScenarios();
     compute();
   };
   deckSel.addEventListener("change", () => {
     if (deckSel.value) settings.lastDeck = deckSel.value;
+    settings.hdpcNoDeck = !deckSel.value;
     sync();
+  });
+  sizeIn.addEventListener("input", () => {
+    st.size = Math.max(1, Math.min(100, +sizeIn.value || 40));
+    compute();
   });
   handIn.addEventListener("input", compute);
 
@@ -264,6 +274,7 @@ export function showHdpc(app) {
           h(
             "section.card-box.hdpc-setup",
             h("label.field", h("span", "Deck"), deckSel),
+            sizeField,
             // Come le copie dei gruppi: campo piccolo con la scritta accanto.
             h("label.hdpc-copies.hdpc-hand", handIn, " cards in hand"),
             h("div.hdpc-quick-hand", h("button.btn.small.ghost", { onclick: () => { handIn.value = 5; compute(); } }, "Going first (5)"), h("button.btn.small.ghost", { onclick: () => { handIn.value = 6; compute(); } }, "Going second (6)"))
@@ -301,7 +312,7 @@ function quickCalculator() {
   return h(
     "section.card-box.hdpc-quick",
     h("h3", "Quick calculator"),
-    h("p.muted.small", "Population N, successes K in the population, sample size n, successes x in the sample."),
+    h("p.muted.small", "On its own, not tied to the Deck or the groups on the left: the chance of drawing x copies of a card (K copies in a Deck of N cards, n cards drawn)."),
     h("div.hdpc-quick-grid", h("label.field", h("span", "Deck size (N)"), N), h("label.field", h("span", "Copies (K)"), K), h("label.field", h("span", "Hand size (n)"), n), h("label.field", h("span", "In hand (x)"), x)),
     out
   );

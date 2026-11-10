@@ -85,3 +85,9 @@ These are deliberately unspecified; the implementer chooses and documents:
 3. **Wire format for a pack pass and for ghost-pick transfer** (§5).
 
 Resolved design decisions that must **not** be changed without host sign-off: timer formula/defaults (§4), heal model A→C (§5), ghost behavior (§5), abort condition (§5), re-clumping scope (§3), copy limit (§6), between-game size lock (§6).
+
+
+
+## websites to take inspiration from:
+1. https://cubecobra.com/landing (for cube building)
+2. https://draftmancer.com/?session=0a18302d952b (for the drafting ui)

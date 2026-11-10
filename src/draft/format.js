@@ -136,6 +136,8 @@ export function cleanFormat(f) {
     tags: tags(b?.tags),
     main: codes(b?.main),
     extra: codes(b?.extra),
+    // Copertina scelta tra le carte del bundle (null = la prima).
+    cover: Number.isInteger(b?.cover) && [...codes(b?.main), ...codes(b?.extra)].includes(b.cover) ? b.cover : null,
   }));
   const singles = (Array.isArray(f.singles) ? f.singles : [])
     .slice(0, 5000)
@@ -147,12 +149,27 @@ export function cleanFormat(f) {
     if (r.kind === "apart") return [{ ...base, a: str(r.a, 20), b: str(r.b, 20) }];
     return [{ ...base, tag: str(r.tag, 30).trim(), n: Math.max(0, Math.min(PACK_SIZE, Math.round(+r.n) || 0)) }];
   });
+  // Versioni del cube: rev = versione attuale, history = versioni precedenti congelate, parent = da quale formato
+  // (e versione) è stato fatto un fork. Il contenuto delle versioni passa dalla stessa pulizia.
+  const content = (d) => {
+    const c = d && typeof d === "object" ? cleanFormat({ ...d, id: "x", name: "x", history: null, parent: null }) : null;
+    return c ? { rarities: c.rarities, bundles: c.bundles, singles: c.singles, rules: c.rules } : null;
+  };
+  const rev = Number.isInteger(f.rev) && f.rev > 0 ? f.rev : 1;
+  const history = (Array.isArray(f.history) ? f.history : [])
+    .slice(-50)
+    .map((v) => ({ rev: Number.isInteger(v?.rev) ? v.rev : 0, at: Number.isFinite(v?.at) ? v.at : 0, data: content(v?.data) }))
+    .filter((v) => v.data && v.rev > 0 && v.rev < rev);
+  const parent = f.parent && typeof f.parent === "object" ? { id: str(f.parent.id, 20), name: str(f.parent.name, 60), rev: Number.isInteger(f.parent.rev) ? f.parent.rev : 1, data: content(f.parent.data) } : null;
   return {
     id: str(f.id, 20) || newId(),
     name: str(f.name, 60) || "Draft",
     mode: DRAFT_MODES.some((m) => m.id === f.mode) ? f.mode : "bundle",
     version: FORMAT_VERSION,
     updated: Number.isFinite(f.updated) ? f.updated : Date.now(),
+    rev,
+    ...(history.length ? { history } : {}),
+    ...(parent ? { parent } : {}),
     rarities,
     bundles,
     singles,
@@ -160,13 +177,124 @@ export function cleanFormat(f) {
   };
 }
 
+// ---------------------------------------------------------------- versioni e fork
+
+/** Contenuto di una versione del cube (senza nome, id e storia). */
+export const formatContent = (f) => ({ rarities: f.rarities, bundles: f.bundles, singles: f.singles, rules: f.rules });
+
+/**
+ * Impronta del contenuto (16 cifre esadecimali): identifica una versione precisa del cube, anche tra computer diversi
+ * (le statistiche globali sono per impronta). Due hash FNV-1a a 32 bit sullo stesso testo canonico.
+ */
+export function formatHash(f) {
+  const c = formatContent(f);
+  const text = JSON.stringify({
+    r: c.rarities.map((r) => r.id),
+    b: c.bundles.map((b) => [b.id, b.rarity, [...b.main].sort(), [...b.extra].sort()]),
+    s: c.singles.map((x) => [x.id, x.code, x.rarity]),
+  });
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193 ^ text.length;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 16777619) >>> 0;
+    h2 = Math.imul(h2 ^ ch, 2246822519) >>> 0;
+  }
+  return h1.toString(16).padStart(8, "0") + h2.toString(16).padStart(8, "0");
+}
+
+/** Formato da mandare ai giocatori o salvare in un draft: senza le versioni precedenti né il contenuto del genitore. */
+export function draftFormat(f) {
+  const { history, parent, ...rest } = f;
+  return { ...rest, rev: f.rev ?? 1, hash: formatHash(f), ...(parent ? { parent: { id: parent.id, name: parent.name, rev: parent.rev } } : {}) };
+}
+
+/** Nuova versione: la versione attuale si congela nella storia e si continua a modificare la successiva. */
+export function newVersion(f) {
+  f.history = [...(f.history ?? []), { rev: f.rev ?? 1, at: Date.now(), data: structuredClone(formatContent(f)) }].slice(-50);
+  f.rev = (f.rev ?? 1) + 1;
+  return f;
+}
+
+/** Fork: un formato separato con lo stesso contenuto, che ricorda da quale formato e versione viene. */
+export function forkFormat(f) {
+  const content = structuredClone(formatContent(f));
+  return {
+    ...structuredClone(content),
+    id: newId(),
+    name: `${f.name} (fork)`.slice(0, 60),
+    mode: f.mode,
+    version: FORMAT_VERSION,
+    updated: Date.now(),
+    rev: 1,
+    parent: { id: f.id, name: f.name, rev: f.rev ?? 1, data: content },
+  };
+}
+
+/**
+ * Cambiamenti tra due versioni (contenuti): bundle aggiunti, tolti e modificati (carte, rarità, nome), carte singole
+ * aggiunte, tolte o con un'altra rarità, rarità aggiunte o tolte, regole dei pacchetti cambiate.
+ */
+export function formatDiff(a, b) {
+  const rName = (c, id) => c.rarities.find((r) => r.id === id)?.name ?? "No rarity";
+  const multi = (codes) => {
+    const m = new Map();
+    for (const x of codes) m.set(x, (m.get(x) ?? 0) + 1);
+    return m;
+  };
+  const minus = (x, y) => {
+    const out = [];
+    const my = multi(y);
+    for (const [k, n] of multi(x)) for (let i = 0; i < n - (my.get(k) ?? 0); i++) out.push(k);
+    return out;
+  };
+  const oldB = new Map(a.bundles.map((x) => [x.id, x]));
+  const newB = new Map(b.bundles.map((x) => [x.id, x]));
+  const bundles = {
+    added: b.bundles.filter((x) => !oldB.has(x.id)),
+    removed: a.bundles.filter((x) => !newB.has(x.id)),
+    changed: b.bundles.flatMap((x) => {
+      const o = oldB.get(x.id);
+      if (!o) return [];
+      const cardsIn = minus([...x.main, ...x.extra], [...o.main, ...o.extra]);
+      const cardsOut = minus([...o.main, ...o.extra], [...x.main, ...x.extra]);
+      const rarity = rName(a, o.rarity) !== rName(b, x.rarity) ? [rName(a, o.rarity), rName(b, x.rarity)] : null;
+      const renamed = o.name !== x.name ? o.name : null;
+      return cardsIn.length || cardsOut.length || rarity || renamed ? [{ bundle: x, cardsIn, cardsOut, rarity, renamed }] : [];
+    }),
+  };
+  // Carte singole: per codice (con le copie); rarità cambiata = la stessa carta ora in un'altra rarità.
+  const sAdded = minus(b.singles.map((x) => x.code), a.singles.map((x) => x.code));
+  const sRemoved = minus(a.singles.map((x) => x.code), b.singles.map((x) => x.code));
+  const rarityOfCode = (c, code) => c.singles.filter((x) => x.code === code).map((x) => rName(c, x.rarity)).sort().join(", ");
+  const both = [...new Set(b.singles.map((x) => x.code))].filter((code) => a.singles.some((x) => x.code === code));
+  const sRarity = both.flatMap((code) => {
+    const from = rarityOfCode(a, code);
+    const to = rarityOfCode(b, code);
+    return from !== to ? [{ code, from, to }] : [];
+  });
+  const rarities = {
+    added: b.rarities.filter((r) => !a.rarities.some((x) => x.id === r.id)).map((r) => r.name),
+    removed: a.rarities.filter((r) => !b.rarities.some((x) => x.id === r.id)).map((r) => r.name),
+  };
+  const rulesChanged = JSON.stringify(a.rules) !== JSON.stringify(b.rules);
+  const empty = !bundles.added.length && !bundles.removed.length && !bundles.changed.length && !sAdded.length && !sRemoved.length && !sRarity.length && !rarities.added.length && !rarities.removed.length && !rulesChanged;
+  return { bundles, singles: { added: sAdded, removed: sRemoved, rarity: sRarity }, rarities, rulesChanged, empty };
+}
+
 // ---------------------------------------------------------------- oggetti dei due round
 
 /** Oggetti del round (1 = bundle, 2 = singole): { id, rarity, tags, label, codes }. */
 export function roundItems(f, round) {
   return round === 1
-    ? f.bundles.map((b) => ({ id: b.id, rarity: b.rarity, tags: b.tags, label: b.name, codes: [...b.main, ...b.extra], item: b }))
+    ? f.bundles.map((b) => ({ id: b.id, rarity: b.rarity, tags: b.tags, label: b.name, codes: [...b.main, ...b.extra], cover: bundleCover(b), item: b }))
     : f.singles.map((s) => ({ id: s.id, rarity: s.rarity, tags: s.tags, label: getCard(s.code)?.name ?? `#${s.code}`, codes: [s.code], item: s }));
+}
+
+/** Copertina del bundle: la carta scelta dal creatore, altrimenti la prima (Main Deck, poi Extra Deck). */
+export function bundleCover(b) {
+  const all = [...(b.main ?? []), ...(b.extra ?? [])];
+  return b.cover && all.includes(b.cover) ? b.cover : all[0] ?? null;
 }
 
 /** Posizione della rarità (più alta = più rara); senza rarità -1, sotto tutte le altre. */

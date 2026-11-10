@@ -28,6 +28,13 @@ const PET_MIN_FIT = 0.45;
 const PET_COOLDOWN = 1500; // ms tra un colpo e l'altro del proprio Moai
 // Altezza dei supporti di Deck ed Extra Deck nei campi di Master Duel (misurata: piatti, a 1.46 in quasi tutti).
 const PILE_HEIGHT = 1.46;
+// Supporti di Deck ed Extra Deck negli angoli (centro a x = ±27.2, z = ±24.4, ruotati di 20°) e spessore di una carta
+// nella pila (campo inclinato): 40 carte ≈ 2.4 unità, circa come un mazzo vero.
+const PILE_AT = [27.2, 24.4, THREE.MathUtils.degToRad(20)];
+const CARD_THICK = 0.06;
+// Angolo di ogni pila: [sx, sz] (lo schermo ha la destra a -x e l'alto a +z). Il mio Deck in basso a destra, il mio
+// Extra Deck in basso a sinistra; quelli dell'avversario negli angoli opposti in alto.
+const PILE_CORNERS = { deck: [[-1, -1], [1, 1]], extra: [[1, -1], [-1, 1]] };
 
 export class FieldStage {
   /**
@@ -144,6 +151,8 @@ export class FieldStage {
     this.camera.position.set(ox, height, oz);
     this.camera.up.set(0, 0, 1);
     const target = new THREE.Vector3(ox, 0, oz);
+    // Inquadratura dritta (prima dell'inclinazione): serve per mettere il pulsante di Log/Chat sullo schermo.
+    this.camBase = { x: ox, z: oz, height };
     if (this.tilt) {
       // Campo inclinato (come in Master Duel): la griglia delle zone gira di `tilt` gradi attorno alla linea orizzontale
       // che passa per il centro del campo, vista da un occhio sopra il centro della tela alla stessa distanza della
@@ -161,7 +170,11 @@ export class FieldStage {
       // Deck ed Extra Deck sui supporti rialzati: le loro zone salgono all'altezza del supporto (dall'alto non serve,
       // le posizioni in field-3d.css sono misurate così).
       grid.style.transformStyle = "preserve-3d";
+      // isolation: isolate (in duel.css) appiattirebbe il 3D: le zone non salirebbero sopra supporti e pile.
+      grid.style.isolation = "auto";
       grid.style.setProperty("--pile-lift", `${((this.field?.pileHeight ?? PILE_HEIGHT) * ppu) / zoom}px`);
+      this.pilePx = ppu / zoom;
+      this.placePiles();
     }
     this.camera.lookAt(target);
     this.camera.far = height + 500;
@@ -322,21 +335,91 @@ export class FieldStage {
     b.badgeTex.needsUpdate = true;
   }
 
-  /** Sul bordo sinistro della vista, nella metà dell'avversario, sollevato sopra le decorazioni del campo. */
+  /**
+   * In alto a sinistra della vista, sopra il dettaglio della carta (che sta a metà altezza), sollevato sopra le
+   * decorazioni del campo. Con il campo inclinato il pulsante gira insieme alla telecamera: resta dritto verso lo
+   * schermo, nello stesso punto della vista dall'alto.
+   */
   placeLogButton() {
     const b = this.logButton;
-    if (!b || !this.anchors) return;
+    const base = this.camBase;
+    if (!b || !this.anchors || !base) return;
     const y = 20;
     const t = Math.tan(THREE.MathUtils.degToRad(FOV / 2));
-    const halfW = (this.camera.position.y - y) * t * this.camera.aspect;
-    const x = this.camera.position.x + halfW - 4.5; // lo schermo ha la sinistra a +x
+    const halfH = (base.height - y) * t;
+    const halfW = halfH * this.camera.aspect;
+    const x = base.x + halfW - 4.5; // lo schermo ha la sinistra a +x
+    const z = base.z + halfH - 4; // e l'alto a +z
     // Serve spazio a sinistra del tabellone (la Zona Banditi dell'avversario è a x ≈ 25.6).
     const visible = x > 33;
-    b.group.position.set(x, y, 17); // in alto, lontano dal Moai
+    b.group.position.set(x, y, z);
+    b.group.rotation.set(0, 0, 0);
+    if (this.tilt) {
+      const k = -THREE.MathUtils.degToRad(this.tilt);
+      b.group.position.applyAxisAngle(new THREE.Vector3(1, 0, 0), k);
+      b.group.rotation.x = k;
+    }
     b.group.visible = visible;
     if (visible !== b.visible) {
       b.visible = visible;
       b.onVisible?.(visible);
+    }
+  }
+
+  /**
+   * Spessore di Deck ed Extra Deck con il campo inclinato: una pila di carte sul supporto, alta in proporzione al
+   * numero di carte; la carta in cima (nella griglia delle zone) sale sopra la pila.
+   * @param counts { deck: [mio, avversario], extra: [mio, avversario] } (lati dello schermo: 0 in basso)
+   */
+  setPiles(counts) {
+    if (!this.tilt) return;
+    this.pileCounts = counts;
+    if (!this.piles) {
+      const edge = document.createElement("canvas");
+      edge.width = 8;
+      edge.height = 64;
+      const x = edge.getContext("2d");
+      for (let i = 0; i < 64; i++) {
+        x.fillStyle = i % 2 ? "#3b3324" : "#c9b98f";
+        x.fillRect(0, i, 8, 1);
+      }
+      const tex = new THREE.CanvasTexture(edge);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.wrapT = THREE.RepeatWrapping;
+      this.pileEdgeTex = tex;
+      const side = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8 });
+      const top = new THREE.MeshStandardMaterial({ color: 0x2a1a0e, roughness: 0.7 });
+      const geo = new THREE.BoxGeometry(6.9, 1, 10.1);
+      this.piles = {};
+      for (const [kind, corners] of Object.entries(PILE_CORNERS)) {
+        this.piles[kind] = corners.map(([sx, sz]) => {
+          const m = new THREE.Mesh(geo, [side, side, top, top, side, side]);
+          m.position.set(sx * PILE_AT[0], 0, sz * PILE_AT[1]);
+          m.rotation.y = sx * sz * PILE_AT[2];
+          m.visible = false;
+          this.scene.add(m);
+          return m;
+        });
+      }
+    }
+    this.placePiles();
+  }
+
+  placePiles() {
+    if (!this.piles || !this.pileCounts) return;
+    const base = this.field?.pileHeight ?? PILE_HEIGHT;
+    const grid = this.anchors?.center.parentElement;
+    for (const [kind, meshes] of Object.entries(this.piles)) {
+      meshes.forEach((m, side) => {
+        const n = this.pileCounts[kind]?.[side] ?? 0;
+        // Fino a una carta la pila non si vede: c'è solo la carta in cima.
+        const hgt = Math.max(0, n - 1) * CARD_THICK;
+        m.visible = hgt > 0;
+        m.scale.y = Math.max(hgt, 0.001);
+        m.position.y = base + hgt / 2;
+        const zone = grid?.querySelector(`.zone.${kind}.side-${side}`);
+        zone?.style.setProperty("--stack-lift", `${hgt * (this.pilePx ?? 0)}px`);
+      });
     }
   }
 
@@ -468,9 +551,10 @@ export class FieldStage {
     // La griglia delle zone torna dritta (per esempio se il campo 3D non si carica e resta quello 2D).
     const grid = this.anchors?.center.parentElement;
     if (grid) {
-      grid.style.transform = grid.style.transformOrigin = grid.style.transformStyle = "";
+      grid.style.transform = grid.style.transformOrigin = grid.style.transformStyle = grid.style.isolation = "";
       grid.parentElement.style.perspective = grid.parentElement.style.perspectiveOrigin = "";
       grid.style.removeProperty("--pile-lift");
+      grid.querySelectorAll(".zone.deck, .zone.extra").forEach((z) => z.style.removeProperty("--stack-lift"));
     }
     this.timers.forEach(clearTimeout);
     this.resize.disconnect();

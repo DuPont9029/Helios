@@ -21,7 +21,7 @@ import {
 import { canRecordVideo, startVideo } from "./video-capture.js";
 import { showComboSchema } from "./combo-view.js";
 import { renderSheets, decklistPicker } from "./combo-sheets.js";
-import { openDecklistEditor, openDeckPicker, openCardCollector } from "./editor.js";
+import { openDecklistEditor, openDeckPicker, openCardCollector, openCardChooser } from "./editor.js";
 import { BASE_READY, baseCombos } from "../data/base-content.js";
 import { DIFFICULTIES, FORMATS, comboStats, endBoard, comboCodes, popularStarters, boardFromSnapshot } from "./combo-meta.js";
 
@@ -523,6 +523,12 @@ async function importCombo() {
  * @param filter (card) -> bool
  */
 export function pickCard({ title = "Choose a card", suggest = [], filter = () => true, hint = "", pool = null } = {}) {
+  // Carte della decklist: si sceglie nella schermata del deck builder (regola del progetto: mai elenchi di carte).
+  if (pool) {
+    const codes = pool.filter((code) => getCard(code));
+    const extra = codes.filter((code) => isExtraDeckCard(getCard(code)));
+    return openCardChooser({ main: codes.filter((code) => !isExtraDeckCard(getCard(code))), extra, title, subtitle: hint || "Click a card to choose it", filter });
+  }
   const input = h("input.input", { placeholder: pool ? "Filter by name or text…" : "Search the card database…", autocomplete: "off" });
   const list = h("div.announce-list.card-search-list");
   const ordered = pool ? sortDeckPart(uniq(pool)).map(getCard).filter((c) => c && filter(c)) : null;

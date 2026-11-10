@@ -131,6 +131,7 @@ export class DuelView {
         const free = !e.target.closest(".zone, .card, button, .hand, .lp");
         this.main.classList.toggle("over-log", free && !!(this.stage?.overLogButton(e.clientX, e.clientY) || this.stage?.overPet(e.clientX, e.clientY)));
       });
+      if (this.board.snapshot) this.syncPiles(this.board.snapshot);
       for (let p = 0; p < 2; p++) if (this.lp[p]) this.stage.syncLP(this.board.side(p), this.lp[p], this.startLP);
       this.main.classList.remove("loading3d");
       this.main.dataset.field = choice.name;
@@ -145,6 +146,18 @@ export class DuelView {
       this.main.classList.remove("field3d", "loading3d");
       this.log({ text: `3D field "${choice.name}" could not be loaded: using the standard field.`, cls: "warn" });
     }
+  }
+
+  /** Spessore di Deck ed Extra Deck sul campo 3D inclinato (lati dello schermo: 0 = in basso). */
+  syncPiles(snap) {
+    if (!this.stage || !snap) return;
+    const counts = { deck: [0, 0], extra: [0, 0] };
+    for (let p = 0; p < 2; p++) {
+      const side = this.board.side(p);
+      counts.deck[side] = snap.players[p].deck;
+      counts.extra[side] = snap.players[p].extra.length;
+    }
+    this.stage.setPiles(counts);
   }
 
   /** Modo della catena in questo momento: quello tenuto premuto con il mouse, altrimenti quello scelto. */
@@ -187,7 +200,18 @@ export class DuelView {
     this.peek.show(code);
     this.peekEl.classList.add("show");
     this.peekSticky = sticky;
+    // Aperta con una finestra già aperta (una carta cliccata nell'elenco del Cimitero, in una scelta...): la carta
+    // si vede sopra la finestra. Si nasconde solo se una finestra si apre dopo, sopra una carta guardata prima.
+    this.peekOverPopup = this.popupOpen();
     this.syncPeekMini();
+  }
+
+  /** C'è una finestra aperta? (anche quelle ridotte a icona contano come chiuse) o una richiesta compatta. */
+  popupOpen() {
+    return (
+      [...document.querySelectorAll(".modal-backdrop")].some((b) => !b.classList.contains("minimized") && !b.classList.contains("closing")) ||
+      !!document.querySelector(".prompt-pop")
+    );
   }
 
   /**
@@ -195,16 +219,17 @@ export class DuelView {
    * la finestra a icona.
    */
   syncPeekMini() {
-    // Finestre (anche quelle ridotte a icona contano come chiuse) e richieste compatte (catena, "usare l'effetto?").
-    const popup =
-      [...document.querySelectorAll(".modal-backdrop")].some((b) => !b.classList.contains("minimized") && !b.classList.contains("closing")) ||
-      !!document.querySelector(".prompt-pop");
-    this.peekEl?.classList.toggle("under-popup", popup);
+    const popup = this.popupOpen();
+    if (!popup) this.peekOverPopup = false;
+    this.peekEl?.classList.toggle("under-popup", popup && !this.peekOverPopup);
+    // Carta guardata sopra una finestra: la finestra si sposta a destra per non finirci sotto.
+    document.body.classList.toggle("peek-beside", popup && !!this.peekOverPopup && !!this.peekEl?.classList.contains("show"));
   }
 
   hidePeek() {
     this.peekEl?.classList.remove("show");
     this.peekSticky = false;
+    document.body.classList.remove("peek-beside");
   }
 
   /**
@@ -544,9 +569,18 @@ export class DuelView {
     // Medaglione al centro del campo (turno + fase) e bagliore dal lato di chi è di turno.
     const short = { "Main Phase 1": "Main 1", "Main Phase 2": "Main 2", "Draw Phase": "Draw", "Standby Phase": "Standby", "Battle Phase": "Battle", "Damage Step": "Damage", "End Phase": "End" };
     const name = PHASE_NAMES[phase] ?? "";
+    // Si ridisegna solo quando cambiano turno, fase o giocatore: ogni medaglione nuovo rifà l'animazione d'entrata,
+    // e setTurn arriva a ogni aggiornamento del campo (il medaglione "pulsava" di continuo).
+    const key = `${turn}:${turnPlayer === this.me}:${phase}`;
+    if (key === this.medallionKey) return this.syncTurnGlow(turn, turnPlayer);
+    this.medallionKey = key;
     clear(this.medallionEl).append(
       turn ? h(`div.medallion${turnPlayer === this.me ? ".mine" : ".theirs"}`, { title: "Phase actions" }, h("b", `Turn ${turn}`), h("span", short[name] ?? name)) : ""
     );
+    this.syncTurnGlow(turn, turnPlayer);
+  }
+
+  syncTurnGlow(turn, turnPlayer) {
     this.main?.classList.toggle("turn-me", !!turn && turnPlayer === this.me);
     this.main?.classList.toggle("turn-op", !!turn && turnPlayer !== this.me);
   }
@@ -1214,6 +1248,7 @@ export class DuelView {
 
   render(snapshot) {
     this.board.render(snapshot);
+    this.syncPiles(snapshot);
     this.turn = snapshot.turn;
     this.turnPlayer = snapshot.turnPlayer;
     this.setTurn(snapshot.turn, snapshot.turnPlayer, snapshot.phase);
@@ -1263,6 +1298,7 @@ export class DuelView {
   }
 
   destroy() {
+    document.body.classList.remove("peek-beside");
     this.destroyed = true;
     this.stage?.dispose();
     document.removeEventListener("contextmenu", this.contextHandler);
