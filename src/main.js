@@ -50,6 +50,8 @@ const app = {
 // Non vale nell'editor di un mazzo (lì il destro sposta le carte al Side) né nei duelli; con una finestra
 // aperta o nei campi di testo resta il comportamento normale.
 document.addEventListener("contextmenu", (e) => {
+  // Una pagina che usa il tasto destro per sé (es. il binder del draft) chiama preventDefault: niente "indietro".
+  if (e.defaultPrevented) return;
   if (document.querySelector(".modal-backdrop:not(.closing)")) return;
   if (e.target.closest?.("input, textarea, select, [contenteditable]")) return;
   // Deck editor aperto sopra la pagina (Side Deck, decklist di una combo): il destro è suo.

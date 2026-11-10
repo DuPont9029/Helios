@@ -337,7 +337,9 @@
 .rarity-step .btn { padding: 0 10px; }
 /* copertina del bundle: la carta scelta */
 .draft-stack.cover-pick { cursor: pointer; }
-.draft-stack.is-cover .card { outline: 3px solid var(--gold); outline-offset: 1px; }
+/* Bordo della copertina disegnato dentro la carta: fuori veniva tagliato dai contenitori e coperto dalle carte vicine. */
+.draft-stack.is-cover::after { content: ""; position: absolute; inset: 0; border: 3px solid var(--gold); border-radius: 5px; box-shadow: 0 0 8px color-mix(in srgb, var(--gold) 55%, transparent); pointer-events: none; z-index: 1; }
+.draft-stack .cover-mark { z-index: 2; }
 .draft-stack .cover-mark { position: absolute; left: 2px; top: 2px; padding: 0 4px; font: 700 9px var(--mono); color: var(--on-gold, #000); background: var(--gold); border-radius: 3px; pointer-events: none; }
 .draft-bundle-cover { flex: none; width: 54px; }
 .draft-bundle-head { align-items: center; }

@@ -60,10 +60,10 @@ export function withoutCopies(codes, minus) {
 /**
  * Vista del binder durante il draft: il mazzo che si sta costruendo, con le schede "Deck" (Main ed Extra Deck nella
  * stessa schermata) e "Side". Una scelta va nella scheda aperta in quel momento (vedi draft-table.js); un clic su
- * una carta la sposta tra Deck e Side. state: { tab: "deck" | "side", grouped, side: [codici nel Side] }.
+ * una carta ne mostra i dettagli (onDetail), il tasto destro la sposta tra Deck e Side. state: { tab: "deck" | "side", grouped, side: [codici nel Side] }.
  * rarityOf(id) → { name, color } per i bundle.
  */
-export function poolView(codes, binder, state, { onHover, onContext, rarityOf = () => null, empty = "No cards", rerender, fresh = null }) {
+export function poolView(codes, binder, state, { onHover, onDetail, rarityOf = () => null, empty = "No cards", rerender, fresh = null }) {
   const side = state.side ?? (state.side = []);
   const deck = withoutCopies(codes, side);
   const main = deck.filter((c) => !isExtra(c));
@@ -83,7 +83,7 @@ export function poolView(codes, binder, state, { onHover, onContext, rarityOf = 
       ? h("label.check.pool-grouping", h("input", { type: "checkbox", checked: !!state.grouped, onchange: (e) => { state.grouped = e.target.checked; rerender(); } }), "Group by bundle")
       : null
   );
-  const opts = { onClick: move, onHover, onContext, fresh };
+  const opts = { onClick: onDetail, onHover, onContext: move, fresh };
   const cardsOf = (list) => {
     if (!state.grouped || !hasBundles) return h("div.pool-cards", cardStacks(list, opts));
     return h(
@@ -101,7 +101,7 @@ export function poolView(codes, binder, state, { onHover, onContext, rarityOf = 
       })
     );
   };
-  const hint = h("p.muted.small.pool-hint", onSide ? "Picks go to your Side · click a card to put it in your Deck · right-click: details" : "Picks go to your Deck · click a card to move it to your Side · right-click: details");
+  const hint = h("p.muted.small.pool-hint", onSide ? "Picks go to your Side · click a card: details · right-click: put it in your Deck" : "Picks go to your Deck · click a card: details · right-click: move it to your Side");
   let body;
   if (onSide) body = side.length ? cardsOf(side) : h("p.muted.small.pool-empty", "Nothing in your Side yet.");
   else if (!deck.length) body = h("p.muted.small.pool-empty", empty);
