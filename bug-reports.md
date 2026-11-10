@@ -27,3 +27,7 @@
 - [ ] il numero di carte in mano si resettano tra test duel
 - [ ] ![alt text](image-4.png) alzare il bottone che apre il log per evitare che venga coperto dalla schermata della carta come in figura
 - [ ]  ![alt text](image-5.png) alcune schermate che interagiscono con il deck non lo fanno tramite il deck editor
+- [ ]  ![alt text](image-6.png) bug visuale quando si sceglie una copertina per un bundle l'outline è in parte offuscata
+- [ ]  durante i draft il right click offre di uscire dalla pagina al posto di fare quello che dovrebbe ossia aprire la cacrta cliccata in dettaglio scambiare la funzione di questi due bottoni dopo avere risolto il problema per un'esperienza più coerente
+- [ ] bug visivo ![alt text](image-7.png) more filters non si può scrollare e dunque appare taglato bruscamente
+- [ ] il drag and drop delle rarità delle carte singole nel draft editor smette di funzionare per rarità conteneti abbastanza carte (sulla 50ina)
