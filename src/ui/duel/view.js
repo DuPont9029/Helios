@@ -183,6 +183,8 @@ export class DuelView {
 
   /** Pulsanti del mouse tenuti premuti (e.buttons): destro = never, sinistro = always ask. */
   onPointerButtons(e) {
+    // Tocco: su Android il tocco lungo genera anche un "tasto destro" (contextmenu), vedi onContextMenu.
+    if (e.pointerType === "touch") this.lastTouch = performance.now();
     const held = e.buttons & 2 ? "never" : e.buttons & 1 ? "always" : null;
     if (held === this.heldChain) return;
     this.heldChain = held;
@@ -683,6 +685,8 @@ export class DuelView {
     const inDuel = this.el.contains(e.target) || e.target.closest?.(".modal-backdrop, .action-menu, .prompt-pop");
     if (!inDuel) return;
     e.preventDefault();
+    // Il tocco lungo serve a guardare la carta: non chiude menu e non rifiuta la richiesta come il tasto destro.
+    if (performance.now() - (this.lastTouch ?? -1e9) < 2000) return;
     if (document.querySelector(".action-menu")) return this.closeActionMenu();
     // Finestra di scelta ridotta: il tasto destro la riapre invece di rifiutare la richiesta.
     const minimized = [...document.querySelectorAll(".modal-backdrop.minimized:not(.closing)")].at(-1);

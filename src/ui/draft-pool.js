@@ -5,6 +5,7 @@ import { h, icon } from "./dom.js";
 import { cardFace } from "./card.js";
 import { getCard, isExtraDeckCard } from "../data/db.js";
 import { sortDeckPart } from "../deck/deck.js";
+import { onLongPress, isMobile } from "./mobile.js";
 
 const isExtra = (c) => isExtraDeckCard(getCard(c));
 
@@ -40,7 +41,11 @@ export function cardStacks(codes, { onClick, onHover, onContext, fresh = null } 
       k > 1 ? h("b.draft-copies", `×${k}`) : null,
       fresh?.has(code) ? h("b.pool-new", "New") : null
     );
-    if (onContext) el.addEventListener("contextmenu", (e) => { e.preventDefault(); onContext(code); });
+    if (onContext) {
+      el.addEventListener("contextmenu", (e) => { e.preventDefault(); onContext(code); });
+      // Col dito (anche su iPhone, dove non c'è il tasto destro): la pressione lunga fa lo stesso.
+      onLongPress(el, () => onContext(code));
+    }
     return el;
   });
 }
@@ -101,7 +106,9 @@ export function poolView(codes, binder, state, { onHover, onDetail, rarityOf = (
       })
     );
   };
-  const hint = h("p.muted.small.pool-hint", onSide ? "Picks go to your Side · click a card: details · right-click: put it in your Deck" : "Picks go to your Deck · click a card: details · right-click: move it to your Side");
+  // Sul telefono si tocca e si tiene premuto invece di clic e tasto destro.
+  const [tap, hold] = isMobile() ? ["tap", "hold"] : ["click", "right-click"];
+  const hint = h("p.muted.small.pool-hint", onSide ? `Picks go to your Side · ${tap} a card: details · ${hold}: put it in your Deck` : `Picks go to your Deck · ${tap} a card: details · ${hold}: move it to your Side`);
   let body;
   if (onSide) body = side.length ? cardsOf(side) : h("p.muted.small.pool-empty", "Nothing in your Side yet.");
   else if (!deck.length) body = h("p.muted.small.pool-empty", empty);

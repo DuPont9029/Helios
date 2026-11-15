@@ -25,6 +25,10 @@ const SUN = 24; // tocco: sul campo di Helios l'onda del sole
 const { x: PET_X, y: PET_Y, z: PET_Z, scale: PET_SCALE } = PET; // il mio a +x (sinistra dello schermo)
 const PET_ROOM = 47; // sotto, i Moai si rimpiccioliscono
 const PET_MIN_FIT = 0.45;
+// In verticale: i Moai fuori dal campo, sopra e sotto (il bordo del campo con le pile è a circa z = ±31).
+const PET_PORTRAIT_X = 20;
+const PET_PORTRAIT_Z = 37;
+const PET_PORTRAIT_FIT = 0.75;
 const PET_COOLDOWN = 1500; // ms tra un colpo e l'altro del proprio Moai
 // Altezza dei supporti di Deck ed Extra Deck nei campi di Master Duel (misurata: piatti, a 1.46 in quasi tutti).
 const PILE_HEIGHT = 1.46;
@@ -228,16 +232,23 @@ export class FieldStage {
     const room = Math.min(cx + halfW, halfW - cx);
     // Con poco spazio ai lati (finestra stretta) i Moai si rimpiccioliscono e si stringono verso il bordo; spariscono
     // solo se non c'è proprio posto.
-    const fit = Math.min(1, room / PET_ROOM);
+    let fit = Math.min(1, room / PET_ROOM);
+    // Schermo in verticale (telefono): ai lati non c'è posto, i Moai stanno sotto e sopra il campo, il mio in basso a
+    // sinistra e quello dell'avversario in alto a destra (nella fascia libera tra il campo e le mani).
+    const halfH = halfW / this.camera.aspect;
+    const roomZ = halfH - Math.abs(this.camera.position.z - (this.camBase?.z ?? this.camera.position.z));
+    const portrait = this.camera.aspect < 0.8 && roomZ >= PET_PORTRAIT_Z + 4;
+    if (portrait) fit = PET_PORTRAIT_FIT;
     p.visible = fit >= PET_MIN_FIT;
     const [me, opp] = p.list;
     for (const m of p.list) m.group.visible = p.visible;
     if (!p.visible) return;
     // Sempre allo stesso punto rispetto al tabellone (a tutto schermo non scivola verso il bordo); più vicino al centro
     // solo se la vista non arriva fin lì.
-    const x = Math.min(PET_X, room - 7.1 * fit);
-    me.group.position.set(x, PET_Y, PET_Z[0]);
-    opp.group.position.set(-x, PET_Y, PET_Z[1]);
+    const x = portrait ? PET_PORTRAIT_X : Math.min(PET_X, room - 7.1 * fit);
+    const z = portrait ? [-PET_PORTRAIT_Z, PET_PORTRAIT_Z] : PET_Z;
+    me.group.position.set(x, PET_Y, z[0]);
+    opp.group.position.set(-x, PET_Y, z[1]);
     for (const m of p.list) {
       m.group.scale.setScalar(PET_SCALE * fit);
       m.setTarget(new THREE.Vector3(0, 0, 0));
@@ -245,8 +256,8 @@ export class FieldStage {
     opp.body.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(me.body.quaternion);
     // Il campo di Helios ha i basamenti dei Moai: seguono i Moai.
     this.field?.placePets?.([
-      [x, PET_Z[0], fit],
-      [-x, PET_Z[1], fit],
+      [x, z[0], fit],
+      [-x, z[1], fit],
     ]);
   }
 

@@ -2,6 +2,7 @@
 import { h, clear, download, pickFile, icon, rect, scrollText, dragAutoScroll } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
+import { isMobile, onLongPress, openCardSheet, mobileTabs } from "./mobile.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
@@ -1228,6 +1229,21 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   let longPressed = false;
   let pointerKind = "mouse";
 
+  /** Telefono: scheda di una carta del mazzo, con le azioni che sul desktop sono su clic, tasto destro e pressione lunga. */
+  function deckCardSheet(code, p, index) {
+    const acts = [];
+    if (pick) acts.push({ label: p === "hand" ? "Out of the hand" : "To the hand", primary: true, run: () => pickMove(p, index, p === "hand" ? null : "hand") });
+    else if (side) acts.push({ label: p === "side" ? "Move to Deck" : "Move to Side", primary: true, run: () => moveCard(p, index, p === "side" ? "main" : "side") });
+    else {
+      acts.push({ label: "Remove", danger: true, run: () => removeAt(p, index) });
+      if (pool) acts.push({ label: "Artwork", run: () => chooseArt(code) });
+      else if (collect?.contextNext) acts.push({ label: "Next part", run: () => collectMove(p, index, PARTS[(PARTS.indexOf(p) + 1) % PARTS.length]) });
+      else if (!collect) acts.push({ label: p === "side" ? "To Deck" : "To Side", run: () => moveCard(p, index, p === "side" ? "main" : "side") });
+      acts.push({ label: "+1 copy", primary: true, run: () => addCard(code, p, index + 1) });
+    }
+    openCardSheet(code, acts);
+  }
+
   function deckCard(code, p, index) {
     if (view) {
       // Si evidenziano solo tante copie quante indicate (es. una delle tre copie nel mazzo).
@@ -1236,6 +1252,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (left > 0) markLeft.set(code, left - 1);
       const el = h(`div.deck-card${mark && left > 0 ? `.mark-${mark.kind}` : ""}`, cardFace(code), regionBadge(code));
       el.addEventListener("mouseenter", () => detail.show(code));
+      // Telefono: niente pannello dei dettagli, la pressione lunga apre la scheda della carta.
+      onLongPress(el, () => openCardSheet(code));
       // Scelta di una carta (openCardChooser): un clic la sceglie; quelle che non vanno bene restano grigie.
       if (view.choose) {
         const ok = !view.choose.filter || view.choose.filter(getCard(code));
@@ -1259,11 +1277,14 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (e.button !== 0) return;
       start = [e.clientX, e.clientY];
       cancel();
-      if (side || pick) return; // Side Deck e scelta di carte: niente copie aggiunte con la pressione lunga
+      // Telefono: la pressione lunga apre la scheda della carta con le azioni del tasto destro.
+      const sheet = e.pointerType === "touch" && isMobile();
+      if (!sheet && (side || pick)) return; // Side Deck e scelta di carte: niente copie aggiunte con la pressione lunga
       timer = setTimeout(() => {
         timer = null;
         longPressed = true;
-        addCard(code, p, index + 1); // un'altra copia accanto, con i limiti di addCard
+        if (sheet) deckCardSheet(code, p, index);
+        else addCard(code, p, index + 1); // un'altra copia accanto, con i limiti di addCard
       }, LONG_PRESS);
     });
     el.addEventListener("pointermove", (e) => {
@@ -1548,6 +1569,10 @@ export function showEditor(app, { side = null, embed = null } = {}) {
           : h("div.result-card", { draggable: true, title: c.name }, cardFace(c.code), pool ? h("b.pool-left", `×${poolLeft(c.code)}`) : limitBadge(c.code), regionBadge(c.code), pool ? null : bookmarkButton(c.code));
         tile.addEventListener("mouseenter", () => detail.show(c.code));
         tile.addEventListener("click", () => addCard(c.code));
+        onLongPress(tile, () => openCardSheet(c.code, [
+          ...(pool || collect ? [] : [{ label: "Add to Side", run: () => addCard(c.code, "side") }]),
+          { label: "Add", primary: true, run: () => addCard(c.code) },
+        ]));
         tile.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           addCard(c.code, pool ? null : "side");
@@ -1569,6 +1594,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
         : h("div.result-card", { draggable: true, title: c.name }, cardFace(code), h("b.pool-left", `×${poolLeft(code)}`));
       el.addEventListener("mouseenter", () => detail.show(code));
       el.addEventListener("click", () => addCard(code));
+      onLongPress(el, () => openCardSheet(code, [{ label: "Add", primary: true, run: () => addCard(code) }]));
       el.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code })));
       return el;
     };
@@ -1744,6 +1770,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : pool ? poolToolbar : embed ? embedToolbar : toolbar,
     h("div.editor-body", detail.el, dragAutoScroll(h("div.deck-area", area)), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
   );
+  // Telefono: un pannello alla volta, Deck o ricerca (o le istruzioni del Side Deck e della scelta), con le schede in basso.
+  if (!view) mobileTabs(page, [{ id: "deck", label: "Deck", icon: "style" }, side || pick ? { id: "help", label: "Help", icon: "help" } : { id: "search", label: "Search", icon: "search" }]);
   root.append(page);
   openDeck(single ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
   if (!side && !pick && !view) runSearch();

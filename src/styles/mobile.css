@@ -1,0 +1,208 @@
+/* Telefono in verticale (html.mobile, vedi ui/mobile.js): niente zoom, dimensioni vere dello schermo.
+   Tutte le regole stanno sotto html.mobile: il layout desktop non cambia. */
+
+html.mobile { -webkit-text-size-adjust: 100%; }
+html.mobile body { overscroll-behavior: none; }
+
+/* ------------------------------------------------------------------ duello */
+/* Il tocco lungo apre la carta: niente menu del browser né selezione del testo. */
+html.mobile .duel-screen, html.mobile .card-peek, html.mobile .modal-backdrop { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+html.mobile .duel-screen input, html.mobile .modal-backdrop input { -webkit-user-select: text; user-select: text; }
+html.mobile .duel-screen {
+  /* Il campo (7 colonne) riempie la larghezza; l'altezza che resta va alle due mani. */
+  --zh: min(calc((var(--vw) * 100 - 6px) / 7.9), calc((var(--vh) * 100 - 230px) / 5.6));
+  --cw: calc(var(--zh) / 1.46 * 0.9);
+  --hand-cw: min(68px, calc(var(--vw) * 17));
+  --hand-w: calc(var(--vw) * 100 - 16px);
+  --lp-w: 0px;
+  --dock-w: 0px;
+}
+/* In alto: la mano dell'avversario a sinistra, i suoi LP a destra. */
+html.mobile .hud-top { min-height: 58px; padding: 6px 150px 0 8px; justify-content: flex-start; }
+html.mobile .hand-1 { justify-content: flex-start; }
+html.mobile .hand-1 .card { width: 26px; margin: 0 -3px; }
+/* In basso: LP e comandi su una riga, sotto la mia mano grande. */
+html.mobile .hud-bottom { min-height: calc(var(--hand-cw) * 1.46 + 64px); padding: 0 6px 6px; align-items: flex-end; }
+html.mobile .hand-0 .card {
+  width: var(--hand-cw);
+  margin: 0 calc(min(0px, (var(--hand-w) - var(--n, 5) * var(--hand-cw) * 1.02) / var(--n, 5) / 2));
+}
+html.mobile .hand-0 .card:hover { transform: none; }
+html.mobile .hand-0 .card:active { transform: translateY(-14%); z-index: 5; }
+
+/* LP più compatti */
+html.mobile .lp { gap: 6px; }
+html.mobile .lp-me { left: 8px; bottom: calc(var(--hand-cw) * 1.46 + 14px); }
+html.mobile .lp-op { right: 8px; top: 6px; }
+html.mobile .avatar { width: 30px; height: 30px; font-size: 15px; border-width: 1px; }
+html.mobile .lp-body { min-width: 0; }
+html.mobile .lp-name { font-size: 9px; max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html.mobile .lp-track { width: 96px; height: 4px; margin: 2px 0; }
+html.mobile .lp-num { font-size: 20px; }
+html.mobile .lp-row { gap: 6px; }
+html.mobile .lp-clock { padding: 1px 5px; font-size: 12px; }
+html.mobile .lp-clock .icon, html.mobile .lp-effects .icon { font-size: 13px; }
+html.mobile .lp-effects { padding: 1px 5px; font-size: 11px; }
+html.mobile .lp-me .lp-pop { left: 40px; top: -26px; } html.mobile .lp-op .lp-pop { right: 40px; bottom: -26px; }
+html.mobile .lp-pop { font-size: 20px; }
+
+/* Catena e impostazioni: sulla riga dei miei LP, a destra. */
+html.mobile .duel-dock { right: 8px; bottom: calc(var(--hand-cw) * 1.46 + 14px); gap: 6px; }
+html.mobile .gear-btn, html.mobile .dock-btn { width: 38px; height: 38px; font-size: 20px; }
+html.mobile .chain-cycle { height: 38px; padding: 0 10px; gap: 6px; }
+html.mobile .chain-cycle b { font-size: 13px; }
+html.mobile .settings-menu { min-width: 0; width: min(280px, calc(var(--vw) * 100 - 16px)); }
+
+/* Stato e partita: in alto sotto i LP dell'avversario. */
+html.mobile .duel-info { top: 62px; right: 8px; transform: none; max-width: 60%; }
+html.mobile .log-btn { width: 38px; height: 38px; }
+html.mobile .duel-main.field3d .log-btn { top: auto; bottom: calc(var(--hand-cw) * 1.46 + 64px); left: 8px; }
+
+/* Scelte sul campo: sopra la riga dei LP. */
+html.mobile .pick-bar { bottom: calc(var(--hand-cw) * 1.46 + 62px); max-width: calc(100% - 16px); flex-wrap: wrap; justify-content: center; }
+html.mobile .stat { font-size: max(9px, calc(var(--zh) * 0.17)); padding: 0 3px; }
+html.mobile .stat-level { font-size: max(8px, calc(var(--zh) * 0.15)); }
+html.mobile .zone-badge { font-size: 9px; padding: 0 4px; }
+
+/* Log e Chat: cassetto quasi a tutta larghezza. */
+html.mobile .duel-drawer { width: 88%; }
+html.mobile .center-menu { min-width: 0; width: min(300px, calc(var(--vw) * 100 - 24px)); }
+
+/* Carta toccata o tenuta premuta: in alto, a tutta larghezza (sotto restano la mano e il menu delle azioni). */
+html.mobile .card-peek { left: 8px; right: 8px; top: 6px; bottom: auto; width: auto; transform: translateY(-12px); }
+html.mobile .card-peek.show { transform: none; }
+html.mobile .card-peek .detail-panel { flex-direction: row; align-items: flex-start; max-height: 40vh; padding: 10px; }
+html.mobile .card-peek .detail-card { width: 32%; align-self: flex-start; }
+html.mobile .card-peek .detail-scroll { flex: 1; max-height: calc(40vh - 20px); }
+
+/* Barra sopra le finestre: a tutta larghezza. */
+html.mobile .duel-float { left: 6px; right: 6px; top: 6px; max-width: none; padding: 4px 6px; }
+html.mobile .float-row { justify-content: center; gap: 6px; }
+
+/* ------------------------------------------------------------------ home */
+html.mobile .home { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto auto; }
+html.mobile .home-head { flex-wrap: wrap; gap: 8px 10px; padding: 14px 14px 0; }
+html.mobile .home-head .logo { font-size: 26px; margin-right: auto; }
+html.mobile .logo small { font-size: 11px; }
+html.mobile .beta-badge { font-size: 9px; padding: 1px 5px; margin-left: 6px; }
+html.mobile .home-head .btn.round { width: 38px; height: 38px; font-size: 19px; }
+html.mobile .home-user { order: 1; flex-basis: 100%; margin: 0; text-align: left; font-size: 10px; display: flex; align-items: center; gap: 8px; }
+html.mobile .home-user b { display: inline; font-size: 12px; }
+html.mobile .menu { grid-column: 1; grid-row: 2; padding: 12px 22px; gap: 10px; }
+html.mobile .menu-title { font-size: clamp(30px, calc(var(--vw) * 10), 44px); }
+/* senza hover la descrizione resta visibile */
+html.mobile .menu-sub { max-height: 60px; opacity: 1; font-size: 10px; }
+html.mobile .menu-item:hover { transform: none; }
+html.mobile .emblem { grid-column: 1; grid-row: 2; width: calc(var(--vw) * 70); transform: translateX(32%) scale(1.5); opacity: 0.55; }
+html.mobile .home-side { grid-column: 1; grid-row: 3; justify-self: stretch; padding: 0 12px 12px; }
+html.mobile .home-deck { transform: none; min-width: 0; padding: 10px 12px 10px 10px; gap: 12px; }
+html.mobile .home-deck-card { width: 60px; }
+html.mobile .home-foot { padding: 8px 14px; font-size: 9px; gap: 2px 12px; }
+/* "Right-click: …": sul telefono non c'è il tasto destro (le finestre hanno il pulsante) */
+html.mobile .decline-hint { display: none; }
+
+/* ------------------------------------------------------------------ schede in basso (ui/mobile.js: mobileTabs) */
+.m-tabs { display: none; }
+html.mobile .m-tabs {
+  display: flex; flex: none; margin: 0 -12px -12px; border-top: 1px solid var(--line-strong); background: rgba(6, 7, 11, 0.96);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+html.mobile .m-tab {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 7px; border: 0; background: none;
+  color: var(--muted); font: 700 11px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+}
+html.mobile .m-tab .icon { font-size: 22px; }
+html.mobile .m-tab.on { color: var(--accent); box-shadow: inset 0 2px 0 var(--accent); }
+
+/* ------------------------------------------------------------------ pagine */
+html.mobile .page { padding: 12px; gap: 12px; }
+html.mobile .page-head { gap: 10px; padding-bottom: 8px; flex-wrap: wrap; }
+html.mobile .page-head h1 { font-size: 22px; }
+html.mobile .page-back { width: 38px; height: 38px; font-size: 19px; }
+html.mobile .online-grid, html.mobile .hdpc-grid, html.mobile .combo-setup, html.mobile .card-box.sheet-head,
+html.mobile .card-box.hdpc-setup { grid-template-columns: minmax(0, 1fr); }
+html.mobile .settings-grid, html.mobile .row-group, html.mobile .draft-formats, html.mobile .draft-bundles, html.mobile .draft-runs,
+html.mobile .ol-body, html.mobile .used-cards, html.mobile .combo-how-points { grid-template-columns: minmax(0, 1fr); }
+html.mobile .combo-start-grid, html.mobile .combo-start-grid.two { grid-template-columns: minmax(0, 1fr); }
+html.mobile .combo-list:has(.cc-card) { grid-template-columns: minmax(0, 1fr); }
+html.mobile .form-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+html.mobile .draft-name { min-width: 0; }
+html.mobile .room-code { font-size: 30px; letter-spacing: 0.15em; }
+html.mobile .seed-words { grid-template-columns: repeat(2, 1fr); padding-left: 24px; }
+
+/* Finestre: quasi a tutta larghezza, con i pulsanti grandi abbastanza per il dito. */
+html.mobile .modal-backdrop { padding: 8px; }
+html.mobile .modal { width: 100% !important; max-width: 100%; max-height: calc(var(--vh) * 100 - 16px); padding: 16px; }
+html.mobile .modal-title { font-size: 18px; }
+html.mobile .modal-actions .btn { min-height: 40px; }
+
+/* Scheda della carta (ui/mobile.js: openCardSheet): immagine e testo, azioni sotto. */
+html.mobile .modal.card-sheet .detail-panel { display: flex; flex-direction: column; gap: 10px; padding: 0; background: none; border: 0; clip-path: none; min-height: 0; }
+html.mobile .modal.card-sheet .detail-card { width: 48%; }
+html.mobile .modal.card-sheet .detail-scroll { min-height: 0; }
+html.mobile .modal.card-sheet .modal-actions { justify-content: stretch; }
+html.mobile .modal.card-sheet .modal-actions .btn { flex: 1; }
+
+/* ------------------------------------------------------------------ elenco dei mazzi */
+html.mobile .decks { padding: 12px; gap: 12px; }
+html.mobile .decks-head h1 { font-size: 26px; }
+html.mobile .decks-num { font-size: 24px; }
+html.mobile .decks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+
+/* ------------------------------------------------------------------ deck builder */
+html.mobile .editor { padding: 8px 12px 12px; gap: 8px; }
+html.mobile .editor-toolbar { gap: 6px; }
+html.mobile .editor-toolbar > .select { min-width: 0; flex: 1 1 140px; }
+html.mobile .editor-toolbar .btn { padding-left: 10px; padding-right: 10px; }
+html.mobile .editor-body, html.mobile .editor.view-mode .editor-body { grid-template-columns: minmax(0, 1fr); }
+/* il pannello dei dettagli diventa la scheda della carta (pressione lunga) */
+html.mobile .editor-body > .detail-panel { display: none; }
+html.mobile .editor[data-mtab="deck"] .editor-body > :not(.deck-area, .detail-panel) { display: none; }
+html.mobile .editor[data-mtab="search"] .editor-body > .deck-area,
+html.mobile .editor[data-mtab="help"] .editor-body > .deck-area { display: none; }
+html.mobile .deck-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+html.mobile .deck-card:hover, html.mobile .result-card:hover { transform: none; }
+html.mobile .results { grid-template-columns: repeat(auto-fill, minmax(68px, 1fr)); }
+html.mobile .search-panel .hint { display: none; }
+html.mobile .bm { opacity: 1; width: 22px; height: 22px; }
+/* la ricerca scorre tutta insieme (filtri e risultati): i risultati non restano in una striscia sotto i filtri */
+html.mobile .editor-body > .search-panel { overflow: auto; }
+html.mobile .search-panel .results { flex: none; overflow: visible; }
+html.mobile .editor-toolbar .btn { font-size: 12px; min-height: 34px; padding-top: 6px; padding-bottom: 6px; }
+html.mobile .editor-toolbar .btn.round { width: 34px; height: 34px; font-size: 18px; }
+html.mobile .editor-toolbar .select { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
+
+/* Schede (Log/Chat, Find a Duel/Friends…): scorrono di lato invece di tagliare i nomi. */
+html.mobile .tabs { overflow-x: auto; scrollbar-width: none; }
+html.mobile .tabs::-webkit-scrollbar { display: none; }
+html.mobile .tab, html.mobile .online .tabs.big .tab { flex: none; white-space: nowrap; overflow: visible; }
+html.mobile .tabs.big .tab { padding: 10px 12px; font-size: 12px; }
+/* Constructed: prima la ricerca del duello (e amici), poi profilo e regole. */
+html.mobile .online-grid > :last-child { order: -1; }
+
+/* ------------------------------------------------------------------ draft */
+/* Tavolo: la pagina scorre; il pacchetto su 2 colonne con riquadri grandi; intestazione (Pick, timer) sempre in vista. */
+html.mobile .page.draft-table { height: 100%; overflow: auto; }
+html.mobile .dt-head { position: sticky; top: -12px; z-index: 5; margin: -12px -12px 0; padding: 10px 12px; gap: 8px; background: rgba(6, 7, 11, 0.95); }
+html.mobile .dt-title b { font-size: 17px; }
+html.mobile .dt-progress b { font-size: 20px; }
+html.mobile .dt-timer { font-size: 16px; min-width: 0; padding: 3px 8px; }
+html.mobile .dt-seat { font-size: 11px; padding: 3px 6px; }
+html.mobile .dt-main { grid-template-columns: minmax(0, 1fr); }
+html.mobile .dt-items { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 240px; }
+html.mobile .dt-item:hover { transform: none; }
+html.mobile .dt-side { min-height: 60vh; }
+html.mobile .dd-match { font-size: 12px; gap: 4px; }
+html.mobile .dd-opp { min-width: 0; flex: 1 1 140px; }
+html.mobile .dt-main, html.mobile .dt-pack, html.mobile .dt-items { flex: none; }
+/* dettagli della carta toccata: pannello dal basso sopra il tavolo ("Binder" lo chiude) */
+html.mobile .dt-detail:not([hidden]) {
+  position: fixed; left: 8px; right: 8px; bottom: 8px; z-index: 60; height: min(72vh, 620px);
+  background: rgba(8, 10, 16, 0.97); box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.7);
+}
+/* Test Duel: la mano dell'avversario si gioca, quindi è più grande (in alto, sotto i suoi LP la riga resta libera) */
+html.mobile .duel-screen.both-local .hud-top { min-height: calc(var(--hand-cw) * 0.75 * 1.46 + 10px); padding-right: 140px; }
+html.mobile .duel-screen.both-local .hand-1 .card { width: calc(var(--hand-cw) * 0.75); margin: 0 calc(min(0px, (var(--vw) * 100 - 160px - var(--n, 5) * var(--hand-cw) * 0.77) / var(--n, 5) / 2)); }
+/* LP dell'avversario: timer ed effetti vanno a capo sotto il numero, la riga resta stretta (accanto c'è la sua mano) */
+html.mobile .lp-op .lp-row { flex-wrap: wrap; justify-content: flex-start; max-width: 120px; row-gap: 3px; }
+html.mobile .duel-info { top: 90px; }

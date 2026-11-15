@@ -128,6 +128,8 @@ export class DuelSession {
     });
     // La giocata di prova non è un duello per gli amici (la presenza resta "online").
     if (cfg.practice) this.view.el.classList.add("practice");
+    // Test Duel: si gioca anche la mano dell'avversario (sul telefono è grande quanto la mia, vedi mobile.css).
+    if (cfg.controllers.every((c) => c === "local")) this.view.el.classList.add("both-local");
     this.view.startLP = cfg.duel.lp;
     if (cfg.match?.bestOf > 1) this.view.setMatchInfo(cfg.match);
     this.clearSleeves = applySleeves(cfg.sleeves);

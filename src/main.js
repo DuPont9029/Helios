@@ -22,6 +22,9 @@ import { showDraft } from "./ui/draft-editor.js";
 import { loadFormats } from "./draft/format.js";
 import { initCoaching } from "./ui/coaching.js";
 import { version } from "../package.json";
+import { initMobile, isMobile } from "./ui/mobile.js";
+// Ultimo: le regole del telefono vincono su quelle dei fogli importati dai moduli qui sopra (es. play.css).
+import "./styles/mobile.css";
 
 // PWA: Helios si può installare come app sul desktop (manifest + service worker in public/).
 let installPrompt = null;
@@ -49,7 +52,11 @@ const app = {
 // Nei menu (Settings, lista dei mazzi, Online) il tasto destro torna indietro come la freccia in alto.
 // Non vale nell'editor di un mazzo (lì il destro sposta le carte al Side) né nei duelli; con una finestra
 // aperta o nei campi di testo resta il comportamento normale.
+// Su Android il tocco lungo genera anche un "tasto destro": col dito non si torna indietro (c'è la freccia).
+let lastTouch = -1e9;
+document.addEventListener("pointerdown", (e) => e.pointerType === "touch" && (lastTouch = performance.now()), true);
 document.addEventListener("contextmenu", (e) => {
+  if (performance.now() - lastTouch < 2000) return;
   // Una pagina che usa il tasto destro per sé (es. il binder del draft) chiama preventDefault: niente "indietro".
   if (e.defaultPrevented) return;
   if (document.querySelector(".modal-backdrop:not(.closing)")) return;
@@ -273,13 +280,15 @@ function fitScreen() {
   const w = window.innerWidth;
   const hgt = window.innerHeight;
   const duel = !!app.root.querySelector(":scope > .duel-screen");
-  const k = Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
+  // Sul telefono niente zoom: l'interfaccia (styles/mobile.css) usa le dimensioni vere dello schermo.
+  const k = isMobile() ? 1 : Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
   const root = document.documentElement;
   root.style.zoom = k;
   root.style.setProperty("--vh", `${hgt / k / 100}px`);
   root.style.setProperty("--vw", `${w / k / 100}px`);
   if (document.body) measureRectScale();
 }
+initMobile(() => fitScreen());
 fitScreen();
 window.addEventListener("resize", fitScreen);
 // Entrando e uscendo dal duello cambia la larghezza di riferimento.
