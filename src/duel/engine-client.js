@@ -1,6 +1,7 @@
 // Motore del duello (ocgcore WASM) in un Web Worker: chiamate con risposta asincrona.
 // Lo usano la partita (session.js) e chi la guarda da spettatore (ui/coaching.js).
 import { STANDALONE } from "../data/bundle.js";
+import { enginePayload } from "../data/custom-cards.js";
 
 // Helios in un solo file: il worker del motore è incorporato nel bundle (niente file worker.js da caricare).
 const InlineWorker = STANDALONE ? (await import("./worker.js?worker&inline")).default : null;
@@ -24,6 +25,18 @@ export class EngineClient {
   }
 
   call(cmd, args) {
+    // Dopo l'avvio il motore riceve anche le carte personalizzate (salvate qui e ricevute dall'avversario).
+    if (cmd === "init") {
+      return this.send("init", args).then(async (r) => {
+        const custom = enginePayload();
+        if (custom.rows.length) await this.send("custom", custom);
+        return r;
+      });
+    }
+    return this.send(cmd, args);
+  }
+
+  send(cmd, args) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });

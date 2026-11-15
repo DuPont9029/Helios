@@ -163,7 +163,7 @@ export class Board {
     this.cardEls.clear();
     this.tagUsed = new Set();
     for (const z of new Set(this.zoneEls.values())) {
-      z.querySelectorAll(".card, .zone-badge, .stat, .materials, .pz-mark, .card-tag").forEach((n) => n.remove());
+      z.querySelectorAll(".card, .zone-badge, .stat, .stat-level, .materials, .pz-mark, .card-tag").forEach((n) => n.remove());
       z.classList.remove("occupied");
     }
     for (let p = 0; p < 2; p++) {

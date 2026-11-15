@@ -34,7 +34,8 @@ export class DuelView {
   /**
    * @param opts { me, names, reveal, onSurrender, onChat (null = chat disattivata), onLeave,
    *   moais: [aspetto del Moai del giocatore 0, del giocatore 1] (null = predefinito), onMoai() quando il mio spara,
-   *   sideTab: { id, label, el } scheda in più accanto a Log e Chat, aperta all'inizio (es. le note dello spettatore) }
+   *   sideTab: { id, label, el } scheda in più accanto a Log e Chat, aperta all'inizio (es. le note dello spettatore),
+   *   watch: modalità di chi guarda (replay, video del Trainer), vedi setWatch: "none" | "log" | "combo" }
    */
   constructor(opts) {
     this.opts = opts;
@@ -115,7 +116,8 @@ export class DuelView {
       await (choice.theme ? this.stage.loadHelios(choice.theme) : this.stage.load(choice.base, choice.id, choice.sides));
       if (this.destroyed) return;
       // Log e Chat: pulsante nel campo, sul bordo sinistro (senza spazio ai lati resta quello normale).
-      this.stage.setLogButton({
+      // Chi guarda non ce l'ha: il pannello di sinistra è sempre aperto o non c'è (setWatch).
+      if (this.watchLeft == null) this.stage.setLogButton({
         onClick: () => this.toggleDrawer(true),
         onVisible: (v) => this.main.classList.toggle("log3d", v),
       });
@@ -497,6 +499,24 @@ export class DuelView {
       this.drawer
     );
     this.bindPeek();
+    if (this.opts.watch) this.setWatch(this.opts.watch);
+  }
+
+  /**
+   * Modalità di chi guarda (replay, video del Trainer): spariscono i comandi utili solo a chi gioca (catena,
+   * auto-place, impostazioni) e i Life Points del giocatore in basso vanno a destra, al loro posto (a sinistra c'è
+   * il pannello). left = cosa c'è a sinistra: "none" (niente), "log" (il registro) o "combo" (i passi del Trainer).
+   */
+  setWatch(left) {
+    if (left === "combo" && !this.opts.trainerEl) left = "log";
+    if (!["none", "log", "combo"].includes(left)) left = "log";
+    this.watchLeft = left;
+    for (const el of [this.el, this.floatBar]) {
+      el.classList.add("watch");
+      el.classList.toggle("watch-left-none", left === "none");
+    }
+    this.drawer.classList.toggle("open", left !== "none");
+    if (left !== "none") this.drawer.querySelector(`.drawer-head .tab[data-tab="${left}"]`)?.click();
   }
 
   /** Apre un menu (medaglione o impostazioni) e chiude l'altro; null li chiude entrambi. */

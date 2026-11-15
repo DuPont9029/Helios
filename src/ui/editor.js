@@ -3,6 +3,8 @@ import { h, clear, download, pickFile, icon, rect, scrollText, dragAutoScroll } 
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
 import { isMobile, onLongPress, openCardSheet, mobileTabs } from "./mobile.js";
+import { banlistSelect } from "./banlists.js";
+import { showCustomCards } from "./custom-cards.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
@@ -199,6 +201,8 @@ export function showDeckList(app) {
         h("h1", "Deck"),
         h("span.decks-num", icon("inventory_2"), count),
         h("div.spacer"),
+        // Carte personalizzate (ui/custom-cards.js): si usano nei mazzi come le altre.
+        h("button.btn", { title: "Make your own cards, with artwork, text and Lua script", onclick: () => showCustomCards(app) }, icon("draw"), " Custom cards"),
         h("button.btn.primary", { title: "Omega code, .ydk text, ydke:// or card list from the clipboard", onclick: async () => add(await importDeck("clipboard")) }, icon("content_paste"), " Import from clipboard"),
         h("button.btn", { onclick: async () => add(await importDeck("paste")) }, icon("edit_note"), " Paste text"),
         h("button.btn", { onclick: async () => add(await importDeck("file")) }, icon("upload_file"), " .ydk file"),
@@ -473,7 +477,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   };
   let refreshTabs = null;
 
-  const detail = createDetailPanel();
+  const detail = createDetailPanel({ related: true });
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
   const snap = () => JSON.stringify({ name: deck.name, cover: deck.cover ?? null, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
@@ -665,7 +669,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     if (!target || !(await confirmLeave())) return;
     openDeck(target);
   });
-  const banSel = h("select.select", h("option", { value: "" }, "No banlist"), db.banlists.map((b) => h("option", { value: b.name }, b.name)));
+  // Con "Custom banlists…" per crearne e modificarne (ui/banlists.js).
+  const banSel = banlistSelect("select");
   banSel.value = banlist?.name ?? "";
   banSel.addEventListener("change", () => {
     banlist = banlistByName(banSel.value);
@@ -1483,6 +1488,19 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const poolGroupToggle = pool?.binder?.some((x) => x.round === 1)
     ? h("label.check.pool-grouping", h("input", { type: "checkbox", checked: !!settings.poolGrouped, onchange: (e) => { settings.poolGrouped = e.target.checked; renderResults(); } }), "By bundle")
     : null;
+  // Ordine dei risultati: per nome o per popolarità su YGOPRODeck (di sempre o dell'ultima settimana), e solo le
+  // staple (carte usate in molti mazzi). Non nel pool di un draft, che ha il suo ordine per rarità.
+  const hasPop = db.list.some((c) => c.pop);
+  const fSort = !pool && hasPop
+    ? h(
+        "select.select.small.result-sort",
+        { title: "Sort the results", onchange: () => { settings.editorSort = fSort.value; runSearch(); } },
+        [["name", "Name"], ["popular", "Most popular"], ["trending", "Trending this week"]].map(([v, l]) => h("option", { value: v, selected: (settings.editorSort ?? "name") === v }, l))
+      )
+    : null;
+  const fStaple = !pool && hasPop
+    ? h("label.check.result-staples", { title: "Only staples: cards played in many decks (YGOPRODeck)" }, h("input", { type: "checkbox", checked: !!settings.editorStaples, onchange: (e) => { settings.editorStaples = e.target.checked; runSearch(); } }), "Staples")
+    : null;
   // Vista dei risultati: griglia di carte o lista (ricordata nelle impostazioni).
   const viewToggle = h("div.view-toggle", ["grid", "list"].map((v) =>
     h(`button.view-btn${v === (settings.editorView === "list" ? "list" : "grid") ? ".on" : ""}`, {
@@ -1531,12 +1549,19 @@ export function showEditor(app, { side = null, embed = null } = {}) {
           if (!cardPoints(banlist, c.code)) return false;
         } else if (lim === "legal" ? l === 0 : Math.min(3, l) !== +lim) return false;
       }
+      if (fStaple && settings.editorStaples && !marks && !c.staple) return false;
       if (!textOk(c, text)) return false;
       return true;
     });
     if (pool) found = sortDeckPart(found.map((c) => c.code)).map(getCard);
+    // Popolarità (non per preferiti e cronologia, che hanno il loro ordine).
+    const sortBy = fSort && !marks ? fSort.value : "name";
+    if (sortBy !== "name") {
+      const key = sortBy === "trending" ? "popWeek" : "pop";
+      found.sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0) || a.name.localeCompare(b.name));
+    }
     if (text) {
-      // Prima le carte il cui nome contiene il testo.
+      // Prima le carte il cui nome contiene il testo (l'ordine scelto resta dentro i due gruppi).
       if (fScope.value !== "text") found.sort((a, b) => (b.name.toLowerCase().includes(text) ? 1 : 0) - (a.name.toLowerCase().includes(text) ? 1 : 0));
     }
     if (!keep) shown = 120;
@@ -1742,7 +1767,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     h("div.search-tabs", tabAll, tabMarks, tabHistory, filterToggle),
     q,
     filters,
-    h("div.results-head", resultInfo, poolGroupToggle, viewToggle),
+    h("div.results-head", resultInfo, poolGroupToggle, fStaple, fSort, viewToggle),
     results,
     h(
       "p.muted.small.hint",

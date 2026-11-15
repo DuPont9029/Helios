@@ -140,6 +140,9 @@
 .combo-code { width: 100%; font: 12px var(--mono); word-break: break-all; resize: vertical; }
 .trainer-steps.recording .trainer-mark { color: #ff5a6e; }
 .video-btn.rec { color: #fff; background: var(--red); border-color: #ff7a8a; animation: clock-alarm 1.2s infinite; }
+/* video senza pannello a sinistra: il pulsante di stop sta sul campo, in alto a sinistra */
+.video-btn-float { position: absolute; left: 14px; top: 14px; z-index: 12; }
+.duel-screen.watch:not(.watch-left-none) .video-btn-float { left: calc(min(360px, 42%) + 14px); }
 .combo-video { width: 100%; max-height: calc(var(--vh) * 60); background: #000; }
 
 /* Side Deck tra i duelli di una partita al meglio di 3/5: il deck editor in modalità limitata, sopra il duello */
@@ -495,3 +498,114 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .result-group-cards { display: grid; grid-template-columns: inherit; gap: 6px; }
 .results:not(.as-list) .result-group-cards { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
 .results.as-list .result-group-cards { display: flex; flex-direction: column; }
+
+/* ------------------------------------------------------------------ replay (ui/replay.js) */
+.page-tools { margin-left: auto; display: flex; gap: 8px; }
+.replay-hint { margin: 0; }
+.replay-list { display: flex; flex-direction: column; gap: 8px; }
+.replay-row { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); border-left: 3px solid var(--line-strong); background: rgba(10, 12, 18, 0.6); }
+.replay-row.won { border-left-color: var(--accent); }
+.replay-row.lost { border-left-color: var(--red); }
+.replay-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; background: none; border: 0; color: var(--text); cursor: pointer; text-align: left; padding: 4px 0; }
+.replay-main > .icon { font-size: 34px; color: var(--accent-soft); flex: none; }
+.replay-main:hover > .icon { color: var(--accent); }
+.replay-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.replay-text b { font: 600 16px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-result { font: 500 12px var(--mono); color: var(--accent-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replay-row.lost .replay-result { color: #ff9aa8; }
+.replay-actions { display: flex; gap: 6px; flex: none; }
+.replay-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 48px 16px; text-align: center; border: 1px dashed var(--line-strong); }
+.replay-empty .icon { font-size: 40px; color: var(--accent-soft); }
+
+/* barra del visore: in basso a sinistra, larga quanto il pannello del registro (sotto il registro quando c'è),
+   così non copre mai la mano al centro; i Life Points del giocatore sono a destra (modalità di chi guarda) */
+.replay-bar {
+  position: absolute; left: 0; bottom: 0; z-index: 41; width: min(360px, 42%); box-sizing: border-box; display: flex; flex-direction: column; gap: 6px;
+  padding: 8px 10px 10px; background: rgba(8, 10, 16, 0.94); border-top: 1px solid var(--line-strong); border-right: 1px solid var(--line-strong);
+}
+.duel-screen.watch-left-none .replay-bar { left: 12px; bottom: 12px; border: 1px solid var(--line-strong); backdrop-filter: blur(6px); }
+.duel-screen.replaying .duel-drawer { padding-bottom: 128px; }
+.replay-row1, .replay-row2 { display: flex; align-items: center; gap: 2px; }
+.replay-row1 .btn.small { padding: 4px 6px; }
+.replay-row2 { gap: 6px; flex-wrap: wrap; }
+.replay-row2 .select { width: auto; flex: none; }
+.replay-slider { width: 100%; margin: 0; accent-color: var(--accent); }
+.replay-where { margin-left: auto; font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
+/* durante la registrazione del video la barra non c'è (resta solo "Stop") */
+.duel-screen.recording .replay-bar { display: none; }
+
+/* ------------------------------------------------------------------ banlist personalizzate (ui/banlists.js) */
+.banlist-list { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow: auto; }
+.banlist-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); background: rgba(10, 12, 18, 0.6); }
+.banlist-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.banlist-info b { font: 600 16px var(--display); }
+.banlist-info .mini-cards { margin-top: 2px; }
+.banlist-actions { display: flex; align-items: center; gap: 6px; flex: none; flex-wrap: wrap; justify-content: flex-end; }
+.banlist-actions .check { margin: 0 4px; }
+
+/* ------------------------------------------------------------------ carte personalizzate (ui/custom-cards.js) */
+/* area di lavoro come Magic Set Editor: carte a sinistra, la carta (modificabile cliccandola) al centro, proprietà a destra */
+.cc-page { overflow: hidden; }
+.cc-page .page-head h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cc-saved { white-space: nowrap; }
+.cc-work { flex: 1; min-height: 0; display: grid; grid-template-columns: 250px minmax(300px, 1fr) minmax(300px, 380px); gap: 18px; }
+.cc-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.cc-side-tools { display: flex; gap: 6px; flex-wrap: wrap; }
+.cc-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.cc-item { display: flex; align-items: center; gap: 8px; padding: 4px 6px; background: rgba(10, 12, 18, 0.6); border: 1px solid var(--line); color: var(--text); cursor: pointer; text-align: left; }
+.cc-item.on { border-color: var(--accent); background: rgba(56, 198, 255, 0.1); }
+.cc-item:hover { border-color: var(--line-strong); }
+.cc-item-card { width: 34px; flex: none; }
+.cc-item-card .card { width: 100%; }
+.cc-item-text { display: flex; flex-direction: column; min-width: 0; }
+.cc-item-text b { font: 600 13px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-item-text .small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cc-empty { padding: 8px; }
+.cc-center { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 0; overflow: auto; }
+.cc-stage { position: relative; height: min(100%, calc(var(--vh) * 100 - 190px)); aspect-ratio: 421 / 614; max-width: 100%; }
+.cc-preview { width: 100%; height: 100%; display: block; background: #111; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6); }
+.cc-hot { position: absolute; inset: 0; }
+.cc-zone { position: absolute; background: transparent; border: 1px dashed transparent; cursor: pointer; padding: 0; }
+.cc-stage:hover .cc-zone { border-color: rgba(56, 198, 255, 0.35); }
+.cc-zone:hover { border: 2px solid var(--accent) !important; background: rgba(56, 198, 255, 0.08); }
+.cc-pop { position: absolute; z-index: 5; width: min(360px, 90%); padding: 10px; display: flex; flex-direction: column; gap: 8px; background: rgba(10, 12, 18, 0.97); border: 1px solid var(--accent); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6); }
+.cc-pop-head { display: flex; align-items: center; justify-content: space-between; font: 600 12px var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent-soft); }
+.cc-tip { margin: 0; text-align: center; }
+.cc-props { display: flex; flex-direction: column; gap: 10px; overflow: auto; min-height: 0; padding-right: 4px; }
+.cc-row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+.cc-row > .field { flex: 1 1 100px; min-width: 0; }
+.cc-kind { display: flex; gap: 6px; }
+.cc-checks { display: flex; gap: 10px; flex-wrap: wrap; }
+.cc-arrows { width: 120px; }
+.cc-desc, .cc-strings { resize: vertical; }
+.cc-script-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--line-strong); background: rgba(56, 198, 255, 0.05); }
+.cc-check { margin: 0; padding: 8px 10px; font: 12px/1.4 var(--mono); white-space: pre-wrap; border: 1px solid var(--line); max-height: 140px; overflow: auto; }
+.cc-check.ok { color: #7dffb0; border-color: rgba(125, 255, 176, 0.4); }
+.cc-check.bad { color: #ff9aa8; border-color: rgba(255, 90, 110, 0.5); }
+
+/* pagina dello script (ui/script-editor.js): editor a sinistra, script delle altre carte a destra */
+.se-page { overflow: hidden; }
+.se-card { width: 34px; flex: none; }
+.se-card .card { width: 100%; }
+.se-page .page-head h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-size: 24px; }
+.se-page .page-tools .select { width: auto; }
+.se-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(280px, 1fr); gap: 14px; }
+.se-main, .se-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.se-editor { flex: 1; min-height: 200px; border: 1px solid var(--line-strong); }
+.se-side-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.se-tabs { display: flex; gap: 4px; overflow-x: auto; flex: none; }
+.se-tab { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border: 1px solid var(--line); background: rgba(10, 12, 18, 0.6); cursor: pointer; max-width: 200px; flex: none; }
+.se-tab.on { border-color: var(--accent); }
+.se-tab-card { width: 22px; flex: none; }
+.se-tab-card .card { width: 100%; }
+.se-tab-name { font: 500 12px var(--display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.se-tab-x { background: none; border: 0; color: var(--muted); cursor: pointer; font-size: 16px; }
+.se-side-actions { display: flex; gap: 6px; }
+@media (max-width: 1100px) {
+  .cc-work { grid-template-columns: 200px 1fr; }
+  .cc-props { grid-column: 1 / -1; }
+  /* script su una colonna: la pagina scorre, gli editor hanno un'altezza fissa */
+  .se-page { overflow: auto; }
+  .se-body { display: flex; flex-direction: column; flex: none; }
+  .se-editor { flex: none; height: 55vh; }
+}

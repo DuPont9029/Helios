@@ -33,6 +33,16 @@ export async function loadDatabase(onProgress = () => {}) {
     db.cards.set(c.code, c);
   }
   db.list = [...db.cards.values()].sort((a, b) => a.name.localeCompare(b.name));
+  // Popolarità da YGOPRODeck (facoltativa: senza il file restano a 0). Vedi scripts/build-data.mjs.
+  try {
+    const pop = await get("popularity.json");
+    for (const [id, [views, week, staple]] of Object.entries(pop?.cards ?? {})) {
+      const c = db.cards.get(+id);
+      if (c) Object.assign(c, { pop: views, popWeek: week, staple: !!staple });
+    }
+  } catch {
+    /* dati senza popolarità (npm run data offline o API non raggiungibile) */
+  }
   db.strings = strings;
   db.banlists = banlists;
   db.starters = starters;
@@ -40,6 +50,9 @@ export async function loadDatabase(onProgress = () => {}) {
 }
 
 export const getCard = (code) => db.cards.get(code) ?? null;
+
+/** Carte dalla più popolare su YGOPRODeck (a parità, l'ordine di prima: di solito per nome). Nuovo array. */
+export const byPopularity = (cards) => cards.slice().sort((a, b) => (b.pop ?? 0) - (a.pop ?? 0));
 export const cardName = (code) => getCard(code)?.name ?? `#${code}`;
 
 export function sysString(id) {

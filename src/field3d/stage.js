@@ -247,13 +247,27 @@ export class FieldStage {
     // solo se la vista non arriva fin lì.
     const x = portrait ? PET_PORTRAIT_X : Math.min(PET_X, room - 7.1 * fit);
     const z = portrait ? [-PET_PORTRAIT_Z, PET_PORTRAIT_Z] : PET_Z;
-    me.group.position.set(x, PET_Y, z[0]);
-    opp.group.position.set(-x, PET_Y, z[1]);
+    // La posa (testa, faccia e quindi il colpo) è regolata per i Moai ai lati: si calcola sempre da lì; in verticale
+    // poi tutta la statua gira attorno alla verticale verso il centro del campo, e il colpo va verso il campo.
+    const poseX = portrait ? PET_X : x;
+    me.group.position.set(poseX, PET_Y, PET_Z[0]);
+    opp.group.position.set(-poseX, PET_Y, PET_Z[1]);
     for (const m of p.list) {
       m.group.scale.setScalar(PET_SCALE * fit);
       m.setTarget(new THREE.Vector3(0, 0, 0));
     }
     opp.body.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI).multiply(me.body.quaternion);
+    // Direzione del colpo nella posa ai lati, prima di spostare i Moai.
+    const shot = p.list.map((m) => m.beamDir());
+    me.group.position.set(x, PET_Y, z[0]);
+    opp.group.position.set(-x, PET_Y, z[1]);
+    if (portrait) {
+      p.list.forEach((m, i) => {
+        const to = m.group.position.clone().negate().setY(0).normalize();
+        m.group.quaternion.setFromUnitVectors(shot[i], to);
+        m.aim.copy(to);
+      });
+    }
     // Il campo di Helios ha i basamenti dei Moai: seguono i Moai.
     this.field?.placePets?.([
       [x, z[0], fit],

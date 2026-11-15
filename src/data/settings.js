@@ -1,4 +1,5 @@
 // Impostazioni utente salvate in localStorage.
+import { customImages, customArts } from "./card-images.js";
 
 const KEY = "ygoweb.settings";
 
@@ -54,8 +55,13 @@ const DEFAULTS = {
   bookmarks: [], // editor: codici delle carte salvate tra i preferiti (scheda "Bookmarks")
   bookmarksSeeded: [], // preferiti predefiniti già proposti (vedi src/data/bookmarks.js)
   editorView: "grid", // editor: risultati della ricerca come carte ("grid") o come lista ("list")
+  editorSort: "name", // editor: ordine dei risultati, "name", "popular" o "trending" (popolarità su YGOPRODeck)
+  editorStaples: false, // editor: solo le staple (YGOPRODeck)
+  detailRelated: false, // dettagli della carta: carte collegate aperte (src/ui/detail.js)
   fieldSelect: true, // duello: le carte chieste da summon ed effetti si scelgono cliccandole sul campo (se sono tutte lì)
   comboStrict: false, // Combo Trainer: modalità strict (le azioni diverse dalla combo vengono bloccate)
+  trainerVideoLeft: "combo", // video del Trainer in auto-play: a sinistra "combo" (i passi), "log" o "none"
+  replayLeft: "log", // replay: a sinistra "log" (il registro) o "none" (solo il campo)
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };
 
@@ -141,9 +147,10 @@ export function localIceServers() {
 }
 
 export function imageUrl(code) {
-  return settings.imageUrl.replace("{code}", code);
+  // Carte personalizzate: l'immagine disegnata dai loro dati.
+  return customImages.get(+code) ?? settings.imageUrl.replace("{code}", code);
 }
 
 export function artUrl(code) {
-  return settings.artUrl.replace("{code}", code);
+  return customArts.get(+code) ?? customImages.get(+code) ?? settings.artUrl.replace("{code}", code);
 }

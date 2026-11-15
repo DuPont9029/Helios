@@ -17,7 +17,7 @@ rmSync(out, { recursive: true, force: true });
 execFileSync("npx", ["vite", "build", "--mode", "standalone"], { cwd: root, stdio: "inherit" });
 
 // Archivio dei dati (formato in src/data/bundle.js): [uint32 LE lunghezza indice][indice JSON][file].
-const names = ["cards.json", "strings.json", "banlists.json", "starter-decks.json", "manifest.json"]
+const names = ["cards.json", "strings.json", "banlists.json", "starter-decks.json", "manifest.json", "popularity.json", "lua-api.json"]
   .filter((n) => existsSync(join(data, n)))
   .concat(readdirSync(join(data, "script")).filter((n) => n.endsWith(".lua")).sort().map((n) => `script/${n}`));
 const files = {};

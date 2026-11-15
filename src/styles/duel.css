@@ -608,6 +608,21 @@ body:has(.modal-backdrop:not(.closing):not(.minimized)) .duel-float { display: f
 .duel-screen.autoplaying .trainer-btns,
 .duel-screen.autoplaying .trainer-toggles > :not(.trainer-auto) { opacity: 0.45; }
 
+/* Chi guarda (replay, video del Trainer: DuelView.setWatch): niente comandi che servono solo a chi gioca (catena,
+   auto-place, impostazioni); i Life Points del giocatore in basso vanno a destra, dove stavano quei comandi, perché a
+   sinistra c'è il pannello (registro o combo) o niente. */
+.duel-screen.watch .duel-dock, .duel-float.watch .chain-mode { display: none; }
+.duel-screen.watch .drawer-close, .duel-screen.watch .drawer-head .tab[data-tab="chat"] { display: none; }
+.duel-screen.watch-left-none .duel-drawer, .duel-screen.watch-left-none .log-btn,
+.duel-screen.watch:not(.watch-left-none) .log-btn { display: none; }
+.duel-screen.watch .lp-me { left: auto; right: 14px; flex-direction: row-reverse; }
+.duel-screen.watch .lp-me .lp-body { align-items: flex-end; }
+.duel-screen.watch .lp-me .lp-row { flex-direction: row-reverse; }
+.duel-screen.watch .lp-me .lp-fill { margin-left: auto; }
+.duel-screen.watch .lp-me .lp-pop { left: auto; right: 60px; }
+/* il registro in un replay non ha la chat accanto: la sua scheda prende tutta la riga */
+.duel-screen.watch .drawer-head .tabs .tab { flex: none; }
+
 /* Legami tra carte (equipaggiamenti, bersagli persistenti) mostrati passando sopra una carta del campo */
 .board { position: relative; }
 .board .link-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 30; overflow: visible; }

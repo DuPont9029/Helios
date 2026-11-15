@@ -14,9 +14,13 @@ import { cardFace } from "./ui/card.js";
 import { fullscreenButton } from "./ui/fullscreen.js";
 import { seedBookmarks, pruneForbiddenBookmarks } from "./data/bookmarks.js";
 import { updateBanlists } from "./data/banlist-update.js";
+import { syncCustomBanlists } from "./data/custom-banlists.js";
+import { loadCustomCards } from "./data/custom-cards.js";
 import { toast, openModal } from "./ui/modal.js";
 import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
+import { showReplays } from "./ui/replay.js";
+import { listReplays } from "./data/replays.js";
 import { showHdpc } from "./ui/hdpc.js";
 import { showDraft } from "./ui/draft-editor.js";
 import { loadFormats } from "./draft/format.js";
@@ -121,7 +125,8 @@ function home(section = null) {
         back(),
         h("div.menu-section", "Online Duel"),
         item("Constructed", "Online Duels with your Decks · P2P via WebRTC", () => showOnline(app)),
-        item("Limited", `Draft decks from a pool you curate · ${loadFormats().length} formats`, () => showDraft(app))
+        item("Limited", `Draft decks from a pool you curate · ${loadFormats().length} formats`, () => showDraft(app)),
+        item("Replays", `Watch your Duels again, share them as a code or a video · ${listReplays().length} saved`, () => showReplays(app))
       )
     : section === "training"
     ? h(
@@ -135,7 +140,7 @@ function home(section = null) {
       )
     : h(
         "nav.menu",
-        h("button.menu-item", { onclick: () => home("duel") }, h("span.menu-title", "Online Duel"), h("span.menu-sub", "Constructed · Limited")),
+        h("button.menu-item", { onclick: () => home("duel") }, h("span.menu-title", "Online Duel"), h("span.menu-sub", "Constructed · Limited · Replays")),
         item("Deck", `${loadDecks().length} decks · ${db.cards.size.toLocaleString("en-US")} cards`, () => showDeckList(app)),
         h("button.menu-item", { onclick: () => home("training") }, h("span.menu-title", "Training"), h("span.menu-sub", "Test Duel · Trainer · Vs CPU · HDPC")),
         item("Settings", "Name, network, graphics", () => showSettings(app))
@@ -280,8 +285,10 @@ function fitScreen() {
   const w = window.innerWidth;
   const hgt = window.innerHeight;
   const duel = !!app.root.querySelector(":scope > .duel-screen");
-  // Sul telefono niente zoom: l'interfaccia (styles/mobile.css) usa le dimensioni vere dello schermo.
-  const k = isMobile() ? 1 : Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
+  // Sul telefono niente zoom: l'interfaccia (styles/mobile.css) usa le dimensioni vere dello schermo. Nemmeno nella
+  // pagina dello script (editor Monaco): con lo zoom CSS non disegna il testo e sbaglia la posizione dei suoi menu.
+  const plain = isMobile() || !!app.root.querySelector(":scope > .se-page");
+  const k = plain ? 1 : Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
   const root = document.documentElement;
   root.style.zoom = k;
   root.style.setProperty("--vh", `${hgt / k / 100}px`);
@@ -299,6 +306,8 @@ async function boot() {
   app.root.append(h("div.boot", h("div.logo.big", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS")), status));
   try {
     await loadDatabase((t) => (status.textContent = t));
+    syncCustomBanlists(); // banlist personalizzate, in fondo alle ufficiali
+    await loadCustomCards(); // carte personalizzate (IndexedDB) nel database delle carte
     seedBookmarks();
     // Banlist aggiornate da ProjectIgnis/LFLists (senza aspettare: si gioca subito con quelle che ci sono);
     // le carte proibite escono dai preferiti.

@@ -15,3 +15,6 @@ public/data/
 *.glb
 fields/
 public/fields/
+
+# pacchetti dell'estensione di VS Code (si rifanno con vsce package)
+*.vsix

@@ -1,7 +1,11 @@
 // Pannello laterale con i dettagli di una carta (immagine grande + testo).
-import { h, clear } from "./dom.js";
+import { h, clear, icon } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { getCard, typeLine, statLine, setName } from "../data/db.js";
+import { relatedCards } from "../data/related.js";
+import { settings } from "../data/settings.js";
+
+const RELATED_MAX = 18;
 
 // Frecce su/giù (e Pagina su/giù): scorrono il testo della carta mostrata, senza dover portare il mouse sul pannello.
 const SCROLL_KEYS = { ArrowDown: 1, ArrowUp: -1, PageDown: 4, PageUp: -4 };
@@ -16,11 +20,14 @@ document.addEventListener("keydown", (e) => {
   box.scrollTop += dir * 48;
 });
 
-/** @param opts { actions(code) → nodi da mostrare sotto l'immagine (es. pulsanti "+ Main") } */
+/**
+ * @param opts { actions(code) → nodi da mostrare sotto l'immagine (es. pulsanti "+ Main"),
+ *   related: mostra le carte collegate (come in Master Duel), che si aprono cliccandole e si trascinano nel mazzo }
+ */
 export function createDetailPanel(opts = {}) {
   const el = h("aside.detail-panel", h("div.detail-empty", "Hover over a card to see its details"));
   let current = null;
-  return {
+  const panel = {
     el,
     show(code, extra = {}) {
       if (!code || code === current) return;
@@ -44,6 +51,7 @@ export function createDetailPanel(opts = {}) {
               archetypes.length > 0 && h("div.detail-sets", archetypes.join(" · ")),
               h("div.detail-desc", c.desc),
               h("div.detail-code", `#${c.code}${c.source === 1 ? " · unofficial" : c.source === 2 ? " · pre-release" : ""}`),
+              opts.related && relatedSection(code, (x) => panel.show(x)),
             ])
           ),
         ])
@@ -53,4 +61,56 @@ export function createDetailPanel(opts = {}) {
       current = null;
     },
   };
+  return panel;
+}
+
+/**
+ * Carte collegate: quelle che la carta nomina, quelle che la nominano, i suoi archetipi. Chiuse di default (si
+ * apre con un clic e resta aperta per le carte successive): le immagini si caricano solo quando servono.
+ */
+function relatedSection(code, open) {
+  const r = relatedCards(code);
+  const groups = [
+    ["Mentions", r.mentions],
+    ["Mentioned by", r.mentionedBy],
+    ...r.archetypes.map((a) => [`"${a.name}"`, a.codes]),
+  ].filter(([, codes]) => codes.length);
+  const total = new Set(groups.flatMap(([, codes]) => codes)).size;
+  if (!total) return null;
+  const body = h("div.related-body");
+  const paint = () => {
+    clear(body);
+    if (!settings.detailRelated) return;
+    for (const [label, codes] of groups) {
+      body.append(
+        h("div.related-label", label, h("span.muted", ` ${codes.length}`)),
+        h(
+          "div.related-cards",
+          codes.slice(0, RELATED_MAX).map((x) => {
+            const t = h("button.related-card", { title: getCard(x)?.name ?? "", draggable: true, onclick: () => open(x) }, cardFace(x));
+            // Trascinata nel mazzo (deck builder) si aggiunge come una carta della ricerca.
+            t.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code: x })));
+            return t;
+          }),
+          codes.length > RELATED_MAX ? h("span.related-more.muted.small", `+${codes.length - RELATED_MAX}`) : null
+        )
+      );
+    }
+  };
+  const head = h(
+    "button.related-head",
+    {
+      onclick: () => {
+        settings.detailRelated = !settings.detailRelated;
+        head.classList.toggle("open", !!settings.detailRelated);
+        paint();
+      },
+    },
+    icon("hub"),
+    ` Related cards (${total})`,
+    icon("expand_more")
+  );
+  head.classList.toggle("open", !!settings.detailRelated);
+  paint();
+  return h("div.detail-related", head, body);
 }

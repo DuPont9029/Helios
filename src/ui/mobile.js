@@ -1,13 +1,14 @@
 // Layout per telefono: lo stesso Helios (e lo stesso Helios.html) sceglie all'avvio, e a ogni rotazione o cambio
 // di dimensione, se usare l'interfaccia del telefono. Con html.mobile l'interfaccia non viene scalata con lo zoom
 // (main.js: fitScreen) e valgono le regole di styles/mobile.css; il resto del codice è lo stesso del desktop.
-// Telefono = schermo touch in verticale e stretto. In orizzontale resta il layout desktop scalato.
+// Telefono = schermo touch stretto in verticale o basso in orizzontale (html.mobile.landscape: regole del telefono girato).
 // Per provare: ?ui=mobile o ?ui=desktop nell'indirizzo (resta salvato; ?ui=auto torna alla scelta automatica).
 import { h, icon } from "./dom.js";
 import { openModal } from "./modal.js";
 import { createDetailPanel } from "./detail.js";
 
-const QUERY = "(pointer: coarse) and (max-width: 700px) and (orientation: portrait)";
+const QUERY = "(pointer: coarse) and (max-width: 700px) and (orientation: portrait), (pointer: coarse) and (max-height: 500px) and (orientation: landscape)";
+const LANDSCAPE = "(orientation: landscape)";
 const KEY = "helios.ui";
 
 function forced() {
@@ -23,6 +24,7 @@ function forced() {
 
 const force = forced();
 const media = window.matchMedia(QUERY);
+const landscape = window.matchMedia(LANDSCAPE);
 
 /** True se adesso si usa il layout del telefono. */
 export function isMobile() {
@@ -31,14 +33,18 @@ export function isMobile() {
 
 /** Mette html.mobile e la aggiorna quando cambia l'orientamento; onChange() dopo ogni cambio. */
 export function initMobile(onChange) {
+  const root = document.documentElement;
   const apply = () => {
     const on = isMobile();
-    if (document.documentElement.classList.contains("mobile") === on) return;
-    document.documentElement.classList.toggle("mobile", on);
+    const wide = on && landscape.matches;
+    if (root.classList.contains("mobile") === on && root.classList.contains("landscape") === wide) return;
+    root.classList.toggle("mobile", on);
+    root.classList.toggle("landscape", wide);
     onChange?.(on);
   };
   apply();
   media.addEventListener("change", apply);
+  landscape.addEventListener("change", apply);
 }
 
 /**
@@ -87,7 +93,7 @@ export function onLongPress(el, fn, ms = 450) {
  * dei dettagli e del tasto destro. actions: [{ label, run, primary?, danger? }].
  */
 export function openCardSheet(code, actions = []) {
-  const detail = createDetailPanel();
+  const detail = createDetailPanel({ related: true });
   detail.show(code);
   return openModal({
     className: "card-sheet",

@@ -108,6 +108,13 @@ self.onmessage = async (e) => {
         await init(args.dataUrl, args.archive);
         result = { version: lib.getVersion() };
         break;
+      case "custom": {
+        // Carte personalizzate (data/custom-cards.js): dati e script, validi per tutti i duelli di questo worker.
+        for (const row of args.rows ?? []) cards.set(row[0], parseCard(row));
+        for (const [name, text] of Object.entries(args.scripts ?? {})) scripts.set(name, String(text));
+        result = true;
+        break;
+      }
       case "start": {
         await newDuel(args);
         result = step();

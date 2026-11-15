@@ -153,7 +153,7 @@ html.mobile .decks-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap:
 html.mobile .editor { padding: 8px 12px 12px; gap: 8px; }
 html.mobile .editor-toolbar { gap: 6px; }
 html.mobile .editor-toolbar > .select { min-width: 0; flex: 1 1 140px; }
-html.mobile .editor-toolbar .btn { padding-left: 10px; padding-right: 10px; }
+html.mobile .editor-toolbar .btn:not(.round) { padding-left: 10px; padding-right: 10px; }
 html.mobile .editor-body, html.mobile .editor.view-mode .editor-body { grid-template-columns: minmax(0, 1fr); }
 /* il pannello dei dettagli diventa la scheda della carta (pressione lunga) */
 html.mobile .editor-body > .detail-panel { display: none; }
@@ -168,7 +168,8 @@ html.mobile .bm { opacity: 1; width: 22px; height: 22px; }
 /* la ricerca scorre tutta insieme (filtri e risultati): i risultati non restano in una striscia sotto i filtri */
 html.mobile .editor-body > .search-panel { overflow: auto; }
 html.mobile .search-panel .results { flex: none; overflow: visible; }
-html.mobile .editor-toolbar .btn { font-size: 12px; min-height: 34px; padding-top: 6px; padding-bottom: 6px; }
+html.mobile .editor-toolbar .btn { font-size: 12px; min-height: 34px; }
+html.mobile .editor-toolbar .btn:not(.round) { padding-top: 6px; padding-bottom: 6px; }
 html.mobile .editor-toolbar .btn.round { width: 34px; height: 34px; font-size: 18px; }
 html.mobile .editor-toolbar .select { padding-top: 6px; padding-bottom: 6px; font-size: 13px; }
 
@@ -206,3 +207,92 @@ html.mobile .duel-screen.both-local .hand-1 .card { width: calc(var(--hand-cw) *
 /* LP dell'avversario: timer ed effetti vanno a capo sotto il numero, la riga resta stretta (accanto c'è la sua mano) */
 html.mobile .lp-op .lp-row { flex-wrap: wrap; justify-content: flex-start; max-width: 120px; row-gap: 3px; }
 html.mobile .duel-info { top: 90px; }
+/* Carta guardata sopra una finestra di scelta: la carta è in alto, la finestra resta dov'è (sul desktop si sposta a destra) */
+html.mobile body.peek-beside .modal-backdrop:not(.minimized) { padding-left: 8px; }
+
+/* ================================================================== telefono girato (html.mobile.landscape) */
+/* Duello: il campo al centro a tutta altezza; le mani sopra i bordi del campo (in alto e in basso, al centro);
+   LP, comandi e registro negli angoli, ai lati del campo. */
+html.mobile.landscape .duel-screen {
+  --zh: min(calc((var(--vh) * 100 - 10px) / 7.4), calc((var(--vw) * 100 - 330px) / 7.9));
+  --hand-cw: min(58px, calc(var(--vh) * 15));
+  --hand-w: calc(var(--zh) * 7.6);
+}
+html.mobile.landscape .duel-main { grid-template-rows: minmax(0, 1fr); }
+html.mobile.landscape .hud-top, html.mobile.landscape .hud-bottom {
+  position: absolute; left: 0; right: 0; min-height: 0; padding: 0; justify-content: center; pointer-events: none;
+}
+html.mobile.landscape .hud-top { top: 0; }
+html.mobile.landscape .hud-bottom { bottom: 0; }
+html.mobile.landscape .hud-top > *, html.mobile.landscape .hud-bottom > * { pointer-events: auto; }
+html.mobile.landscape .hand { flex: none; width: var(--hand-w); }
+html.mobile.landscape .hand-1 { justify-content: center; }
+html.mobile.landscape .hand-1 .card { width: 24px; }
+/* la mia mano spunta dal bordo in basso: si vede la parte alta delle carte, toccata sale */
+html.mobile.landscape .hand-0 .card { transform: translateY(42%); }
+html.mobile.landscape .hand-0 .card:active { transform: translateY(0); }
+html.mobile.landscape .duel-screen.both-local .hud-top { padding-right: 0; min-height: 0; }
+html.mobile.landscape .duel-screen.both-local .hand-1 .card { width: calc(var(--hand-cw) * 0.75); transform: translateY(-42%); margin: 0 calc(min(0px, (var(--hand-w) - var(--n, 5) * var(--hand-cw) * 0.77) / var(--n, 5) / 2)); }
+html.mobile.landscape .duel-screen.both-local .hand-1 .card:active { transform: none; }
+html.mobile.landscape .lp-me { left: 8px; bottom: 8px; }
+html.mobile.landscape .lp-op { right: 8px; top: 6px; }
+html.mobile.landscape .duel-dock { right: 8px; bottom: 8px; }
+html.mobile.landscape .duel-info { top: 92px; }
+html.mobile.landscape .duel-main.field3d .log-btn, html.mobile.landscape .log-btn { top: 8px; bottom: auto; left: 8px; transform: none; }
+html.mobile.landscape .pick-bar { bottom: calc(var(--hand-cw) * 0.85 + 10px); }
+/* carta guardata: a sinistra a tutta altezza, come sul desktop */
+html.mobile.landscape .card-peek { left: 8px; right: auto; top: 8px; bottom: auto; width: min(400px, 48vw); transform: translateX(-12px); }
+html.mobile.landscape .card-peek.show { transform: none; }
+html.mobile.landscape .card-peek .detail-panel { max-height: calc(var(--vh) * 100 - 16px); }
+html.mobile.landscape .card-peek .detail-scroll { max-height: calc(var(--vh) * 100 - 36px); }
+html.mobile.landscape .card-peek .detail-card { width: 36%; }
+
+/* Home: menu a sinistra, mazzo attivo a destra. */
+html.mobile.landscape .home { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-rows: auto 1fr auto; }
+html.mobile.landscape .home-head { flex-wrap: nowrap; }
+html.mobile.landscape .home-user { order: 0; flex-basis: auto; margin-left: 0; }
+html.mobile.landscape .menu { grid-column: 1; grid-row: 2; padding: 4px 22px; gap: 4px; }
+html.mobile.landscape .menu-title { font-size: clamp(24px, calc(var(--vh) * 8), 40px); }
+html.mobile.landscape .emblem { grid-column: 2; grid-row: 2; width: calc(var(--vh) * 60); transform: none; }
+html.mobile.landscape .home-side { grid-column: 2; grid-row: 2; align-self: end; padding: 0 12px 8px; }
+html.mobile.landscape .home-foot { grid-row: 3; }
+
+/* Pagine: lo spazio in larghezza c'è, le griglie tornano su più colonne dove serve. */
+html.mobile.landscape .decks-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+
+html.mobile.landscape .settings-grid, html.mobile.landscape .draft-formats, html.mobile.landscape .draft-bundles,
+html.mobile.landscape .draft-runs, html.mobile.landscape .ol-body, html.mobile.landscape .combo-how-points { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+html.mobile.landscape .dt-items { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+html.mobile.landscape .modal.card-sheet .detail-panel { flex-direction: row; align-items: flex-start; }
+html.mobile.landscape .modal.card-sheet .detail-card { width: 34%; }
+html.mobile.landscape .modal.card-sheet .detail-scroll { max-height: calc(var(--vh) * 100 - 140px); }
+/* Deck builder girato: deck e ricerca affiancati (niente schede), barra su una riga che scorre di lato */
+html.mobile.landscape .m-tabs { display: none; }
+html.mobile.landscape .editor-body, html.mobile.landscape .editor.view-mode .editor-body { grid-template-columns: minmax(0, 1fr) minmax(250px, 36%); }
+html.mobile.landscape .editor.view-mode .editor-body { grid-template-columns: minmax(0, 1fr); }
+html.mobile.landscape .editor[data-mtab] .editor-body > :not(.detail-panel) { display: flex; }
+html.mobile.landscape .editor-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+html.mobile.landscape .editor-toolbar > * { flex: none; }
+html.mobile.landscape .editor-toolbar > .select { flex: none; width: 170px; }
+html.mobile.landscape .deck-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); }
+html.mobile.landscape .modal.card-sheet .detail-card { width: min(34%, calc((var(--vh) * 100 - 150px) / 1.46)); }
+/* girato: la carta guardata sta a sinistra, la finestra di scelta le si mette accanto (come sul desktop) */
+html.mobile.landscape body.peek-beside .modal-backdrop:not(.minimized) { padding-left: calc(min(400px, 48vw) + 16px); }
+
+/* ------------------------------------------------------------------ replay (ui/replay.js) */
+/* barra a tutta larghezza in alto (in basso c'è la mano), compatta */
+html.mobile .duel-screen .replay-bar,
+html.mobile .duel-screen.watch-left-none .replay-bar { left: 0; right: 0; top: 0; bottom: auto; width: auto; padding: 6px 8px; gap: 4px; border: 0; border-bottom: 1px solid var(--line-strong); }
+html.mobile .duel-screen.replaying .duel-drawer { padding-bottom: 0; padding-top: 112px; }
+html.mobile .replay-row2 { gap: 4px; }
+html.mobile .replay-row2 .btn.small { padding: 4px 8px; }
+html.mobile .replay-row2 .select { width: auto; padding: 4px 6px; }
+html.mobile .replay-list .replay-row { flex-wrap: wrap; }
+html.mobile .replay-actions { width: 100%; justify-content: flex-end; }
+/* carte personalizzate e script: una colonna (elenco, carta, proprietà; script, poi le carte da leggere) */
+html.mobile .cc-page, html.mobile .se-page { overflow: auto; }
+html.mobile .cc-work, html.mobile .se-body { display: flex; flex-direction: column; flex: none; }
+html.mobile .cc-list { max-height: 30vh; }
+html.mobile .cc-stage { height: auto; width: min(100%, 320px); }
+html.mobile .se-editor { height: 55vh; flex: none; }
+html.mobile .page-tools { flex-wrap: wrap; justify-content: flex-end; }

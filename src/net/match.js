@@ -8,6 +8,8 @@ import { validSleeve } from "../data/sleeve.js";
 import { validPendulumIcons } from "../data/pendulum.js";
 import { validMoai } from "../data/moai.js";
 import { validMessage, cleanOptions } from "./guard.js";
+import { useRemoteBanlist } from "../data/custom-banlists.js";
+import { customCardsForSending, useRemoteCards } from "../data/custom-cards.js";
 import { identity } from "./identity.js";
 import { RankedGame } from "./elo.js";
 
@@ -144,8 +146,18 @@ function seedFrom(bytes) {
  *                   iFirst (rivincita: true/false = chi ha perso inizia, già noto a entrambi; null = lancio della moneta) }
  * @returns { duel, me, names, options }
  */
+/**
+ * Carte personalizzate del mazzo da mandare nel "hello" (anche quelle del Side Deck: possono entrare tra un duello e
+ * l'altro), con l'artwork ridotto quanto basta per stare in un messaggio.
+ */
+async function myCustomCards(deck) {
+  const list = await customCardsForSending([...(deck.main ?? []), ...(deck.extra ?? []), ...(deck.side ?? [])], 250_000);
+  return list.length ? list : undefined;
+}
+
 export async function negotiate(mux, opts) {
   const myRand = randomHex();
+  const myCustom = await myCustomCards(opts.deck);
   mux.send({
     t: "hello",
     v: PROTOCOL,
@@ -162,11 +174,17 @@ export async function negotiate(mux, opts) {
     // Partite classificate (ELO): identità del giocatore e se vuole che il duello conti.
     pk: identity().pk,
     ranked: !!opts.ranked,
+    // Carte personalizzate del mio mazzo (dati, script e artwork piccolo): l'avversario le vede e le gioca uguali.
+    custom: myCustom,
   });
   const hello = await mux.next("hello", opts.helloTimeout);
   if (hello.v !== PROTOCOL) throw new Error("Protocol version mismatch: both players must update the client");
   // Ospite: le regole dell'host si controllano (valori ammessi, flag del motore della modalità indicata).
   const options = opts.host ? opts.options : cleanOptions(hello.options);
+  // Carte personalizzate dell'avversario: prima del controllo del suo mazzo (e del motore, che le riceve all'avvio).
+  if (hello.custom?.length) await useRemoteCards(hello.custom, myCustom ?? []);
+  // Banlist personalizzata dell'host: l'ospite la usa per questa partita (controlli dei mazzi, side deck).
+  if (!opts.host && options.customBanlist) useRemoteBanlist(options.customBanlist);
 
   const sameData = hello.data === (db.manifest?.version ?? "?");
   const banlist = options.banlist ? banlistByName(options.banlist) : null;
