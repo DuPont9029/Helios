@@ -2,6 +2,7 @@
 // rarità, timer, coda dei pacchetti in attesa, giro del tavolo e binder privato (Main / Extra, per bundle).
 // Contro i bot (DraftTable) o online con altri giocatori (NetDraft, vedi draft-online.js); finito il draft si passa al
 // mazzo (draft-deck.js).
+import { isMobile } from "./mobile.js";
 import { h, clear, icon, scrollText } from "./dom.js";
 import { openModal, toast, confirmModal } from "./modal.js";
 import { cardFace, frameClass } from "./card.js";
@@ -297,7 +298,7 @@ export function showDraftTable(app, table, { me = 0, bestOf = 3, online = null }
     // Cambia solo la selezione: le liste ripartono da dove erano.
     const scrolled = new Map([...packEl.querySelectorAll(".dt-item")].map((el) => [el.dataset.uid, el.querySelector(".dt-strips")?.scrollTop ?? 0]));
     clear(packEl).append(
-      h("div.dt-pack-head", h("span.muted.small", `${n} ${pack.round === 1 ? "bundles" : "cards"} · click to select, then double-click, Pick or drag it into your binder to take it`)),
+      h("div.dt-pack-head", h("span.muted.small", isMobile() ? `${n} ${pack.round === 1 ? "bundles" : "cards"} · tap to select, then Pick to take it` : `${n} ${pack.round === 1 ? "bundles" : "cards"} · click to select, then double-click, Pick or drag it into your binder to take it`)),
       h(`div.dt-items${pack.round === 1 ? ".bundles" : ".singles"}`, { style: `--cols: ${cols}; --rows: ${rows}` }, pack.items.map((x, i) => itemEl(x, i, reveal)))
     );
     if (!reveal) for (const el of packEl.querySelectorAll(".dt-item")) {

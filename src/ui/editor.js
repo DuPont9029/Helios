@@ -2,6 +2,9 @@
 import { h, clear, download, pickFile, icon, rect, scrollText, dragAutoScroll } from "./dom.js";
 import { cardFace, regionBadge } from "./card.js";
 import { createDetailPanel } from "./detail.js";
+import { isMobile, onLongPress, openCardSheet, mobileTabs } from "./mobile.js";
+import { banlistSelect } from "./banlists.js";
+import { showCustomCards } from "./custom-cards.js";
 import { openModal, toast, confirmModal, promptModal, alertModal } from "./modal.js";
 import { db, getCard, isExtraDeckCard, statLine } from "../data/db.js";
 import { settings, artUrl } from "../data/settings.js";
@@ -198,6 +201,8 @@ export function showDeckList(app) {
         h("h1", "Deck"),
         h("span.decks-num", icon("inventory_2"), count),
         h("div.spacer"),
+        // Carte personalizzate (ui/custom-cards.js): si usano nei mazzi come le altre.
+        h("button.btn", { title: "Make your own cards, with artwork, text and Lua script", onclick: () => showCustomCards(app) }, icon("draw"), " Custom cards"),
         h("button.btn.primary", { title: "Omega code, .ydk text, ydke:// or card list from the clipboard", onclick: async () => add(await importDeck("clipboard")) }, icon("content_paste"), " Import from clipboard"),
         h("button.btn", { onclick: async () => add(await importDeck("paste")) }, icon("edit_note"), " Paste text"),
         h("button.btn", { onclick: async () => add(await importDeck("file")) }, icon("upload_file"), " .ydk file"),
@@ -472,7 +477,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   };
   let refreshTabs = null;
 
-  const detail = createDetailPanel();
+  const detail = createDetailPanel({ related: true });
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
   const snap = () => JSON.stringify({ name: deck.name, cover: deck.cover ?? null, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
@@ -664,7 +669,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     if (!target || !(await confirmLeave())) return;
     openDeck(target);
   });
-  const banSel = h("select.select", h("option", { value: "" }, "No banlist"), db.banlists.map((b) => h("option", { value: b.name }, b.name)));
+  // Con "Custom banlists…" per crearne e modificarne (ui/banlists.js).
+  const banSel = banlistSelect("select");
   banSel.value = banlist?.name ?? "";
   banSel.addEventListener("change", () => {
     banlist = banlistByName(banSel.value);
@@ -1228,6 +1234,21 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   let longPressed = false;
   let pointerKind = "mouse";
 
+  /** Telefono: scheda di una carta del mazzo, con le azioni che sul desktop sono su clic, tasto destro e pressione lunga. */
+  function deckCardSheet(code, p, index) {
+    const acts = [];
+    if (pick) acts.push({ label: p === "hand" ? "Out of the hand" : "To the hand", primary: true, run: () => pickMove(p, index, p === "hand" ? null : "hand") });
+    else if (side) acts.push({ label: p === "side" ? "Move to Deck" : "Move to Side", primary: true, run: () => moveCard(p, index, p === "side" ? "main" : "side") });
+    else {
+      acts.push({ label: "Remove", danger: true, run: () => removeAt(p, index) });
+      if (pool) acts.push({ label: "Artwork", run: () => chooseArt(code) });
+      else if (collect?.contextNext) acts.push({ label: "Next part", run: () => collectMove(p, index, PARTS[(PARTS.indexOf(p) + 1) % PARTS.length]) });
+      else if (!collect) acts.push({ label: p === "side" ? "To Deck" : "To Side", run: () => moveCard(p, index, p === "side" ? "main" : "side") });
+      acts.push({ label: "+1 copy", primary: true, run: () => addCard(code, p, index + 1) });
+    }
+    openCardSheet(code, acts);
+  }
+
   function deckCard(code, p, index) {
     if (view) {
       // Si evidenziano solo tante copie quante indicate (es. una delle tre copie nel mazzo).
@@ -1236,6 +1257,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (left > 0) markLeft.set(code, left - 1);
       const el = h(`div.deck-card${mark && left > 0 ? `.mark-${mark.kind}` : ""}`, cardFace(code), regionBadge(code));
       el.addEventListener("mouseenter", () => detail.show(code));
+      // Telefono: niente pannello dei dettagli, la pressione lunga apre la scheda della carta.
+      onLongPress(el, () => openCardSheet(code));
       // Scelta di una carta (openCardChooser): un clic la sceglie; quelle che non vanno bene restano grigie.
       if (view.choose) {
         const ok = !view.choose.filter || view.choose.filter(getCard(code));
@@ -1259,11 +1282,14 @@ export function showEditor(app, { side = null, embed = null } = {}) {
       if (e.button !== 0) return;
       start = [e.clientX, e.clientY];
       cancel();
-      if (side || pick) return; // Side Deck e scelta di carte: niente copie aggiunte con la pressione lunga
+      // Telefono: la pressione lunga apre la scheda della carta con le azioni del tasto destro.
+      const sheet = e.pointerType === "touch" && isMobile();
+      if (!sheet && (side || pick)) return; // Side Deck e scelta di carte: niente copie aggiunte con la pressione lunga
       timer = setTimeout(() => {
         timer = null;
         longPressed = true;
-        addCard(code, p, index + 1); // un'altra copia accanto, con i limiti di addCard
+        if (sheet) deckCardSheet(code, p, index);
+        else addCard(code, p, index + 1); // un'altra copia accanto, con i limiti di addCard
       }, LONG_PRESS);
     });
     el.addEventListener("pointermove", (e) => {
@@ -1462,6 +1488,19 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const poolGroupToggle = pool?.binder?.some((x) => x.round === 1)
     ? h("label.check.pool-grouping", h("input", { type: "checkbox", checked: !!settings.poolGrouped, onchange: (e) => { settings.poolGrouped = e.target.checked; renderResults(); } }), "By bundle")
     : null;
+  // Ordine dei risultati: per nome o per popolarità su YGOPRODeck (di sempre o dell'ultima settimana), e solo le
+  // staple (carte usate in molti mazzi). Non nel pool di un draft, che ha il suo ordine per rarità.
+  const hasPop = db.list.some((c) => c.pop);
+  const fSort = !pool && hasPop
+    ? h(
+        "select.select.small.result-sort",
+        { title: "Sort the results", onchange: () => { settings.editorSort = fSort.value; runSearch(); } },
+        [["name", "Name"], ["popular", "Most popular"], ["trending", "Trending this week"]].map(([v, l]) => h("option", { value: v, selected: (settings.editorSort ?? "name") === v }, l))
+      )
+    : null;
+  const fStaple = !pool && hasPop
+    ? h("label.check.result-staples", { title: "Only staples: cards played in many decks (YGOPRODeck)" }, h("input", { type: "checkbox", checked: !!settings.editorStaples, onchange: (e) => { settings.editorStaples = e.target.checked; runSearch(); } }), "Staples")
+    : null;
   // Vista dei risultati: griglia di carte o lista (ricordata nelle impostazioni).
   const viewToggle = h("div.view-toggle", ["grid", "list"].map((v) =>
     h(`button.view-btn${v === (settings.editorView === "list" ? "list" : "grid") ? ".on" : ""}`, {
@@ -1510,12 +1549,19 @@ export function showEditor(app, { side = null, embed = null } = {}) {
           if (!cardPoints(banlist, c.code)) return false;
         } else if (lim === "legal" ? l === 0 : Math.min(3, l) !== +lim) return false;
       }
+      if (fStaple && settings.editorStaples && !marks && !c.staple) return false;
       if (!textOk(c, text)) return false;
       return true;
     });
     if (pool) found = sortDeckPart(found.map((c) => c.code)).map(getCard);
+    // Popolarità (non per preferiti e cronologia, che hanno il loro ordine).
+    const sortBy = fSort && !marks ? fSort.value : "name";
+    if (sortBy !== "name") {
+      const key = sortBy === "trending" ? "popWeek" : "pop";
+      found.sort((a, b) => (b[key] ?? 0) - (a[key] ?? 0) || a.name.localeCompare(b.name));
+    }
     if (text) {
-      // Prima le carte il cui nome contiene il testo.
+      // Prima le carte il cui nome contiene il testo (l'ordine scelto resta dentro i due gruppi).
       if (fScope.value !== "text") found.sort((a, b) => (b.name.toLowerCase().includes(text) ? 1 : 0) - (a.name.toLowerCase().includes(text) ? 1 : 0));
     }
     if (!keep) shown = 120;
@@ -1548,6 +1594,10 @@ export function showEditor(app, { side = null, embed = null } = {}) {
           : h("div.result-card", { draggable: true, title: c.name }, cardFace(c.code), pool ? h("b.pool-left", `×${poolLeft(c.code)}`) : limitBadge(c.code), regionBadge(c.code), pool ? null : bookmarkButton(c.code));
         tile.addEventListener("mouseenter", () => detail.show(c.code));
         tile.addEventListener("click", () => addCard(c.code));
+        onLongPress(tile, () => openCardSheet(c.code, [
+          ...(pool || collect ? [] : [{ label: "Add to Side", run: () => addCard(c.code, "side") }]),
+          { label: "Add", primary: true, run: () => addCard(c.code) },
+        ]));
         tile.addEventListener("contextmenu", (e) => {
           e.preventDefault();
           addCard(c.code, pool ? null : "side");
@@ -1569,6 +1619,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
         : h("div.result-card", { draggable: true, title: c.name }, cardFace(code), h("b.pool-left", `×${poolLeft(code)}`));
       el.addEventListener("mouseenter", () => detail.show(code));
       el.addEventListener("click", () => addCard(code));
+      onLongPress(el, () => openCardSheet(code, [{ label: "Add", primary: true, run: () => addCard(code) }]));
       el.addEventListener("dragstart", (e) => e.dataTransfer.setData("text/plain", JSON.stringify({ code })));
       return el;
     };
@@ -1716,7 +1767,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     h("div.search-tabs", tabAll, tabMarks, tabHistory, filterToggle),
     q,
     filters,
-    h("div.results-head", resultInfo, poolGroupToggle, viewToggle),
+    h("div.results-head", resultInfo, poolGroupToggle, fStaple, fSort, viewToggle),
     results,
     h(
       "p.muted.small.hint",
@@ -1744,6 +1795,8 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : pool ? poolToolbar : embed ? embedToolbar : toolbar,
     h("div.editor-body", detail.el, dragAutoScroll(h("div.deck-area", area)), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
   );
+  // Telefono: un pannello alla volta, Deck o ricerca (o le istruzioni del Side Deck e della scelta), con le schede in basso.
+  if (!view) mobileTabs(page, [{ id: "deck", label: "Deck", icon: "style" }, side || pick ? { id: "help", label: "Help", icon: "help" } : { id: "search", label: "Search", icon: "search" }]);
   root.append(page);
   openDeck(single ? decks[0] : decks.find((d) => d.id === settings.lastDeck) ?? decks[0]);
   if (!side && !pick && !view) runSearch();

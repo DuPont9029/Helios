@@ -6,6 +6,7 @@ import { DUEL_MODES } from "../core/constants.js";
 import { TIMER_PRESETS } from "../duel/clock.js";
 import { MAX_BEST_OF } from "../duel/series.js";
 import { db } from "../data/db.js";
+import { clean as cleanBanlist } from "../data/custom-banlists.js";
 
 const isInt = (v, min = -Infinity, max = Infinity) => Number.isInteger(v) && v >= min && v <= max;
 const isStr = (v, max) => typeof v === "string" && v.length <= max;
@@ -22,7 +23,9 @@ const SHAPES = {
     // Main Deck fino a 400: nei tornei Limited non c'è il massimo di 60 (le regole vere le controlla negotiate).
     isObj(m.deck) && codes(m.deck.main, 400) && codes(m.deck.extra, 15) && (m.options === undefined || isObj(m.options)) &&
     (m.pk === undefined || (isStr(m.pk, 64) && HEX64.test(m.pk))) && (m.ranked === undefined || typeof m.ranked === "boolean") &&
-    (m.moai == null || isObj(m.moai)),
+    (m.moai == null || isObj(m.moai)) &&
+    // carte personalizzate del mazzo (le controlla una per una data/custom-cards.js: cleanCard)
+    (m.custom == null || (Array.isArray(m.custom) && m.custom.length <= 120 && m.custom.every(isObj))),
   // Partite classificate (ELO): firme dello start e del risultato.
   "rank-start": (m) => isStr(m.sig, 128) && SIG.test(m.sig),
   "rank-result": (m) => isStr(m.hash, 64) && HEX64.test(m.hash) && isStr(m.sig, 128) && SIG.test(m.sig),
@@ -71,7 +74,10 @@ export function cleanOptions(o) {
   if (!isInt(o.lp, 1, 999999)) bad("Life Points");
   if (!isInt(o.hand, 0, 20)) bad("starting hand");
   if (!isInt(o.draw, 0, 10)) bad("draws per turn");
-  if (o.banlist != null && !(isStr(o.banlist, 200) && db.banlists.some((b) => b.name === o.banlist))) bad(`banlist "${String(o.banlist).slice(0, 60)}" not found: update the client`);
+  // Banlist personalizzata dell'host: arriva intera (si controllano solo carte e limiti).
+  const custom = o.customBanlist != null ? cleanBanlist(o.customBanlist) : null;
+  if (o.customBanlist != null && !(custom && custom.name === o.banlist)) bad("custom banlist");
+  if (o.banlist != null && !custom && !(isStr(o.banlist, 200) && db.banlists.some((b) => b.name === o.banlist && !b.custom))) bad(`banlist "${String(o.banlist).slice(0, 60)}" not found: update the client`);
   if (!Object.hasOwn(TIMER_PRESETS, o.timer)) bad("timer");
   if (!(isInt(o.bestOf, 1, MAX_BEST_OF) && o.bestOf % 2 === 1)) bad("best of");
   if (o.pointCap != null && !isInt(o.pointCap, 0, 10000)) bad("point cap");
@@ -82,6 +88,7 @@ export function cleanOptions(o) {
     hand: o.hand,
     draw: o.draw,
     banlist: o.banlist ?? null,
+    ...(custom ? { customBanlist: { name: custom.name, whitelist: custom.whitelist, cards: custom.cards } } : {}),
     timer: o.timer,
     bestOf: o.bestOf,
     allowUnofficial: o.allowUnofficial === true,

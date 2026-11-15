@@ -290,7 +290,7 @@ export function artVariants(code) {
   if (!variantIndex) {
     variantIndex = new Map();
     for (const c of db.list) {
-      if (c.source === 1) continue;
+      if (c.source === 1 || c.source === 3) continue;
       const b = baseCode(c.code);
       if (!variantIndex.has(b)) variantIndex.set(b, []);
       variantIndex.get(b).push(c.code);
@@ -326,6 +326,8 @@ export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap,
     }
     if (c.type & TYPE.TOKEN) errors.push(`${c.name}: tokens cannot be in the deck`);
     if (!allowUnofficial && c.source === 1) errors.push(`${c.name}: unofficial card`);
+    // Carte personalizzate (data/custom-cards.js): come quelle non ufficiali, solo se le regole lo permettono.
+    if (!allowUnofficial && c.source === 3) errors.push(`${c.name}: custom card (allow unofficial cards in the rules)`);
     const region = cardRegion(c);
     if (format && region && region !== format) errors.push(`${c.name} is ${region}-only`);
     const banned = bannedType(banlist, c);

@@ -5,7 +5,7 @@
 import { h, clear, icon, scrollText } from "./dom.js";
 import { cardFace, miniCards } from "./card.js";
 import { openModal, toast, confirmModal, alertModal, promptModal } from "./modal.js";
-import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine } from "../data/db.js";
+import { db, getCard, cardName, isExtraDeckCard, statLine, typeLine, byPopularity } from "../data/db.js";
 import { settings } from "../data/settings.js";
 import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
@@ -18,7 +18,7 @@ import {
   loadComboStore, saveComboStore, comboToCode, comboFromCode, detectCards, comboDeck, interruptsOutsideBoard, isSheetCode,
   loadBoards, saveBoards, boardToCode, boardFromCode,
 } from "../duel/trainer.js";
-import { canRecordVideo, startVideo } from "./video-capture.js";
+import { canRecordVideo, startVideo, showVideo, videoErrorText } from "./video-capture.js";
 import { showComboSchema } from "./combo-view.js";
 import { renderSheets, decklistPicker } from "./combo-sheets.js";
 import { openDecklistEditor, openDeckPicker, openCardCollector, openCardChooser } from "./editor.js";
@@ -447,13 +447,19 @@ async function exportCombo(app, c) {
     try {
       cap = await startVideo(app.root);
     } catch (e) {
-      if (e?.name === "NotReadableError") {
-        alertModal("Video recording", "The browser could not capture the screen. On macOS allow it in System Settings → Privacy & Security → Screen & System Audio Recording (enable your browser), then restart the browser.");
-      } else if (e?.name !== "NotAllowedError") toast(e.message || "Unable to record the video", { kind: "error" });
+      const text = videoErrorText(e);
+      if (text) alertModal("Video recording", text);
       return;
     }
-    practice(app, c, { video: cap, autoplay });
+    // In auto-play il video è per chi guarda: a sinistra quello scelto, niente comandi da giocatore.
+    practice(app, c, { video: cap, autoplay, watch: autoplay ? left.value : null });
   };
+  // Cosa si vede a sinistra nel video in auto-play (si ricorda la scelta).
+  const left = h(
+    "select.select.small",
+    { onchange: () => (settings.trainerVideoLeft = left.value) },
+    [["combo", "The combo steps"], ["log", "The Duel log"], ["none", "Nothing (only the field)"]].map(([v, l]) => h("option", { value: v, selected: (settings.trainerVideoLeft ?? "combo") === v }, l))
+  );
   await openModal({
     title: `Export "${c.name}"`,
     className: "combo-export",
@@ -462,6 +468,7 @@ async function exportCombo(app, c) {
       video
         ? h("p.muted.small", "Video: the browser asks which tab to share (choose this one). With auto-play the trainer plays the combo by itself, using the cards, zones and answers of each step; the recording stops a few seconds after the combo is complete. Board tags appear above the cards at the end.")
         : h("p.muted.small", "This browser cannot record videos."),
+      video ? h("label.field.inline", h("span", "Auto-play video, on the left:"), left) : null,
     ],
     actions: [
       { label: "Close", value: null },
@@ -545,8 +552,9 @@ export function pickCard({ title = "Choose a card", suggest = [], filter = () =>
       clear(list).append(...(sug.length ? [h("div.muted.small.card-search-sub", "Suggested"), ...sug.slice(0, 60).map(row)] : [h("div.muted.small.card-search-sub", "Type to search the card database.")]));
       return;
     }
-    const byNameHit = candidates.filter((c) => c.name.toLowerCase().includes(q));
-    const byText = byNameHit.length < 60 ? candidates.filter((c) => !c.name.toLowerCase().includes(q) && c.search?.includes(q)) : [];
+    // Le più popolari (YGOPRODeck) per prime: di solito è quella che si cerca.
+    const byNameHit = byPopularity(candidates.filter((c) => c.name.toLowerCase().includes(q)));
+    const byText = byNameHit.length < 60 ? byPopularity(candidates.filter((c) => !c.name.toLowerCase().includes(q) && c.search?.includes(q))) : [];
     const found = [...byNameHit, ...byText].slice(0, 80);
     clear(list).append(...(found.length ? found.map((c) => row(c.code)) : [h("div.muted.small.card-search-sub", "No cards found.")]));
   };
@@ -589,7 +597,7 @@ const emptySetup = () => ({ me: { field: [], gy: [], banished: [], banishedDown:
  * cards: decklist di una combo nuova ({ main, extra }, copiata da un mazzo come punto di partenza).
  * setup: solo nome, turno, mano, decklist e stato di partenza, per iniziare una registrazione.
  */
-function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } = {}) {
+function editCombo(combo, { decks = loadDecks(), cards = null, setup = false, trying = false } = {}) {
   const c = combo ? structuredClone(combo) : { id: uid(), name: "New combo", first: true, hand: [], steps: [], interrupts: [], tags: [], cards: cards ?? { main: [], extra: [] } };
   c.cards = { main: [...(c.cards?.main ?? [])], extra: [...(c.cards?.extra ?? [])], side: [...(c.cards?.side ?? [])] };
   c.tags ??= [];
@@ -1465,7 +1473,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   snap();
   const collapsible = (title, el, open) => h("details.combo-fold", { open }, h("summary.combo-sec", title), el);
   const m = openModal({
-    title: setup ? "Record a combo" : combo?.id && !combo.recorded ? "Edit combo" : "New combo",
+    title: trying ? `Try "${trying}"` : setup ? "Record a combo" : combo?.id && !combo.recorded ? "Edit combo" : "New combo",
     className: "wide combo-editor",
     body: [
       h("div.combo-editor-tools", undoBtn, redoBtn, h("span.muted.small", "Ctrl+Z / Ctrl+Y")),
@@ -1481,7 +1489,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
         hasSetup(c.setup) || c.interrupts.length > 0
       ),
       collapsible("Decklist", cardsEl, empty()),
-      ...(setup ? [h("p.muted.small", "Then you play the combo: every action you choose (Summons, Sets, activations, End Phase) is recorded as a step, with the cards, zones and answers you pick.")] : []),
+      ...(setup ? [h("p.muted.small", trying ? "Then you play freely with the card (the opponent passes): Done brings you back to the card editor." : "Then you play the combo: every action you choose (Summons, Sets, activations, End Phase) is recorded as a step, with the cards, zones and answers you pick.")] : []),
       ...(setup
         ? []
         : [
@@ -1494,7 +1502,7 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
     actions: [
       { label: "Cancel", value: null },
       {
-        label: setup ? "Start recording" : "Save",
+        label: trying ? "Start the Duel" : setup ? "Start recording" : "Save",
         primary: true,
         onClick: (close) => {
           c.name = name.value.trim() || "Combo";
@@ -1534,6 +1542,45 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false } =
   });
 }
 
+// ------------------------------------------------------------- prova di una carta personalizzata
+
+/**
+ * "Save and try" dell'editor delle carte personalizzate (ui/custom-cards.js): si sceglie il mazzo in cui provarla
+ * (una copia, con la carta aggiunta), poi la stessa schermata della registrazione di una combo (mano iniziale, con la
+ * carta già dentro, e stato di partenza), poi si gioca liberamente contro un avversario passivo. onExit: si torna lì.
+ */
+export async function tryCustomCard(app, card, { onExit }) {
+  const decks = loadDecks();
+  const picker = decklistPicker(decks, { emptyLabel: "Only this card" });
+  const ok = await openModal({
+    title: `Try "${card.name}"`,
+    className: "combo-method",
+    body: [
+      h("label.field", h("span", "Deck"), picker.el),
+      h("p.muted.small", "The card is added to a copy of the Deck (your Deck does not change). Then choose the starting hand and, if you need it, the board state, as in the Trainer."),
+    ],
+    actions: [{ label: "Cancel", value: null }, { label: "Continue", primary: true, value: true }],
+  }).result;
+  if (!ok) return;
+  const base = await picker.read();
+  if (!base) return;
+  const extra = isExtraDeckCard(getCard(card.code));
+  const cards = {
+    main: extra ? [...base.main] : [card.code, ...base.main],
+    extra: extra ? [card.code, ...base.extra].slice(0, 15) : [...base.extra],
+    side: [],
+  };
+  const setup = await editCombo({ id: uid(), name: `Try: ${card.name}`, first: true, hand: extra ? [] : [card.code], steps: [], interrupts: [], tags: [], cards }, { decks, setup: true, trying: card.name });
+  if (!setup) return;
+  const done = () => {
+    app.current?.destroy?.();
+    app.current = null;
+    onExit();
+  };
+  const recorder = new ComboRecorder(setup, { notify: (text, kind) => toast(text, { kind: kind === "error" ? "error" : "ok", ms: 2200 }), onFinish: done, title: `Trying: ${card.name}`, finish: "Done", hint: "Play freely: the opponent passes. Press Done to go back to the card." });
+  startDuel(app, comboDeck(setup), { ...setup, interrupts: [] }, recorder, `Try: ${card.name}`, { onExit });
+}
+
 // ------------------------------------------------------------- duello del trainer
 
 /**
@@ -1561,7 +1608,7 @@ function record(app, setup, sheetId = null) {
  * della combo o, se non ne ha, con le sue carte necessarie.
  * video: registrazione già avviata (Export → Video); autoplay: il trainer gioca la combo da solo.
  */
-function practice(app, combo, { video = null, autoplay = false } = {}) {
+function practice(app, combo, { video = null, autoplay = false, watch = null } = {}) {
   const deck = comboDeck(combo);
   const trainer = new ComboTrainer(combo, {
     notify: (text, kind) => toast(text, { kind: kind === "error" ? "error" : "ok", ms: 3200 }),
@@ -1572,7 +1619,7 @@ function practice(app, combo, { video = null, autoplay = false } = {}) {
     // Auto-play dal menu (o per il video): si guarda la combo fino alla fine, senza poterlo spegnere.
     lockAuto: autoplay,
   });
-  const session = startDuel(app, deck, combo, trainer, autoplay ? `Auto-play: ${combo.name}` : `Practice: ${combo.name}`);
+  const session = startDuel(app, deck, combo, trainer, autoplay ? `Auto-play: ${combo.name}` : `Practice: ${combo.name}`, { watch });
   // Durante l'auto-play il duello non accetta i clic del giocatore (resta solo l'interruttore dell'auto-play).
   trainer.onAutoChange = (on) => {
     [session.view.el, session.view.floatBar].forEach((el) => el.classList.toggle("autoplaying", on));
@@ -1602,7 +1649,7 @@ function practice(app, combo, { video = null, autoplay = false } = {}) {
 }
 
 /** Duello per il Combo Trainer: controller = ComboTrainer o ComboRecorder. Restituisce la sessione. */
-function startDuel(app, deck, combo, controller, title) {
+function startDuel(app, deck, combo, controller, title, { watch = null, onExit = null } = {}) {
   const me = combo.first ? 0 : 1;
   const opp = 1 - me;
   const s = cleanSetup(combo.setup) ?? emptySetup();
@@ -1632,6 +1679,7 @@ function startDuel(app, deck, combo, controller, title) {
     pendulums: pair(pendulumIcons(), null),
     moais: pair(moaiConfig(), MOAI_CPU),
     trainer: controller,
+    watch,
     duel: {
       flags: String(DUEL_MODES.MR5.flags),
       seed: [...crypto.getRandomValues(new BigUint64Array(4))].map((x) => String(x || 1n)),
@@ -1646,7 +1694,7 @@ function startDuel(app, deck, combo, controller, title) {
       noTurnDraw: pair(false, true),
       place: [...placeCards(me, s.me), ...placeCards(opp, s.opp)],
     },
-    onExit: () => showComboTrainer(app),
+    onExit: onExit ?? (() => showComboTrainer(app)),
     // Fine del duello (o "Play again" a combo completa): si ricomincia con la stessa mano.
     onLocalRematch: controller instanceof ComboTrainer ? (old) => { old.destroy(); practice(app, combo); } : null,
   });
@@ -1699,10 +1747,14 @@ function attachVideo(session, trainer, cap, name) {
     clearInterval(tick);
     btn.remove();
     const { blob, ext } = await cap.stop();
-    if (blob.size) showVideo(blob, ext, name);
+    if (blob.size) showVideo(blob, ext, name, "Combo video");
   };
   btn.onclick = stop;
-  trainer.btns?.prepend(btn);
+  // Senza pannello a sinistra (video per chi guarda) il pulsante sta sul campo, in alto a sinistra.
+  if (session.view.watchLeft === "none") {
+    btn.classList.add("video-btn-float");
+    session.view.main.append(btn);
+  } else trainer.btns?.prepend(btn);
   session.view.caption(`🎬 ${name}`, "done");
   cap.done.then(stop); // condivisione interrotta dal browser
   // Uscendo dal duello la registrazione si chiude e si mostra il video.
@@ -1714,30 +1766,3 @@ function attachVideo(session, trainer, cap, name) {
   return { stop };
 }
 
-/** Anteprima del video registrato, con Download e (se il sistema lo permette) Share. */
-function showVideo(blob, ext, name) {
-  const url = URL.createObjectURL(blob);
-  const fileName = `${name.replace(/[\\/:*?"<>|]+/g, " ").trim() || "combo"}.${ext}`;
-  const file = new File([blob], fileName, { type: blob.type });
-  const canShare = !!navigator.canShare?.({ files: [file] });
-  const m = openModal({
-    title: "Combo video",
-    className: "wide",
-    body: [h("video.combo-video", { src: url, controls: true, playsInline: true }), h("p.muted.small", `${fileName} · ${(blob.size / 1048576).toFixed(1)} MB`)],
-    actions: [
-      { label: "Close", value: null },
-      ...(canShare ? [{ label: "Share", onClick: () => navigator.share({ files: [file], title: name }).catch(() => {}) }] : []),
-      {
-        label: "Download",
-        primary: true,
-        onClick: () => {
-          const a = h("a", { href: url, download: fileName });
-          document.body.append(a);
-          a.click();
-          a.remove();
-        },
-      },
-    ],
-  });
-  m.result.then(() => setTimeout(() => URL.revokeObjectURL(url), 60_000));
-}

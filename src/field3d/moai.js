@@ -393,6 +393,16 @@ export class Moai {
     return this.mouthLocal.clone().applyMatrix4(this.head.matrixWorld);
   }
 
+  /** Direzione (in piano) in cui esce il colpo dalla bocca, con la posa attuale. */
+  beamDir() {
+    this.head.updateWorldMatrix(true, false);
+    const m = this.head.matrixWorld;
+    const chin = new THREE.Vector3(0, -1, 0).transformDirection(m).setY(0);
+    const face = new THREE.Vector3(0, 0, 1).transformDirection(m).setY(0);
+    const look = chin.normalize().addScaledVector(face.normalize(), 0.35).normalize();
+    return look.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(this.beamTurn));
+  }
+
   update(dt) {
     this.time += dt;
     const breathe = 0.75 + 0.25 * Math.sin(this.time * 1.7);
@@ -410,11 +420,7 @@ export class Moai {
       // Esce dritto dalla bocca, lungo `reach`. Visto dall'alto la testa "punta" dalla cima verso il mento: il colpo
       // segue quell'asse (un po' verso dove guarda la faccia), ruotato di `beamTurn` gradi.
       const from = this.mouthWorld();
-      const m = this.head.matrixWorld;
-      const chin = new THREE.Vector3(0, -1, 0).transformDirection(m).setY(0);
-      const face = new THREE.Vector3(0, 0, 1).transformDirection(m).setY(0);
-      const look = chin.normalize().addScaledVector(face.normalize(), 0.35).normalize();
-      look.applyAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(this.beamTurn));
+      const look = this.beamDir();
       const k = this.group.scale.x;
       const to = from.clone().addScaledVector(look, this.reach * k); // in piano, all'altezza della bocca: dritto anche in prospettiva
       this.beam.aim(from, to, (SHAPE_WIDTH[this.cfg.shape] ?? 1.4) * k);

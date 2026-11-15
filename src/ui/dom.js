@@ -26,6 +26,8 @@ export function h(tag, props, ...children) {
     else el.setAttribute(k, v === true ? "" : v);
   }
   append(el, children);
+  // Bottone con solo un'icona: classe icon-only, che in main.css tiene l'icona sempre al centro.
+  if (el.tagName === "BUTTON" && el.childNodes.length === 1 && el.firstChild.classList?.contains("icon")) el.classList.add("icon-only");
   return el;
 }
 

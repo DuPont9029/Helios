@@ -3,6 +3,8 @@ import { h, clear, icon } from "./dom.js";
 import { openModal, toast, alertModal, confirmModal, promptModal } from "./modal.js";
 import { db } from "../data/db.js";
 import { settings } from "../data/settings.js";
+import { customBanlistFor, banlistHash } from "../data/custom-banlists.js";
+import { banlistSelect } from "./banlists.js";
 import { loadDecks, validateDeck, banlistByName } from "../deck/deck.js";
 import { DUEL_MODES } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
@@ -54,7 +56,8 @@ const userPresets = () => (Array.isArray(settings.gamePresets) ? settings.gamePr
 
 function optionsForm({ host = true } = {}) {
   const mode = h("select.select", Object.entries(DUEL_MODES).map(([k, m]) => h("option", { value: k }, m.label)));
-  const banlist = h("select.select", h("option", { value: "" }, "No banlist"), db.banlists.map((b) => h("option", { value: b.name }, b.name)));
+  // Con "Custom banlists…" per crearne e modificarne (ui/banlists.js).
+  const banlist = banlistSelect("select");
   banlist.value = settings.lastBanlist ?? db.banlists[0]?.name ?? "";
   const lp = h("input.input", { type: "number", value: 8000, min: 1, max: 999999, step: 500 });
   const hand = h("input.input", { type: "number", value: 5, min: 0, max: 20 });
@@ -173,6 +176,8 @@ function optionsForm({ host = true } = {}) {
         mode: mode.value,
         flags: String(DUEL_MODES[mode.value].flags),
         banlist: banlist.value || null,
+        // Banlist personalizzata: va all'ospite intera (lui non ce l'ha).
+        customBanlist: customBanlistFor(banlist.value),
         lp: Math.max(1, +lp.value || 8000),
         hand: Math.max(0, +hand.value || 0),
         draw: Math.max(0, +draw.value || 0),
@@ -882,7 +887,8 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   let stopSeeks = null;
   const rulesNow = () => {
     const o = opts.read();
-    return { mode: o.mode, banlist: o.banlist || "", timer: o.timer, bestOf: o.bestOf, lp: o.lp, hand: o.hand, draw: o.draw, unofficial: o.allowUnofficial, ranked: !!settings.ranked, ...(o.pointCap != null ? { pointCap: o.pointCap } : {}) };
+    // Banlist personalizzata: nella coda conta anche il contenuto (due liste con lo stesso nome possono differire).
+    return { mode: o.mode, banlist: o.customBanlist ? `${o.banlist} #${banlistHash(o.customBanlist)}` : o.banlist || "", timer: o.timer, bestOf: o.bestOf, lp: o.lp, hand: o.hand, draw: o.draw, unofficial: o.allowUnofficial, ranked: !!settings.ranked, ...(o.pointCap != null ? { pointCap: o.pointCap } : {}) };
   };
   const rulesText = (r) => [
     DUEL_MODES[r.mode]?.label ?? r.mode,

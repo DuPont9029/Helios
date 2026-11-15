@@ -4,6 +4,7 @@
 // Senza rete (o con GitHub che non risponde) restano quelle che ci sono.
 import { db } from "./db.js";
 import { parseLflist, sortBanlists } from "./lflist.js";
+import { syncCustomBanlists } from "./custom-banlists.js";
 
 const KEY = "ygoweb.banlists";
 const REPO = "ProjectIgnis/LFLists";
@@ -38,13 +39,17 @@ function withExtra(lists, bundled) {
 }
 
 export async function updateBanlists({ force = false } = {}) {
-  const shipped = db.banlists ?? [];
+  // Le personalizzate si tolgono qui e si rimettono in fondo dopo ogni cambio (syncCustomBanlists).
+  const shipped = (db.banlists ?? []).filter((b) => !b.custom);
   const bundled = db.manifest?.repos?.LFLists ?? null;
   // Banlist scaricate prima: valgono solo con gli stessi dati del client (base). Dati nuovi (sito aggiornato,
   // un altro file singolo) possono avere banlist più recenti: si ricontrolla da capo.
   let cache = readCache();
   if (cache && cache.base !== bundled) cache = null;
-  if (cache?.lists.length && cache.sha !== bundled) db.banlists = withExtra(cache.lists, shipped);
+  if (cache?.lists.length && cache.sha !== bundled) {
+    db.banlists = withExtra(cache.lists, shipped);
+    syncCustomBanlists();
+  }
   if (!force && cache && Date.now() - (cache.checked ?? 0) < CHECK_EVERY) return false;
   try {
     const head = await fetch(`https://api.github.com/repos/${REPO}/commits/HEAD`, { cache: "no-store" });
@@ -64,6 +69,7 @@ export async function updateBanlists({ force = false } = {}) {
     if (!lists.length) throw new Error("no banlists in the repository");
     writeCache({ sha, base: bundled, checked: Date.now(), lists: sha === bundled ? [] : lists });
     db.banlists = withExtra(lists, shipped);
+    syncCustomBanlists();
     return true;
   } catch (e) {
     console.warn("Banlist update:", e.message);

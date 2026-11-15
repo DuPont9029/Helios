@@ -5,7 +5,10 @@ inglese, commenti nel codice in italiano.
 
 ## Lavoro sulle liste del progetto
 - Le richieste arrivano da `bug-reports.md`, `features-and-improvements.md` e `reminders.md`.
-- Una voce fatta resta `- [ ]` con ` [implementato, testare]` in fondo: la spunta `[x]` la mette chi l'ha provata.
+- I tre file hanno tre sezioni (## 1. da fare / ## 2. fatto, da testare / ## 3. verificato), divise in categorie
+  (### ...), ogni voce `- [ ] **Nome**: descrizione`. Una voce fatta si sposta nella sezione 2; nella sezione 3 la
+  spostano solo gli utenti, mai Claude. Per spostarle: `npm run feature -- [--bugs|--reminders] test "nome"`
+  (CLI interattiva con `npm run feature`; estensione di VS Code in `tools/vscode-features`, `npm run vscode-ext`).
 - Le voci con `*` sono grandi o difficili: si fanno solo se richiesto esplicitamente.
 - Se una voce è ambigua, chiedere prima di implementarla.
 

@@ -20,6 +20,8 @@ import { startReportGame, endReportGame, closeReport, onReportChange } from "./c
 import { coachResultButton } from "../ui/coaching.js";
 import { StatsRecorder } from "./duel-stats.js";
 import { COACHING } from "../data/features.js";
+import { saveReplay } from "../data/replays.js";
+import { customCardsForSending } from "../data/custom-cards.js";
 
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
@@ -125,9 +127,13 @@ export class DuelSession {
       onSurrender: () => this.surrender(),
       onLeave: () => this.leave(),
       sideTab: cfg.sideTab ?? null,
+      // Video del Trainer in auto-play: modalità di chi guarda (pannello a sinistra a scelta, niente comandi).
+      watch: cfg.watch ?? null,
     });
     // La giocata di prova non è un duello per gli amici (la presenza resta "online").
     if (cfg.practice) this.view.el.classList.add("practice");
+    // Test Duel: si gioca anche la mano dell'avversario (sul telefono è grande quanto la mia, vedi mobile.css).
+    if (cfg.controllers.every((c) => c === "local")) this.view.el.classList.add("both-local");
     this.view.startLP = cfg.duel.lp;
     if (cfg.match?.bestOf > 1) this.view.setMatchInfo(cfg.match);
     this.clearSleeves = applySleeves(cfg.sleeves);
@@ -187,6 +193,31 @@ export class DuelSession {
     const replay = { duel: this.cfg.duel, me: this.cfg.me, names: this.cfg.names, history: this.history.slice(), stats: this.stats?.result(this.cfg.duel.lp) ?? null };
     endReportGame(this.broadcast.id, why ? `${outcome} · ${why}` : outcome, over, replay);
     if (over && COACHING) this.view.overlay.append(coachResultButton(this.reportId));
+  }
+
+  // ---------------------------------------------------------------- replay
+
+  /**
+   * Il duello finito (o lasciato) resta tra i replay (pagina Replays): configurazione del core e risposte date.
+   * Non il Combo Trainer né la giocata di prova; niente se non è stata data nessuna risposta.
+   */
+  keepReplay(winner, why) {
+    const { cfg } = this;
+    if (this.replayKept || this.trainer || cfg.practice || cfg.noReplay || !this.history.length) return;
+    this.replayKept = true;
+    const c = cfg.controllers;
+    const mode = c.includes("remote") ? (cfg.ranked ? "Ranked" : "Online") : c.includes("ai") ? "Vs CPU" : "Test Duel";
+    const outcome = winner === cfg.me ? "Victory" : winner === 0 || winner === 1 ? "Defeat" : "Draw";
+    // Carte personalizzate dei mazzi: il replay se le porta dietro (artwork ridotto per non pesare troppo).
+    const codes = cfg.duel.decks.flatMap((d) => [...d.main, ...(d.extra ?? [])]);
+    const history = this.history.slice();
+    customCardsForSending(codes, 120_000).catch(() => []).then((custom) => {
+      try {
+        saveReplay({ custom, mode, names: cfg.names, me: cfg.me, duel: cfg.duel, history, winner: winner === 0 || winner === 1 ? winner : null, result: why ? `${outcome} · ${why}` : outcome, game: cfg.match?.bestOf > 1 ? cfg.match.game : undefined });
+      } catch (e) {
+        console.warn("replay not saved", e);
+      }
+    });
   }
 
   // ---------------------------------------------------------------- timer
@@ -560,6 +591,7 @@ export class DuelSession {
       }
     }
     this.view.showResult({ winner, reason, text, sub });
+    this.keepReplay(winner, why);
     // Report del coaching: si legge a partita finita (al meglio di N: dopo l'ultimo duello, o uscendo).
     this.endBroadcast({ winner, reason, why, over: !series || series.over || !rematch });
     this.inbox.push({ t: "end" });
@@ -739,6 +771,7 @@ export class DuelSession {
     if (!this.over && !this.cfg.practice && !(await confirmModal("Leave the Duel?", this.cfg.ranked ? "You will lose the current Duel (ranked: it counts as a loss)." : "You will lose the current Duel.", "Leave", "Stay", { top: true }))) return;
     if (!this.over) this.cfg.ranked?.resign(); // classificata: chi esce perde
     if (!this.over) this.endBroadcast({ winner: 1 - this.cfg.me, why: "You left the Duel", over: true });
+    if (!this.over) this.keepReplay(1 - this.cfg.me, "You left the Duel");
     else if (this.broadcast) closeReport(this.broadcast.id);
     this.send({ t: "bye" });
     this.destroy();

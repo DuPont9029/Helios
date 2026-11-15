@@ -724,7 +724,8 @@ export class ComboTrainer {
  * Stessa interfaccia del ComboTrainer, così la sessione lo usa allo stesso modo.
  */
 export class ComboRecorder {
-  constructor(combo, { notify, onFinish }) {
+  /** title, finish, hint: testi del pannello (es. la prova di una carta personalizzata invece della registrazione). */
+  constructor(combo, { notify, onFinish, title = null, finish = "Finish", hint = null }) {
     this.combo = combo;
     this.notify = notify;
     this.steps = [];
@@ -737,8 +738,8 @@ export class ComboRecorder {
     this.el = h(
       "div.trainer-panel",
       // Intestazione fissa: "Finish" resta visibile anche scorrendo i passi registrati (la spiegazione scorre con loro).
-      h("div.trainer-top", h("div.trainer-head", h("b", `● Recording: ${combo.name}`), (this.btns = h("div.trainer-btns", this.undoBtn, h("button.btn.small.primary", { onclick: () => onFinish?.(this.result()) }, "Finish"))))),
-      h("div.trainer-status", "Play the combo: every action you choose becomes a step, with the cards, zones and answers you pick. Press Finish when done."),
+      h("div.trainer-top", h("div.trainer-head", h("b", title ?? `● Recording: ${combo.name}`), (this.btns = h("div.trainer-btns", this.undoBtn, h("button.btn.small.primary", { onclick: () => onFinish?.(this.result()) }, finish))))),
+      h("div.trainer-status", hint ?? "Play the combo: every action you choose becomes a step, with the cards, zones and answers you pick. Press Finish when done."),
       this.list
     );
     this.render();

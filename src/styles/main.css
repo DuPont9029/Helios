@@ -66,6 +66,12 @@ button { font: inherit; color: inherit; }
 .spacer { flex: 1; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .icon { font-family: "Material Symbols Outlined"; font-weight: normal; font-style: normal; line-height: 1; letter-spacing: normal; text-transform: none; white-space: nowrap; font-feature-settings: "liga"; -webkit-font-smoothing: antialiased; font-size: 1.25em; vertical-align: -0.2em; }
+/* Bottoni con solo un'icona (classe messa da h() in dom.js): l'icona resta al centro anche quando il bottone ha una misura
+   fissa più piccola dell'icona più il padding. Senza place-content la colonna della griglia parte dall'inizio dello spazio
+   interno e l'icona sporge solo a destra e in basso; centrata sporge uguale dai due lati. */
+button.icon-only { place-content: center; place-items: center; text-align: center; }
+/* blocco: nei bottoni "a riga di testo" non resta appoggiata sulla linea di base (finirebbe più in alto del centro) */
+button.icon-only > .icon { display: block; vertical-align: 0; }
 
 /* angolo smussato in alto a destra e in basso a sinistra */
 .chamfer, .btn, .card-box, .menu-tile, .panel, .modal, .status-box, .deck-part, .search-panel, .detail-panel {
@@ -395,6 +401,10 @@ input[type="range"] { accent-color: var(--accent); }
 .result-row .bm { position: static; opacity: 0.5; }
 .result-row:hover .bm, .result-row .bm.on { opacity: 1; }
 .results-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.results-head > .muted { white-space: nowrap; }
+/* ordine per popolarità e filtro Staples (YGOPRODeck) accanto alla vista */
+.results-head .result-sort { width: auto; flex: 0 1 auto; min-width: 0; }
+.results-head .result-staples { margin-left: auto; white-space: nowrap; }
 .view-toggle { display: flex; gap: 2px; }
 .view-btn { width: 28px; height: 26px; padding: 0; display: grid; place-items: center; cursor: pointer; border: 1px solid var(--line); background: none; color: var(--muted); }
 .view-btn .icon { font-size: 17px; }
@@ -660,3 +670,16 @@ html:has(.home) body::before, html:has(.boot) body::before {
 .chips.subs { display: flex; flex-wrap: wrap; gap: 3px; grid-template-columns: none; }
 .chips.subs .chip, .adv-sub-row .chips .chip { flex: none; width: auto; }
 .adv-sub-row > .chips { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* ------------------------------------------------------------------ carte collegate (ui/detail.js) */
+.detail-related { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 8px; }
+.related-head { display: flex; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 4px 0; color: var(--accent-soft); font: 600 12px var(--mono); letter-spacing: 0.06em; text-transform: uppercase; cursor: pointer; }
+.related-head:hover { color: var(--accent); }
+.related-head .icon:last-child { margin-left: auto; transition: transform 0.15s; }
+.related-head.open .icon:last-child { transform: rotate(180deg); }
+.related-label { margin: 8px 0 4px; font: 600 12px var(--mono); color: var(--text); }
+.related-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(46px, 1fr)); gap: 4px; align-items: center; }
+.related-card { padding: 0; border: 0; background: none; cursor: pointer; }
+.related-card .card { width: 100%; }
+.related-card:hover { filter: brightness(1.2); outline: 1px solid var(--accent); }
+.related-more { text-align: center; }

@@ -5,7 +5,7 @@ import { cardFace } from "../card.js";
 import { openModal } from "../modal.js";
 import { key } from "./board.js";
 import { locName } from "./describe.js";
-import { db, getCard, cardName, descString, hintString, sysString, counterName } from "../../data/db.js";
+import { db, getCard, cardName, descString, hintString, sysString, counterName, byPopularity } from "../../data/db.js";
 import { settings } from "../../data/settings.js";
 import { ATTRIBUTES, BATTLE, IDLE, LOC, MSG, POS, RACES, RESP, TYPE } from "../../core/constants.js";
 import { availableZones } from "../../core/zones.js";
@@ -856,7 +856,8 @@ export class Prompter {
   }
 
   announceCard(msg) {
-    const candidates = db.list.filter((c) => c.source !== 1 && isDeclarable(c, msg.opcodes));
+    // Le carte più giocate (popolarità su YGOPRODeck) per prime: di solito si dichiara una di quelle.
+    const candidates = byPopularity(db.list.filter((c) => c.source !== 1 && isDeclarable(c, msg.opcodes)));
     const input = h("input.input", { placeholder: "Search card name…", autofocus: true });
     const list = h("div.announce-list");
     const render = () => {

@@ -16,7 +16,8 @@ const FRAME = {
   "frame-fusion": "#8a5aa8", "frame-ritual": "#4f7fd0", "frame-normal": "#d8b45a", "frame-effect": "#c8743a",
 };
 
-const proxied = (code) => `https://wsrv.nl/?url=${encodeURIComponent(imageUrl(code))}&w=${CW * 2}&output=jpg`;
+// Carte personalizzate: la loro immagine è già un data URL (niente proxy).
+const proxied = (code) => (imageUrl(code).startsWith("data:") ? imageUrl(code) : `https://wsrv.nl/?url=${encodeURIComponent(imageUrl(code))}&w=${CW * 2}&output=jpg`);
 
 function loadImage(code) {
   return new Promise((resolve) => {

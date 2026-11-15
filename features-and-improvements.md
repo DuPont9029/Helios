@@ -1,42 +1,103 @@
-# Features and Improvements (\* indica una funzoine difficile/impossibile da implementare o grande feature)
+# Features and Improvements
 
-- [ ] \* Cambiare la visualizzazione nei replay per somigliare maggiormente a gli altri client e applicare i cambiamenti anche alla funzionalità di esportazione a video (dovrebbe ricreare il replay tramite gli step più dettagliati e registrarlo) (Elio deve ancora specificare quali sono le feature degli altri client).
-- [ ] \* Engine ibrido TCG/OCG di omega in web assembly.
-- [ ] \* Funzionalità di spettatore (visualizzazione come replay).
-- [ ] \* Custom card editor in game con script editor integrato (le carte devono ovviamente essere usabili online e visualizzabili dall'avversario).
-- [ ] \* Integrare il database di www.ygoprodeck.com per permettere un filtro per popolarità che sarebbe utile in più aree del client.
-- [ ] \* Funzionalità di draft/sealed/cube/roto (implementare con topografia a ring)
-- [ ] non aprire una finestra per costi che scartano e far selezionare direttamente dalla mano \[implementato, testare\]
-- [ ] mettere una flag per segnalare che è una beta e modifica l’app in modo che la versione sia 1.0 \[implementato, testare\]
-- [ ] \*decklist base nel gioco con livello base.
-- [ ] \*combo per decklist base.
-- [ ] Cambiare l'interfaccia e la funzionalità del trainer prendendo ispirazione da https://ygopocket.com/combos e integrando le feature non presenti nel sito che il client già ha mantenendo l'ispirazione presa da https://www.masterduelmeta.com/combos-and-counters#spreadsheets. \[implementato, testare\]
-- [ ] \* modalità carte anime e rush come per ygo omega necessita nuova source per le immagini.
-- [ ] \* importazione di collezioni dal altri sim.
-- [ ] \* related cards come master duel.
-- [ ] \* le window aperte durante la partita per attivare un effetto in chain dovrebbero specificare di che tipo di effetto si parla. Es: --da aggiungere esempio di altro sim--.
-- [ ] permettere quando bloccati in auto mode nel trainer comunque di interaggire con la velocità delle animazioni di gioco e con il bottone che mette in full screen. \[implementato, testare\]
-- [ ] \*supporti per banlist customizzate (da aggiungere quando si aggiunge il drafting)
-- [ ] \* queue standard
-- [x] poter cercare nel log \[implementato, testare\]
-- [x] per i deck nella schermata nei deck che hanno un nome troppo lungo e che finisce in "..." far scrollare il nome lateralmente se il cursore del mouse è nella cella di quel deck \[implementato, testare\]
-- [ ] Rendere i bundle e le carte  più grosse sullo schermo nel cube editor [implementato, testare]
-- [ ] Nel cube editor continuano a ricaricarsi le immagini delle carte, trovare un modo di tenerle caricate durante una sessione [implementato, testare]
-- [ ] Nella schermata dove si edita un bundle car cambiare rarità anche tramite un bottone + e uno - [implementato, testare]
-- [ ] Quando nel draft deck editor permettere di usare altri artwork di una carta che hai in collezione (attenzioni a carte come fallen of the white Dragon che hanno lo stesso nome ma non sono la stessa carta) [implementato, testare]
-- [ ] Nel cube editor aggiungere un bottone "+" (tipo new bundle) alla fine di ogni lista di bundle di una certa rarità, che se cliccato oltre a creare un bundle nuovo lo crea della rarità della lista dalla quale è stato cliccato il bottone. [implementato, testare]
-- [ ] Mostrare lo spessore del deck e extradeck quando in modalità: "Tilted view in the Duel (like Master Duel) instead of from above" [implementato, testare]
-- [ ] Permettere di esportare i deck come immagine [implementato, testare]
-- [ ] permettere di aggiornare o forkare un cube ad una nuova versione e far vedere una lista dei cambiamenti tra le due versioni. [implementato, testare]
-- [ ] permettere di vedere stat su una versione del cube dopo che ci si è stato giocato online (la pick media alla quale viene scelta una carta o bundle, win-rate di carte una volta che sono incluse nel deck e non solo in collezione, e usare le precedenti informazioni per generare una lista dei bundle più forti e una delle carte più forti in ordine) [implementato, testare]
-- [ ] far scorrere i nomi dei bundle durante il draft se ci si passa sopra con il cursore [implementato, testare]
-- [ ] overhaul della tab laterale durante il draft, dovrebbe essere minimizabile, nel caso lo sia si dovrebbe riaprire nel momento che si trascina un item verso di essa per selezionarlo [implementato, testare]
-- [ ] aggiungere alle rules che si definiscono prima di qualsiasi partita un preset che rimuove i limiti di deckbuildiing che si possa usare per testare i mazzi draft. le carte del main e extradeck dovrebbero essere visualizzate sullo stesso schermo e l'altra tab, dove adesso c'è lextradeck dovrebbe essere il side. viene tracciato il tuo deck durante il draft e presentato nel deck editor che si apre a fine draft dove il giocatore può scegliere di modificarlo. una carta o le carte di un bundle sono messe in side o main in base a quale delle due tab era aperta al momento in cui l'item è stato selezionato. [implementato, testare]
-- [ ] bundle view nel draft deck editor [implementato, testare]
-- [ ] sorter, nell'editor che si apre per gestire le carte singole in un cube, che le sorta all'interno delle loro rarità [implementato, testare]
-- [ ] tra le opzioni dei deck far apparire una "no deck" che permette di usarla come "https://stattrek.com/online-calculator/hypergeometric" [implementato, testare]
-- [ ] * overhaul del menù.
-- [ ] migliorare il filtro nel deck editor prendedo ispirazione da https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=1 ma senza la data di rilascio dato che il non abbiamo questa informazione e aggiungere l'opzione di filtrare per lo status sulla banlist. [implementato, testare]
-- [ ] nel cube editor deckeditor raggruppare le carte uguali come nell'HDPC per impedire che due copie della stessa carta siano di rarità diversa. [implementato, testare]
-- [ ] se si apre il deck editor in qualsiasi modo ricordarsi di far apparire le opzioni (tipo sorting) rilevanti alla situazione [implementato, testare]
-- [ ] far permettere di selezionare la copertina dei bundle tra le carte in esso presenti e se non si seleziona nulla defaultare alla pima, applicare questo change anche ai deck. [implementato, testare]
+`*` = funzione grande o difficile/impossibile da implementare: si fa solo se richiesta esplicitamente.
+
+Tre sezioni:
+1. **Da implementare**: quello che manca.
+2. **Implementate, da testare**: fatte, da provare da noi. Claude può spostare qui una voce quando la implementa.
+3. **Implementate e verificate**: provate da noi. Solo noi spostiamo qui una voce, Claude mai.
+
+---
+
+## 1. Da implementare
+
+### Duello e motore
+- [ ] * **Motore ibrido TCG/OCG**: il motore ibrido TCG/OCG di Omega compilato in WebAssembly.
+- [ ] * **Carte anime e Rush**: modalità con carte anime e Rush come in YGO Omega (serve una nuova fonte per le immagini).
+
+### Carte e dati
+- [ ] * **Importare collezioni**: importare la collezione da altri simulatori.
+
+### Contenuti per iniziare
+- [ ] * **Combo delle decklist base**: combo per le decklist base.
+
+### Interfaccia
+- [ ]  **Overhaul del menu**: rifare il menu principale. 
+
+---
+
+## 2. Implementate, da testare
+
+### App
+- [ ] **Flag beta e versione 1.0**: indicazione che l'app è una beta, con la versione portata a 1.0.
+- [ ] **Versione per telefono**: lo stesso Helios (e lo stesso Helios.html) su un telefono usa un'interfaccia per il touch, in verticale e girato: duello col campo 3D, home, deck builder a schede con la scheda della carta (pressione lunga al posto del tasto destro), pagine su una colonna, tavolo del draft. Icone sempre centrate nei bottoni.
+
+### Duello
+- [ ] **Costi di scarto dalla mano**: per i costi che scartano non si apre una finestra, si sceglie direttamente dalla mano.
+- [ ] **Spessore di Deck ed Extra Deck**: mostrare lo spessore del Deck e dell'Extra Deck nella vista inclinata ("Tilted view in the Duel (like Master Duel) instead of from above").
+
+### Trainer
+- [ ] **Controlli in auto mode**: bloccati in auto mode nel Trainer si può comunque cambiare la velocità delle animazioni e usare il bottone del fullscreen.
+
+### Deck builder
+- [ ] **Filtro avanzato**: filtro ispirato a https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=1 (senza data di uscita, che non abbiamo), con il filtro per stato nella banlist.
+- [ ] **Opzioni secondo la situazione**: in qualunque modo si apra, il deck builder mostra le opzioni utili in quel momento (es. sorting).
+- [ ] **Esporta come immagine**: esportare un deck come immagine.
+- [ ] **No deck**: tra i deck c'è "No deck", da usare come calcolatore ipergeometrico (tipo https://stattrek.com/online-calculator/hypergeometric).
+- [ ] **Copertina a scelta**: la copertina di bundle e deck si sceglie tra le carte che contengono; senza scelta è la prima.
+
+### Cube editor
+- [ ] **Bundle e carte più grandi**: bundle e carte più grossi sullo schermo.
+- [ ] **Immagini tenute in memoria**: le immagini delle carte non si ricaricano di continuo, restano caricate per la sessione.
+- [ ] **Rarità con + e −**: nella schermata di modifica di un bundle la rarità si cambia anche con i bottoni + e −.
+- [ ] **"+" in fondo a ogni rarità**: un bottone "+" (come New bundle) alla fine di ogni lista di bundle crea un bundle nuovo già di quella rarità.
+- [ ] **Copie uguali raggruppate**: nel deck editor del cube le carte uguali sono raggruppate come nell'HDPC, così due copie della stessa carta non possono avere rarità diverse.
+- [ ] **Sorter per rarità**: nell'editor delle carte singole di un cube, ordinamento delle carte dentro le loro rarità.
+- [ ] **Versioni e fork**: aggiornare o forkare un cube a una nuova versione, con la lista dei cambiamenti tra le due.
+- [ ] **Statistiche del cube**: per ogni versione giocata online, pick media di carte e bundle, win-rate delle carte messe nel deck (non solo in collezione) e, da questi dati, la classifica dei bundle e delle carte più forti.
+
+### Draft
+- [ ] **Nomi dei bundle che scorrono**: durante il draft il nome di un bundle scorre quando ci passa sopra il cursore.
+- [ ] **Tab laterale minimizzabile**: overhaul della tab laterale durante il draft; si può minimizzare e si riapre quando ci si trascina sopra un item per sceglierlo.
+- [ ] **Preset per provare i deck draft**: preset nelle rules senza limiti di deckbuilding; Main ed Extra Deck sullo stesso schermo e il Side nell'altra tab. Il deck viene tracciato durante il draft e si apre nel deck editor a fine draft; ogni pick va in Main o Side a seconda della tab aperta quando è stato scelto.
+- [ ] **Vista per bundle**: vista per bundle nel deck editor del draft.
+- [ ] **Artwork alternativi**: nel deck editor del draft si possono usare gli altri artwork di una carta che hai in collezione (attenzione alle carte con lo stesso nome che non sono la stessa carta, come Fallen of the White Dragon).
+
+### Replay e spettatori
+- [ ] **Aggiungere funzionalità di replay**: la funzionalità di replay per partite fatte sia online che contro amici va aggiunta in primo luogo consentendo di vedere ed esportare sia come video che come codice replay di helios
+- [ ] **qualità dei video dei replay**: il video esportato è di qualità infima migliorala considerevolmente
+- [ ] **configurazione schermo**: cosa appare alla sininstra dei replay deve essere configurabile; o nulla o il log o (se nel trainer) il combo log. Inoltre non dovrebbero apparire le icone dei bottoni che sono utili durante una partita ma non senvono a chi guarda, tipo il toggle della chain, le impostazionie l'opzione di autoselezione delle zone
+- [ ] **life points coperti nel replay**: adesso la finestra del log copre i life points del giocatore 1, spostare i life points a destra dove adesso si trova il pulsante delle impostazione, dell'autoplace e del toggle.
+
+### Carte e dati
+- [ ]  **Editor di carte custom**: editor in gioco con editor di script integrato; le carte devono essere usabili online e visibili all'avversario.
+- [ ]  **Popolarità da YGOPRODeck**: integrare il database di www.ygoprodeck.com per filtrare per popolarità, utile in più parti del client.
+- [ ]  **Related cards**: carte collegate come in Master Duel.
+
+### Online e formati
+- [ ]  **Banlist custom**: supporto alle banlist personalizzate (da aggiungere insieme al drafting).
+
+---
+
+## 3. Implementate e verificate
+
+### Duello
+- [x] **Ricerca nel log**: si può cercare nel log della partita.
+
+### Deck
+- [x] **Nomi lunghi che scorrono**: nella schermata dei deck, un nome troppo lungo (che finisce in "...") scorre di lato quando il cursore è sulla cella del deck.
+
+### Duello e motore
+- [x] * **Tipo di effetto nelle finestre di chain**: le finestre aperte durante la partita per attivare un effetto in chain dicono di che tipo di effetto si tratta. Es: --da aggiungere esempio di altro sim--.
+
+### Replay e spettatori
+- [x] * **Spettatori**: guardare una partita in corso, visualizzata come un replay.
+
+### Online e formati
+- [x] * **Queue standard**: coda di matchmaking standard.
+
+### Contenuti per iniziare
+- [x] * **Decklist base**: decklist base incluse nel gioco, di livello base.
+
+### Trainer
+- [x] **Nuovo Trainer**: interfaccia e funzionalità ispirate a https://ygopocket.com/combos, con le feature che il client già aveva e l'ispirazione da https://www.masterduelmeta.com/combos-and-counters#spreadsheets.

@@ -1,0 +1,7 @@
+/* Link per spostare le voci (solo in features-and-improvements.md): discreti, più visibili passando sulla voce. */
+.hf-moves { margin-left: 0.6em; white-space: nowrap; opacity: 0.35; transition: opacity 0.15s; }
+li:hover > p > .hf-moves, li:hover > .hf-moves { opacity: 1; }
+.hf-move { display: inline-block; margin-left: 0.35em; padding: 0 0.5em; border-radius: 3px; font-size: 0.8em; text-decoration: none !important; border: 1px solid currentColor; }
+.hf-todo { color: #d7a03a !important; }
+.hf-test { color: #3aa9d7 !important; }
+.hf-done { color: #4cb36b !important; }

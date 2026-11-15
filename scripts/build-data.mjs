@@ -241,6 +241,36 @@ function buildScripts(cards) {
   console.log(`script: ${n} file lua${rescued.length ? `; presi da altre cartelle: ${rescued.join(", ")}` : ""}`);
 }
 
+// ---------------------------------------------------------------- popolarità
+
+// Popolarità delle carte da YGOPRODeck (API pubblica): visualizzazioni totali e dell'ultima settimana della pagina
+// della carta e "staple" (carte usate in molti mazzi). Nel client: ordinare la ricerca per popolarità, filtro
+// Staples, carte più cercate per prime (src/data/db.js: card.pop). Se l'API non risponde il build continua senza.
+// popularity.json: { v, built, cards: { id: [visualizzazioni, della settimana, staple 0/1] } }.
+async function buildPopularity() {
+  const file = path.join(OUT, "popularity.json");
+  try {
+    const r = await fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes", { headers: { "user-agent": "Helios data build (github.com/DuPont9029/Helios)" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const cards = {};
+    // Numeri arrotondati a 3 cifre significative: l'ordine resta quello e il file pesa meno.
+    const round = (n) => (n > 0 ? Number(n.toPrecision(3)) : 0);
+    for (const c of (await r.json()).data ?? []) {
+      const m = c.misc_info?.[0];
+      if (!m) continue;
+      const row = [round(m.views ?? 0), round(m.viewsweek ?? 0), m.staple === "Yes" ? 1 : 0];
+      if (!row[0] && !row[1] && !row[2]) continue;
+      // Anche gli artwork alternativi (stessa carta, altro codice).
+      for (const id of new Set([c.id, ...(c.card_images ?? []).map((i) => i.id)])) cards[id] = row;
+    }
+    if (!Object.keys(cards).length) throw new Error("no data");
+    fs.writeFileSync(file, JSON.stringify({ v: 1, built: new Date().toISOString().slice(0, 10), cards }));
+    console.log(`popularity.json: ${Object.keys(cards).length} carte`);
+  } catch (e) {
+    console.warn(`  [popolarità] YGOPRODeck non disponibile (${e.message}): ${fs.existsSync(file) ? "resta il file di prima" : "niente popolarità"}`);
+  }
+}
+
 // ---------------------------------------------------------------- deck di esempio
 
 // I Base decks del gioco (src/data/default-decks.js): in starter-decks.json per gli script (smoke test, trailer).
@@ -263,7 +293,11 @@ const cards = buildCards();
 buildStrings();
 await buildBanlists();
 buildScripts(cards);
+// API Lua per l'editor degli script delle carte personalizzate (dagli script appena copiati).
+const { buildLuaApi } = await import("./build-lua-api.mjs");
+console.log("lua-api.json:", buildLuaApi());
 await buildStarters(cards);
+if (!offline) await buildPopularity();
 
 const manifest = { built: new Date().toISOString(), repos: {} };
 for (const name of Object.keys(REPOS)) {
