@@ -1593,26 +1593,27 @@ export async function tryCustomCard(app, card, { onExit }) {
     app.current = null;
     onExit();
   };
-  // I passi si registrano come in una combo: a fine prova si possono salvare (editor della combo, come "Record").
-  const finish = async (result) => {
-    if (result.steps.length) {
-      const v = await openModal({
-        title: "Test finished",
-        body: [h("p", `${result.steps.length} step${result.steps.length > 1 ? "s" : ""} recorded.`), h("p.muted.small", "Save them as a combo to replay, practice or share this test.")],
-        actions: [{ label: "Back to the card", value: "back" }, { label: "Save as combo", primary: true, value: "save" }],
-      }).result;
-      if (v === "save") {
-        app.current?.destroy?.();
-        app.current = null;
-        showComboTrainer(app, { review: { combo: { ...result, name: `${card.name}: test`, interrupts: [], recorded: true } } });
-        return;
-      }
-      if (v == null) return; // finestra chiusa: si resta nel duello
-    }
-    done();
-  };
-  const recorder = new ComboRecorder(setup, { notify: (text, kind) => toast(text, { kind: kind === "error" ? "error" : "ok", ms: 2200 }), onFinish: finish, title: `Trying: ${card.name}`, finish: "Done", hint: "Play freely: the opponent passes. Your steps are recorded: press Done to save them as a combo or go back to the card." });
-  startDuel(app, comboDeck(setup), { ...setup, interrupts: [] }, recorder, `Try: ${card.name}`, { onExit });
+  const recorder = new ComboRecorder(setup, { notify: (text, kind) => toast(text, { kind: kind === "error" ? "error" : "ok", ms: 2200 }), onFinish: done, title: `Trying: ${card.name}`, finish: "Done", hint: "Play freely: the opponent passes. ● Video records the test; press Done to go back to the card." });
+  const session = startDuel(app, comboDeck(setup), { ...setup, interrupts: [] }, recorder, `Try: ${card.name}`, { onExit });
+  // Video della prova (come Export → Video delle combo): alla fine anteprima con Download e Share.
+  if (canRecordVideo()) {
+    const btn = h("button.btn.small.ghost", {
+      title: "Record a video of this test (when the browser asks, share this tab)",
+      onclick: async () => {
+        let cap;
+        try {
+          cap = await startVideo(app.root);
+        } catch (e) {
+          const text = videoErrorText(e);
+          if (text) alertModal("Video recording", text);
+          return;
+        }
+        btn.remove();
+        attachVideo(session, recorder, cap, `Test: ${card.name}`);
+      },
+    }, "● Video");
+    recorder.btns?.prepend(btn);
+  }
 }
 
 // ------------------------------------------------------------- duello del trainer
