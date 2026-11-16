@@ -308,6 +308,7 @@ export async function showCustomCards(app, { select: selectCode = null, create =
     status,
     h("button.btn", { title: "Duplicate this card", onclick: async () => { await flush(); const copy = await saveCustomCard({ ...c, code: newCustomCode(), name: `${c.name} (copy)` }); openCard(copy.code); } }, icon("content_copy"), " Duplicate"),
     h("button.btn", { title: "Copy the code of this card (import it in another Helios)", onclick: async () => { await flush(); shareCards([c]); } }, icon("share"), " Share"),
+    h("button.btn", { title: "Download the card as a high-quality image (PNG, 1684×2456)", onclick: async () => { await flush(); downloadCardImage(c); } }, icon("image"), " Image"),
     h("button.btn.danger", { title: "Delete this card", onclick: async () => { if (await confirmModal("Delete card?", `"${c.name}" will be removed (also from your Decks).`, "Delete", "Cancel")) { clearTimeout(saveTimer); await deleteCustomCard(c.code); c = null; const next = customCards()[0]; next ? openCard(next.code) : showCustomCards(app); } } }, icon("delete")),
     h("button.btn.primary", { title: "Choose a Deck and the starting hand / board state, then play a Duel with this card", onclick: async () => { await flush(); const card = c; tryCustomCard(app, card, { onExit: () => showCustomCards(app, { select: card.code }) }); } }, icon("sports_esports"), " Save and try")
   );
@@ -339,10 +340,25 @@ export async function showCustomCards(app, { select: selectCode = null, create =
   else stage.replaceChildren(h("div.replay-empty", icon("draw"), h("b", "No custom cards yet"), h("span.muted.small", "Make a card with its own artwork, text and Lua script: it works in the Deck builder, in Duels and online (your opponent receives it)."), h("button.btn.primary", { onclick: newCard }, icon("add"), " New card")));
 }
 
+/** Immagine della carta in alta qualità (4× la carta di 421×614 punti, PNG senza perdita). */
+async function downloadCardImage(card) {
+  const url = await renderCardImage(card, { scale: 4, type: "image/png" });
+  const a = h("a", { href: url, download: `${(card.name || "card").replace(/[\\/:*?"<>|]+/g, "").trim() || "card"}.png` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  toast(`Image saved: "${card.name}"`);
+}
+
 async function shareCards(cards) {
   const code = await cardsToCode(cards);
   const show = () =>
-    openModal({ title: "Card code", body: [h("p.muted.small", "Copy this code and import it in another Helios client (Deck → Custom cards → Import)."), h("textarea.input.combo-code", { readOnly: true, rows: 6, value: code, onfocus: (e) => e.target.select() })], actions: [{ label: "Close", value: null, primary: true }] });
+    openModal({
+      title: "Card code",
+      body: [h("p.muted.small", "Copy this code and import it in another Helios client (Deck → Custom cards → Import)."), h("textarea.input.combo-code", { readOnly: true, rows: 6, value: code, onfocus: (e) => e.target.select() }),
+        cards.length === 1 ? h("button.btn.small", { onclick: () => downloadCardImage(cards[0]) }, icon("image"), " Download the image (PNG, high quality)") : null],
+      actions: [{ label: "Close", value: null, primary: true }],
+    });
   if (!navigator.clipboard?.writeText) return show();
   navigator.clipboard.writeText(code).then(() => toast(cards.length === 1 ? `Card code copied: "${cards[0].name}"` : `Code of ${cards.length} cards copied`), show);
 }

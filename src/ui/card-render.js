@@ -138,13 +138,13 @@ function drawCover(g, img, x, y, w, h) {
  * Immagine della carta (data URL JPEG, 842×1228) dai dati: { name, desc, pendText, type, attribute, race, level, atk,
  * def, lscale, rscale, linkMarker, art }.
  */
-export async function renderCardImage(c) {
+export async function renderCardImage(c, { scale = S, type = "image/jpeg", quality = 0.92 } = {}) {
   await fontReady;
   const canvas = document.createElement("canvas");
-  canvas.width = W * S;
-  canvas.height = H * S;
+  canvas.width = W * scale;
+  canvas.height = H * scale;
   const g = canvas.getContext("2d");
-  g.scale(S, S);
+  g.scale(scale, scale);
   g.imageSmoothingQuality = "high";
   const monster = !!(c.type & TYPE.MONSTER);
   const link = monster && !!(c.type & TYPE.LINK);
@@ -243,7 +243,7 @@ export async function renderCardImage(c) {
 
   // numero della carta: è una carta personalizzata
   fitLine(g, "HELIOS-CUSTOM", pendulum ? 35 : link ? 269.5 : 302, pendulum ? 563 : 442, 74, 10, `10px ${TEXT}`, light && !pendulum ? "#fff" : "#000", pendulum ? "left" : "right");
-  return canvas.toDataURL("image/jpeg", 0.92);
+  return canvas.toDataURL(type, quality);
 }
 
 const webp = (() => {
