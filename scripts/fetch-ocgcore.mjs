@@ -24,6 +24,8 @@ const STAMP = path.join(DEST, ".version");
 // 4. SHUFFLE_SET_CARD: il numero di carte è un byte e il core scrive prima tutte le posizioni di partenza e poi
 //    tutte quelle d'arrivo (libduel.cpp, ShuffleSetCard), non coppie da/a con un numero a 4 byte: si leggeva oltre
 //    la fine del messaggio ("eof" in duelGetMessage).
+// 5. COUNTERS: il core scrive per ogni segnalino tipo (16 bit bassi) + numero (16 bit alti); la libreria li
+//    invertiva (chiave = numero, valore = tipo): 1 segnalino di tipo 0x1f9 diventava "505".
 const PATCHES = [
   {
     name: "risposta SORT_CARD",
@@ -40,6 +42,11 @@ const PATCHES = [
     bad: `t.${f}=e.u32()`,
     good: `t.${f}=e.i32()`,
   })),
+  {
+    name: "segnalini nelle query",
+    bad: "let c=e.u16(),a=e.u16();t.counters[a]=c",
+    good: "let c=e.u16(),a=e.u16();t.counters[c]=a",
+  },
   {
     name: "SHUFFLE_SET_CARD",
     bad: "location:e.u8(),cards:Array.from({length:e.u32()},()=>({from:p(e),to:p(e)}))",
