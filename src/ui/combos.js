@@ -582,6 +582,7 @@ const TAG_SUGGESTIONS = ["Omni-negate", "Negate", "Pop", "Floodgate", "Interrupt
 const isMonster = (code) => ((getCard(code)?.type ?? 0) & TYPE.MONSTER) !== 0;
 const isFieldSpell = (code) => ((getCard(code)?.type ?? 0) & TYPE.FIELD) !== 0;
 const isPendulum = (code) => ((getCard(code)?.type ?? 0) & TYPE.PENDULUM) !== 0;
+const isXyz = (code) => ((getCard(code)?.type ?? 0) & TYPE.XYZ) !== 0;
 
 /** Zona più adatta libera per una carta (mostri nelle zone mostri, magie di terreno nella Field Zone...). */
 function freeZone(list, code) {
@@ -1078,6 +1079,15 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false, tr
     return out;
   }
   /** Stato di partenza nella schermata del deck builder; active: la parte da riempire per prima. */
+  /** Materiali Xyz di un mostro della board di partenza, scelti nel deck builder. */
+  async function editMats(x) {
+    const v = await deckScreen(() => openCardCollector({ title: cardName(x.code), subtitle: "Xyz Materials", parts: [{ key: "mats", label: "Materials", cards: x.mats ?? [], max: 10, hint: "the cards under this Xyz Monster at the start" }], active: "mats" }));
+    if (!v) return;
+    if (v.mats.length) x.mats = v.mats;
+    else delete x.mats;
+    renderSetup();
+    snap();
+  }
   async function editBoard(active = "me_field") {
     const st = c.setup;
     const parts = [
@@ -1199,12 +1209,18 @@ function editCombo(combo, { decks = loadDecks(), cards = null, setup = false, tr
       const pos = h("select.select", POSITIONS.map(([p, l]) => h("option", { value: p }, l)));
       pos.value = x.pos;
       pos.addEventListener("change", () => { x.pos = pos.value; snap(); });
+      // Xyz nelle zone mostri: i materiali sotto (scelti nel deck builder)
+      const mats = isXyz(x.code) && x.zone[0] === "m"
+        ? h("button.btn.small.ghost.setup-mats", { title: "Xyz Materials under this monster (in the Deck Builder)", onclick: () => editMats(x) },
+          icon("layers"), x.mats?.length ? [miniCards(x.mats), ` ${x.mats.length} material${x.mats.length > 1 ? "s" : ""}`] : " Materials")
+        : null;
       return h(
         "div.setup-field-row",
         h("span.setup-field-name", { title: cardName(x.code) }, miniCards([x.code]), scrollText(cardName(x.code))),
         zone,
         pos,
         h("button.btn.small.ghost", { title: "Remove", onclick: () => { list.splice(i, 1); pruneInterrupts(); renderSetup(); snap(); } }, icon("close")),
+        mats,
         // Campo dell'avversario: quando la usa (sulla riga sotto).
         ints ? useSelect(x.code, ints.get(`field:${i}`)) : null
       );
@@ -1720,6 +1736,8 @@ function placeCards(player, side) {
     const monster = location === LOC.MZONE;
     const position = x.pos === "set" ? (monster ? POS.FACEDOWN_DEFENSE : POS.FACEDOWN) : x.pos === "def" && monster ? POS.FACEUP_DEFENSE : POS.FACEUP_ATTACK;
     out.push({ player, code: x.code, location, sequence, position });
+    // materiali Xyz: sotto il mostro in quella zona (vedi DuelEngine.start)
+    if (monster) for (const code of x.mats ?? []) out.push({ player, code, location: LOC.OVERLAY, sequence });
   }
   for (const code of side.gy ?? []) out.push({ player, code, location: LOC.GRAVE, sequence: 0, position: POS.FACEUP_ATTACK });
   for (const code of side.banished ?? []) out.push({ player, code, location: LOC.REMOVED, sequence: 0, position: POS.FACEUP_ATTACK });

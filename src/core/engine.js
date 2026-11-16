@@ -121,13 +121,35 @@ export class DuelEngine {
     // [{ player, code, location, sequence, position }] su campo, Cimitero o tra le carte bandite.
     // Le zone Pendulum (location PZONE, sequence 0 = sinistra, 1 = destra) non si possono riempire con
     // duelNewCard: la carta parte tra quelle bandite e uno script la sposta nella zona all'inizio del duello.
+    // Materiali Xyz (location OVERLAY, sequence = zona mostri dell'Xyz): duelNewCard non li attacca all'Xyz; partono
+    // tra le carte bandite coperte e uno script li mette sotto l'Xyz all'inizio del duello.
     const scales = [];
+    const mats = [];
     for (const c of cfg.place ?? []) {
       const pz = c.location === LOC.PZONE;
+      const mat = c.location === LOC.OVERLAY;
       if (pz) scales.push(c);
+      if (mat) mats.push(c);
       lib.duelNewCard(this.handle, {
-        team: c.player, duelist: 0, code: c.code, controller: c.player, location: pz ? LOC.REMOVED : c.location, sequence: pz ? 0 : c.sequence ?? 0, position: pz ? 0x5 : c.position ?? 0x1,
+        team: c.player, duelist: 0, code: c.code, controller: c.player,
+        location: pz || mat ? LOC.REMOVED : c.location, sequence: pz || mat ? 0 : c.sequence ?? 0, position: pz ? 0x5 : mat ? 0xa : c.position ?? 0x1,
       });
+    }
+    if (mats.length) {
+      const list = mats.map((c) => `{${c.player},${c.sequence | 0},${c.code | 0}}`).join(",");
+      const src = `local e=Effect.GlobalEffect()
+e:SetType(EFFECT_TYPE_FIELD+EFFECT_TYPE_CONTINUOUS)
+e:SetCode(EVENT_STARTUP)
+e:SetOperation(function(e)
+  for _,v in ipairs({${list}}) do
+    local xyz=Duel.GetFieldCard(v[1],LOCATION_MZONE,v[2])
+    local c=Duel.GetFirstMatchingCard(function(x) return x:IsCode(v[3]) and x:IsFacedown() end,v[1],LOCATION_REMOVED,0,nil)
+    if xyz and c then Duel.Overlay(xyz,c) end
+  end
+  e:Reset()
+end)
+Duel.RegisterEffect(e,0)`;
+      if (!lib.loadScript(this.handle, "helios_overlay.lua", src)) throw new Error("Unable to attach the Xyz Materials");
     }
     if (scales.length) {
       const list = scales.map((c) => `{${c.player},${c.code | 0}}`).join(",");

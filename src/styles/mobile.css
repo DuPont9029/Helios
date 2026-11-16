@@ -63,6 +63,7 @@ html.mobile .pick-bar { bottom: calc(var(--hand-cw) * 1.46 + 62px); max-width: c
 html.mobile .stat { font-size: max(9px, calc(var(--zh) * 0.17)); padding: 0 3px; }
 html.mobile .stat-level { font-size: max(8px, calc(var(--zh) * 0.15)); }
 html.mobile .zone-badge { font-size: 9px; padding: 0 4px; }
+html.mobile .ctr { width: 6px; height: 6px; }
 
 /* Log e Chat: cassetto quasi a tutta larghezza. */
 html.mobile .duel-drawer { width: 88%; }
