@@ -34,6 +34,7 @@ const FRAMES = [
   [TYPE.TOKEN, "token"], [TYPE.SPELL, "spell"], [TYPE.TRAP, "trap"],
 ];
 const frameOf = (c) => {
+  if (c.look === "token" && c.type & TYPE.MONSTER) return "token";
   const f = FRAMES.find(([bit]) => c.type & bit)?.[1];
   if (f) return f;
   // Mostro Normale solo se non ha effetti né abilità; altrimenti cornice degli effetti.
@@ -227,7 +228,8 @@ export async function renderCardImage(c) {
   // tipo del mostro e testo
   if (monster) {
     const kinds = KINDS.filter(([bit]) => c.type & bit).map(([, n]) => n);
-    if (frame !== "normal") kinds.push("Effect");
+    if (frame === "token") kinds.push("Token");
+    else if (frame !== "normal") kinds.push("Effect");
     else kinds.push("Normal");
     fitLine(g, `[${[raceName(c.race) || "Monster", ...new Set(kinds)].join(" / ")}]`, 33, 464.5, 353, 14, `small-caps bold 13px ${SERIF}`, "#000");
     wrapText(g, c.desc, 33, 483, 353, 73, { max: 10.5, min: 5, style: frame === "normal" ? "italic" : "" });

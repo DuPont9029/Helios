@@ -81,9 +81,11 @@ export function cleanCard(c) {
     level: int(c.level, 0, 13),
     atk: int(c.atk, -2, 1_000_000),
     def: int(c.def, -2, 1_000_000),
-    lscale: int(c.lscale, 0, 13),
-    rscale: int(c.rscale, 0, 13),
+    lscale: int(c.lscale, 0, 15),
+    rscale: int(c.rscale, 0, 15),
     linkMarker: int(c.linkMarker, 0, 0x1ff),
+    // solo aspetto: cornice e tipo da Token (per il motore resta la carta del suo tipo, es. un Mostro Pendulum)
+    look: c.look === "token" ? "token" : "",
     setcodes: Array.isArray(c.setcodes) ? c.setcodes.filter((x) => int(x, 1, 0xffff, 0)).slice(0, 4) : [],
     strings: Array.isArray(c.strings) ? c.strings.slice(0, 16).map((s) => str(s, 200)) : [],
     script: str(c.script, MAX_SCRIPT),

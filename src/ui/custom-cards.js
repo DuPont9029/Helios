@@ -250,7 +250,9 @@ export async function showCustomCards(app, { select: selectCode = null, create =
         ),
         h("div.cc-checks",
           h("label.check", h("input", { type: "checkbox", checked: !!(c.type & TYPE.PENDULUM), disabled: link, onchange: (e) => { c.type = e.target.checked ? c.type | TYPE.PENDULUM : c.type & ~TYPE.PENDULUM; changed(); paintProps(); } }), "Pendulum"),
-          ...ABILITIES.map(([bit, l]) => h("label.check", h("input", { type: "checkbox", checked: !!(c.type & bit), onchange: (e) => { c.type = e.target.checked ? c.type | bit : c.type & ~bit; changed(false); } }), l))
+          ...ABILITIES.map(([bit, l]) => h("label.check", h("input", { type: "checkbox", checked: !!(c.type & bit), onchange: (e) => { c.type = e.target.checked ? c.type | bit : c.type & ~bit; changed(false); } }), l)),
+          // solo l'aspetto: un vero Token sparisce appena lascia la Zona Mostri (anche verso la Zona Pendulum)
+          h("label.check", { title: "Shown with the Token frame. For the game it stays a normal monster of its type: create it with Duel.CreateToken in another card's script." }, h("input", { type: "checkbox", checked: c.look === "token", onchange: (e) => { c.look = e.target.checked ? "token" : ""; changed(false); } }), "Token look")
         ),
         c.type & TYPE.PENDULUM ? h("div.cc-row", field("Left scale", num("lscale", 0, 15)), field("Right scale", num("rscale", 0, 15))) : null,
         c.type & TYPE.PENDULUM && !link ? field("Pendulum Effect", pendInput()) : null
