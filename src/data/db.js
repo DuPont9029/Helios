@@ -99,7 +99,8 @@ export function counterName(type) {
 }
 
 export function victoryString(reason) {
-  return db.strings.victory[reason] ?? "";
+  // "Match Victory by the effect of 「%ls」": il nome della carta non arriva dal motore
+  return (db.strings.victory[reason] ?? "").replace(/\s*by the effect of\s*「%ls」/, "");
 }
 
 export const isExtraDeckCard = (c) => !!c && (c.type & TYPE_EXTRA) !== 0;

@@ -252,13 +252,15 @@ export async function showCustomCards(app, { select: selectCode = null, create =
           h("label.check", h("input", { type: "checkbox", checked: !!(c.type & TYPE.PENDULUM), disabled: link, onchange: (e) => { c.type = e.target.checked ? c.type | TYPE.PENDULUM : c.type & ~TYPE.PENDULUM; changed(); paintProps(); } }), "Pendulum"),
           ...ABILITIES.map(([bit, l]) => h("label.check", h("input", { type: "checkbox", checked: !!(c.type & bit), onchange: (e) => { c.type = e.target.checked ? c.type | bit : c.type & ~bit; changed(false); } }), l))
         ),
-        c.type & TYPE.PENDULUM ? h("div.cc-row", field("Left scale", num("lscale", 0, 13)), field("Right scale", num("rscale", 0, 13))) : null,
+        c.type & TYPE.PENDULUM ? h("div.cc-row", field("Left scale", num("lscale", 0, 15)), field("Right scale", num("rscale", 0, 15))) : null,
         c.type & TYPE.PENDULUM && !link ? field("Pendulum Effect", pendInput()) : null
       );
     } else monster.push(field(kindOf(c) === "spell" ? "Spell type" : "Trap type", subtypeSelect()));
     clear(props).append(
       ...[
         field("Name", nameInput()),
+        // l'ID serve negli script di altre carte (es. Duel.CreateToken per un Token personalizzato)
+        field("Card ID", h("input.input", { type: "text", readOnly: true, value: String(c.code), onfocus: (e) => e.target.select() }), "Use it in other cards' scripts (e.g. to create this card with Duel.CreateToken)."),
         field("Card", kindButtons(() => paintProps())),
         ...monster,
         field("Archetype", select([["", "None"], ...setNames], c.setcodes[0] ?? "", (v) => { c.setcodes = v ? [+v] : []; changed(false); }), "Optional: the card counts as part of that archetype"),

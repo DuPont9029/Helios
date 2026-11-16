@@ -23,6 +23,8 @@ import { COACHING } from "../data/features.js";
 import { saveReplay } from "../data/replays.js";
 import { customCardsForSending } from "../data/custom-cards.js";
 
+const WIN_MATCH = 0x20; // motivo di vittoria "Match Victory"
+
 // Risposte arrivate prima di questa soglia sono automatiche (es. catena saltata): non contano come azione.
 const AUTO_RESPONSE_MS = 60;
 // Margine per la latenza prima di dichiarare scaduto il tempo dell'avversario remoto.
@@ -380,13 +382,16 @@ export class DuelSession {
       }
       this.view.render(res.snapshot);
       if (this.clock && res.messages.some((m) => m.type === MSG.NEW_TURN)) this.clock.newTurn();
+      // Vittoria del Match per effetto di una carta ("Victory Dragon"): vale per tutta la partita al meglio di N.
+      if (res.messages.some((m) => m.type === MSG.MATCH_KILL)) this.matchKill = true;
       // Summon in sospeso: diventa definitiva appena avviene o il core chiede altro (anche all'avversario).
       const next = res.prompt;
       const done = this.pending?.kind === "summon" && res.messages.some((m) => DONE_MSGS.has(m.type));
       if (this.pending && (res.ended || !next || done || next.player !== this.pending.player || !UNDOABLE_PROMPTS.has(next.type))) this.commitPending();
       if (res.ended) {
         const win = res.messages.find((m) => m.type === MSG.WIN);
-        this.finish({ winner: win?.player ?? res.snapshot.winner, reason: win?.reason });
+        // reason 0x20 = "Match Victory" (Duel.Win(tp,0x20) negli script delle carte personalizzate)
+        this.finish({ winner: win?.player ?? res.snapshot.winner, reason: win?.reason, matchKill: this.matchKill || win?.reason === WIN_MATCH });
         return;
       }
       const prompt = res.prompt;
@@ -560,7 +565,7 @@ export class DuelSession {
   }
 
   /** rematch=false: duello chiuso da un abbandono o da una disconnessione (niente rivincita). */
-  finish({ winner, reason, text, sub, rematch = true }) {
+  finish({ winner, reason, text, sub, rematch = true, matchKill = false }) {
     if (this.over) return;
     this.over = true;
     const why = [text, sub].filter(Boolean).join(" · ");
@@ -576,7 +581,7 @@ export class DuelSession {
     let nextGame = false;
     if (series && rematch) {
       const outcome = winner === this.cfg.me ? "me" : winner === 0 || winner === 1 ? "opp" : null;
-      recordGame(series, outcome);
+      recordGame(series, outcome, matchKill);
       this.view.setMatchInfo(series);
       const score = `${series.wins[0]}–${series.wins[1]}`;
       if (series.over) {
