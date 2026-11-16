@@ -25,6 +25,9 @@ function pendulumGem(scale, extraCls = "", custom = null) {
 const isFaceDown = (pos) => (pos & POS.FACEDOWN) !== 0;
 const isDefense = (pos) => (pos & POS.DEFENSE) !== 0;
 
+// Colore di un tipo di segnalino: fisso per tipo, tonalità ben distanziate (angolo aureo).
+const counterColor = (type) => `hsl(${Math.round(((type & 0xfff) * 137.508) % 360)} 85% 62%)`;
+
 export class Board {
   /**
    * @param opts { me, reveal (mostra tutto: modalità solo), onHover(code, info), onPile(player, loc) }
@@ -216,7 +219,10 @@ export class Board {
     }
     const counters = Object.entries(info.counters ?? {}).filter(([, n]) => n > 0);
     if (counters.length) {
-      z.append(h("div.zone-badge.counter", { title: counters.map(([t, n]) => `${counterName(+t)}: ${n}`).join("\n") }, counters.reduce((a, [, n]) => a + n, 0)));
+      // un gettone per segnalino (fino a 5 per tipo, poi uno solo con "×N"), un colore per tipo
+      z.append(h("div.counter-tokens", { title: counters.map(([t, n]) => `${counterName(+t)}: ${n}`).join("\n") },
+        ...counters.map(([t, n]) => h("span.ctr-group", { style: `--ctr: ${counterColor(+t)}` },
+          ...(n <= 5 ? Array.from({ length: n }, () => h("i.ctr")) : [h("i.ctr"), h("b", `×${n}`)])))));
     }
     if (loc === LOC.MZONE && !isFaceDown(info.position)) {
       const c = getCard(info.code);

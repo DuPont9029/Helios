@@ -317,6 +317,7 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .setup-field-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .combo-int-card { flex: 1; }
 .setup-field-row .int-use { grid-column: 1 / -1; }
+.setup-field-row .setup-mats { grid-column: 1 / -1; justify-self: start; display: inline-flex; align-items: center; gap: 4px; }
 .setup-field-row.setup-hand-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) auto; }
 .setup-field-row.setup-hand-row .int-use { grid-column: auto; }
 .int-use.on { border-color: var(--accent); color: var(--accent-soft); }

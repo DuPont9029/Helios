@@ -889,7 +889,7 @@ export function phaseResponse(combo, prompt, me) {
 export function cleanSetup(s) {
   if (!s || typeof s !== "object") return undefined;
   const codes = (a) => (Array.isArray(a) ? a.filter((x) => Number.isInteger(x)).slice(0, 40) : []);
-  const field = (a) => (Array.isArray(a) ? a.filter((x) => x && Number.isInteger(x.code) && ZONE_KEYS.test(x.zone)).map((x) => ({ code: x.code, zone: x.zone, pos: ["atk", "def", "set"].includes(x.pos) ? x.pos : "atk" })) : []);
+  const field = (a) => (Array.isArray(a) ? a.filter((x) => x && Number.isInteger(x.code) && ZONE_KEYS.test(x.zone)).map((x) => ({ code: x.code, zone: x.zone, pos: ["atk", "def", "set"].includes(x.pos) ? x.pos : "atk", ...(x.zone[0] === "m" && codes(x.mats).length ? { mats: codes(x.mats).slice(0, 10) } : {}) })) : []);
   // banishedDown: carte bandite coperte (banished: quelle scoperte).
   const side = (x = {}, opp) => ({ field: field(x.field), gy: codes(x.gy), banished: codes(x.banished), banishedDown: codes(x.banishedDown), deckTop: codes(x.deckTop), ...(opp ? { hand: codes(x.hand), extra: codes(x.extra) } : {}) });
   return { me: side(s.me, false), opp: side(s.opp, true), ...(START_PHASES[s.phase] && s.phase !== "main1" ? { phase: s.phase } : {}) };
