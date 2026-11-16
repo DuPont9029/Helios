@@ -23,11 +23,12 @@ const needed = (s) => Math.floor(s.bestOf / 2) + 1;
 
 /**
  * Registra l'esito di un duello ("me", "opp" o null = pareggio). Un pareggio non conta né come vittoria
- * né come sconfitta: lo stesso Game si ripete (il numero non avanza).
+ * né come sconfitta: lo stesso Game si ripete (il numero non avanza). matchKill: vittoria del Match per effetto
+ * di una carta (es. "Victory Dragon"): chi vince il duello vince anche la partita.
  */
-export function recordGame(s, outcome) {
-  if (outcome === "me") s.wins[0]++;
-  else if (outcome === "opp") s.wins[1]++;
+export function recordGame(s, outcome, matchKill = false) {
+  if (outcome === "me") s.wins[0] = matchKill ? needed(s) : s.wins[0] + 1;
+  else if (outcome === "opp") s.wins[1] = matchKill ? needed(s) : s.wins[1] + 1;
   s.over = s.wins.some((w) => w >= needed(s));
   if (!s.over && outcome) s.game++;
 }
