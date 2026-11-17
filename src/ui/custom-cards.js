@@ -16,6 +16,7 @@ import { customCards, saveCustomCard, deleteCustomCard, newCustomCode, cardsToCo
 import { renderCardImage, artFromFile } from "./card-render.js";
 import { autoScript, showScriptPage } from "./script-editor.js";
 import { tryCustomCard } from "./combos.js";
+import { openAiCardDialog, reportAiResult } from "./ai-card.js";
 
 const MONSTER_FRAMES = [
   ["normal", "Normal", TYPE.NORMAL],
@@ -77,6 +78,9 @@ export async function showCustomCards(app, { select: selectCode = null, create =
   // ---- elenco (sinistra)
   const list = h("div.cc-list");
   const search = h("input.input.small", { placeholder: "Search your cards…", oninput: (e) => { filter = e.target.value.trim().toLowerCase(); paintList(); } });
+  // carte arrivate dal backup del profilo (net/custom-cards-sync.js) mentre l'area di lavoro è aperta
+  const onSynced = () => (list.isConnected ? paintList() : window.removeEventListener("helios-custom-cards-synced", onSynced));
+  window.addEventListener("helios-custom-cards-synced", onSynced);
   const paintList = () => {
     const all = customCards().filter((x) => !filter || `${x.name}\n${x.desc}`.toLowerCase().includes(filter));
     clear(list).append(
@@ -301,6 +305,18 @@ export async function showCustomCards(app, { select: selectCode = null, create =
     await openCard(saved.code);
   };
 
+  // carta generata dall'IA (ui/ai-card.js): nuova o al posto di quella aperta (codice e artwork restano)
+  const aiCard = async () => {
+    await flush();
+    const res = await openAiCardDialog(c, blank);
+    if (!res) return;
+    const saved = await saveCustomCard(res.card);
+    if (!stage.contains(preview)) stage.replaceChildren(preview, hot, pop);
+    c = null; // l'editor riparte dalla carta salvata
+    await openCard(saved.code);
+    reportAiResult(res.card);
+  };
+
   const title = h("h1", "Custom cards");
   const actions = h(
     "div.page-tools",
@@ -322,6 +338,7 @@ export async function showCustomCards(app, { select: selectCode = null, create =
           "aside.cc-side",
           h("div.cc-side-tools",
             h("button.btn.small.primary", { onclick: newCard }, icon("add"), " New card"),
+            h("button.btn.small", { title: "Describe a card and let an AI write its data, text and Lua script (free key from Google AI Studio)", onclick: aiCard }, icon("auto_awesome"), " AI"),
             h("button.btn.small", { title: "Import a card code", onclick: () => importCards().then((codes) => codes?.length && openCard(codes[0])) }, icon("download"), " Import"),
             h("button.btn.small.ghost", { title: "Copy the code of all your custom cards", onclick: async () => { await flush(); customCards().length && shareCards(customCards()); } }, icon("share"))
           ),
@@ -337,7 +354,7 @@ export async function showCustomCards(app, { select: selectCode = null, create =
   if (create) await newCard();
   else if (selectCode && getCustomCard(selectCode)) await openCard(selectCode);
   else if (customCards()[0]) await openCard(customCards()[0].code);
-  else stage.replaceChildren(h("div.replay-empty", icon("draw"), h("b", "No custom cards yet"), h("span.muted.small", "Make a card with its own artwork, text and Lua script: it works in the Deck builder, in Duels and online (your opponent receives it)."), h("button.btn.primary", { onclick: newCard }, icon("add"), " New card")));
+  else stage.replaceChildren(h("div.replay-empty", icon("draw"), h("b", "No custom cards yet"), h("span.muted.small", "Make a card with its own artwork, text and Lua script: it works in the Deck builder, in Duels and online (your opponent receives it)."), h("div.row", h("button.btn.primary", { onclick: newCard }, icon("add"), " New card"), h("button.btn", { onclick: aiCard }, icon("auto_awesome"), " Generate with AI"))));
 }
 
 /** Immagine della carta in alta qualità (4× la carta di 421×614 punti, PNG senza perdita). */

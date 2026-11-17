@@ -6,6 +6,7 @@ import { toast, confirmModal, openModal } from "./modal.js";
 import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../data/settings.js";
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
+import { aiKeyFields } from "./ai-card.js";
 import { identity, importIdentity, newIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
@@ -94,7 +95,7 @@ async function importProfile(onDone) {
     }],
   }).result;
   if (!v) return;
-  toast("Profile imported: your friends and settings are loaded from the Nostr relays", { kind: "ok", ms: 4000 });
+  toast("Profile imported: your friends, settings and custom cards are loaded from the Nostr relays", { kind: "ok", ms: 4000 });
   onDone();
 }
 
@@ -105,7 +106,7 @@ function profileSection(field, area) {
     const me = identity();
     clear(box).append(
       h("h3", "Profile (friends and ranking)"),
-      h("p.muted.small", "Your player key identifies you to your friends and in the ELO ranking, with no account. It lives only in this browser: back it up to keep your rating and your friends on another browser. Whoever has it can play as you."),
+      h("p.muted.small", "Your player key identifies you to your friends and in the ELO ranking, with no account. It lives only in this browser: back it up to keep your rating, your friends and your custom cards on another browser. Whoever has it can play as you."),
       h("div.row", h("span", "Friend code "), h("code.mono", { title: npubOf(me.pk) }, shortKey(npubOf(me.pk))),
         h("button.btn.small", { onclick: () => copyText(npubOf(me.pk)).then((ok) => toast(ok ? "Friend code copied" : "Copy failed")) }, icon("content_copy"), " Copy")),
       h("h4", "Backup"),
@@ -807,6 +808,7 @@ export function showSettings(app) {
           iceOut
         ),
         profileSection(field, area),
+        h("section.card-box", h("h3", "AI (custom cards)"), h("p.muted.small", "With an AI key, the custom card editor can generate cards from a description: data, text and Lua script."), ...aiKeyFields(field)),
         h(
           "section.card-box",
           h("h3", "Data"),
