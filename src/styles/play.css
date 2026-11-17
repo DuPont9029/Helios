@@ -582,6 +582,12 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .cc-script-box { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid var(--line-strong); background: rgba(56, 198, 255, 0.05); }
 .cc-check { margin: 0; padding: 8px 10px; font: 12px/1.4 var(--mono); white-space: pre-wrap; border: 1px solid var(--line); max-height: 140px; overflow: auto; }
 .cc-check.ok { color: #7dffb0; border-color: rgba(125, 255, 176, 0.4); }
+/* finestra "Generate with AI" (ui/ai-card.js) */
+.modal.ai-card { width: min(560px, 94vw); }
+.modal.ai-card textarea { width: 100%; resize: vertical; }
+.modal.ai-card .row .input { flex: 1; }
+.ai-progress { min-height: 1.4em; margin: 6px 0 0; }
+.ai-progress.error { color: var(--danger); }
 .cc-check.bad { color: #ff9aa8; border-color: rgba(255, 90, 110, 0.5); }
 
 /* pagina dello script (ui/script-editor.js): editor a sinistra, script delle altre carte a destra */

@@ -324,7 +324,7 @@ export function validateDeck(deck, banlist, { allowUnofficial = false, pointCap,
       errors.push(`Unknown card: ${code}`);
       continue;
     }
-    if (c.type & TYPE.TOKEN) errors.push(`${c.name}: tokens cannot be in the deck`);
+    if (c.type & TYPE.TOKEN || c.tokenLook) errors.push(`${c.name}: tokens cannot be in the deck`);
     if (!allowUnofficial && c.source === 1) errors.push(`${c.name}: unofficial card`);
     // Carte personalizzate (data/custom-cards.js): come quelle non ufficiali, solo se le regole lo permettono.
     if (!allowUnofficial && c.source === 3) errors.push(`${c.name}: custom card (allow unofficial cards in the rules)`);

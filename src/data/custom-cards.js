@@ -110,6 +110,9 @@ async function register(c) {
   const card = parseCard(cardRow(c));
   card.search = (card.name + "\n" + card.desc).toLowerCase();
   card.custom = true;
+  // aspetto da Token: come i Token veri non si cerca e non va nel Deck (si crea con Duel.CreateToken), ma resta
+  // visibile tra le carte collegate
+  card.tokenLook = c.look === "token";
   db.cards.set(card.code, card);
   const i = db.list.findIndex((x) => x.code === card.code);
   if (i >= 0) db.list.splice(i, 1);
@@ -162,9 +165,20 @@ export function newCustomCode() {
   }
 }
 
+// Ogni modifica fatta qui (non quelle che arrivano dal backup sul profilo) va anche nel backup sui relay Nostr
+// (net/custom-cards-sync.js, che ascolta questo evento).
+const changed = (code, deleted = false) => window.dispatchEvent(new CustomEvent("helios-custom-card", { detail: { code, deleted } }));
+
 /** Salva (nuova o modificata) e la mette nel database. Restituisce la carta salvata. */
 export async function saveCustomCard(raw) {
-  const c = cleanCard({ ...raw, updated: Date.now() });
+  const c = await storeCustomCard({ ...raw, updated: Date.now() });
+  changed(c.code);
+  return c;
+}
+
+/** Salva la carta così com'è (updated compreso): per quelle ripristinate dal backup del profilo. */
+export async function storeCustomCard(raw) {
+  const c = cleanCard(raw);
   if (!c) throw new Error("Invalid card");
   await idbDo("readwrite", (s) => s.put(c));
   local.set(c.code, c);
@@ -173,10 +187,12 @@ export async function saveCustomCard(raw) {
   return c;
 }
 
-export async function deleteCustomCard(code) {
+/** sync: true quando la cancellazione arriva dal backup del profilo (non va ripubblicata). */
+export async function deleteCustomCard(code, { sync = false } = {}) {
   await idbDo("readwrite", (s) => s.delete(code));
   local.delete(code);
   if (!remote.has(code)) unregister(code);
+  if (!sync) changed(code, true);
 }
 
 // Stessa carta mandata da entrambi i giocatori in due versioni: vince la più recente (a parità, il contenuto). Tutti e
@@ -214,11 +230,17 @@ export async function useRemoteCards(list, sent = []) {
 export function customCardsIn(codes, { art = true } = {}) {
   const seen = new Set();
   const out = [];
-  for (const code of codes ?? []) {
+  const queue = [...(codes ?? [])];
+  while (queue.length) {
+    const code = queue.shift();
     if (!isCustomCode(code) || seen.has(code)) continue;
     seen.add(code);
     const c = getCustomCard(code);
-    if (c) out.push(art ? c : { ...c, art: null });
+    if (!c) continue;
+    out.push(art ? c : { ...c, art: null });
+    // carte personalizzate nominate nello script (es. il Token creato con Duel.CreateToken): fuori dal Deck, ma
+    // anche l'avversario (e il replay) ne ha bisogno
+    for (const m of (c.script ?? "").matchAll(/\b2\d{9}\b/g)) queue.push(+m[0]);
   }
   return out;
 }

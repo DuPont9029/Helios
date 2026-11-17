@@ -1144,7 +1144,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   function addCard(code, target, at = null) {
     const c = getCard(code);
-    if (!c || c.type & TYPE.TOKEN) return;
+    if (!c || c.type & TYPE.TOKEN || c.tokenLook) return;
     if (collect) {
       let key = PARTS.includes(target) ? target : activePart;
       let part = collectPart(key);
@@ -1531,7 +1531,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     const base = pool ? [...poolCount.keys()].filter((c) => poolLeft(c) > 0).map(getCard).filter(Boolean) : marks ? [...marks.keys()].map(getCard).filter(Boolean) : db.list;
     found = base.filter((c) => {
       if (pool) return (!type || (type === "monster" ? c.type & TYPE.MONSTER : type === "spell" ? c.type & TYPE.SPELL : type === "trap" ? c.type & TYPE.TRAP : isExtraDeckCard(c))) && (!sub || c.type & sub) && (!attr || c.attribute & attr) && (!race || c.race & race) && advOk(c) && textOk(c, text);
-      if (!marks && (c.type & TYPE.TOKEN || c.type & TYPE.SKILL)) return false;
+      if (!marks && (c.type & TYPE.TOKEN || c.tokenLook || c.type & TYPE.SKILL)) return false;
       if (!marks && !fUnoff.checked && c.source === 1) return false;
       if (!marks && c.alias && Math.abs(c.alias - c.code) < 20 && getCard(c.alias)) return false; // arte alternativa
       if (fmt && !(c.ot & fmt)) return false;

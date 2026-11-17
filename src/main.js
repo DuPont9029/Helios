@@ -16,6 +16,7 @@ import { seedBookmarks, pruneForbiddenBookmarks } from "./data/bookmarks.js";
 import { updateBanlists } from "./data/banlist-update.js";
 import { syncCustomBanlists } from "./data/custom-banlists.js";
 import { loadCustomCards } from "./data/custom-cards.js";
+import { syncCustomCards } from "./net/custom-cards-sync.js";
 import { toast, openModal } from "./ui/modal.js";
 import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
@@ -308,6 +309,10 @@ async function boot() {
     await loadDatabase((t) => (status.textContent = t));
     syncCustomBanlists(); // banlist personalizzate, in fondo alle ufficiali
     await loadCustomCards(); // carte personalizzate (IndexedDB) nel database delle carte
+    // ...e quelle salvate con il profilo sui relay Nostr (senza aspettare)
+    syncCustomCards()
+      .then(({ restored }) => restored && toast(`${restored === 1 ? "1 custom card" : `${restored} custom cards`} restored from your profile`, { kind: "ok" }))
+      .catch(() => {});
     seedBookmarks();
     // Banlist aggiornate da ProjectIgnis/LFLists (senza aspettare: si gioca subito con quelle che ci sono);
     // le carte proibite escono dai preferiti.
