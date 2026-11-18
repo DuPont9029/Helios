@@ -69,6 +69,52 @@ async function exportWithPassword() {
   });
 }
 
+/** Indirizzi Ethereum e Monero dalle parole del profilo, derivati come Cake Wallet (src/net/wallets.js). */
+async function showWallets() {
+  const { bip39Seed, ethAddresses, moneroWallet } = await import("../net/wallets.js");
+  const pass = h("input.input", { type: "password", placeholder: "Passphrase (optional, the 25th word of BIP39)", autocomplete: "off" });
+  const out = h("div.wallets");
+  const copyRow = (label, value, title) => h("div.wallet-row",
+    h("span.wallet-label", label),
+    h("code.mono.wallet-value", value),
+    h("button.btn.small.ghost", { title: `Copy ${title}`, onclick: () => copyText(value).then((ok) => toast(ok ? `${title} copied` : "Copy failed")) }, icon("content_copy")));
+  const draw = () => {
+    const seed = bip39Seed(identity().seed, pass.value);
+    const xmr = moneroWallet(seed);
+    const xmrSeed = h("div", { hidden: true }, h("ol.seed-words.xmr", xmr.seed.split(" ").map((w) => h("li", w))),
+      h("button.btn.small", { onclick: () => copyText(xmr.seed).then((ok) => toast(ok ? "Monero seed copied" : "Copy failed")) }, icon("content_copy"), " Copy the 25 words"));
+    clear(out).append(
+      h("h4", "Ethereum"),
+      ...ethAddresses(seed, 3).map((a) => copyRow(a.path, a.address, "Address")),
+      h("h4", "Monero"),
+      copyRow(xmr.path, xmr.address, "Address"),
+      h("button.btn.small", { onclick: async (e) => {
+        if (!(await confirmModal("Show the Monero seed", "These 25 words control the Monero wallet: make sure nobody is looking at your screen.", "Show", "Cancel"))) return;
+        xmrSeed.hidden = false;
+        e.target.remove();
+      } }, icon("key"), " Show the 25-word Monero seed"),
+      xmrSeed
+    );
+  };
+  let t = null;
+  pass.addEventListener("input", () => {
+    clearTimeout(t);
+    t = setTimeout(draw, 300); // PBKDF2 a ogni tasto sarebbe lento
+  });
+  draw();
+  openModal({
+    title: "Wallets",
+    className: "wallets-modal",
+    body: [
+      h("p.status-box.error", "These wallets come from your seed words: whoever has the words (or this browser) controls the funds. Helios keeps the words in this browser without a password, so use them for small amounts only."),
+      h("p.muted.small", "Same derivation as Cake Wallet (BIP39 seed): restore the 12 words there, or the 25-word Monero seed in any Monero wallet, and you get the same addresses."),
+      pass,
+      out,
+    ],
+    actions: [{ label: "Done", primary: true, value: true }],
+  });
+}
+
 /** Import del profilo: parole, nsec, backup con password o chiave esadecimale. */
 async function importProfile(onDone) {
   const input = h("textarea.code-area.mono", { placeholder: "12 seed words, nsec1…, ncryptsec1… or 64 hexadecimal characters" });
@@ -112,7 +158,9 @@ function profileSection(field, area) {
         h("button.btn.small", { onclick: () => copyText(npubOf(me.pk)).then((ok) => toast(ok ? "Friend code copied" : "Copy failed")) }, icon("content_copy"), " Copy")),
       h("h4", "Backup"),
       me.seed
-        ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"), h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
+        ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"),
+          h("button.btn.small", { title: "Ethereum and Monero addresses from your seed words (like Cake Wallet)", onclick: showWallets }, icon("account_balance_wallet"), " Wallets"),
+          h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
         : h("p.muted.small", "This profile was created before seed words existed: back it up with the nsec key or a password backup."),
       h("div.row",
         h("button.btn.small", { onclick: () => copySecret("Export nsec key", "Your secret key (nsec1…) works in any Nostr app. Anyone with it can play as you: keep it private.", nsec) }, "Copy nsec key"),

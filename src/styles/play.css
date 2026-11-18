@@ -640,3 +640,13 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .trng-hint { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--accent-soft); font-size: 13px; animation: trng-pulse 1.6s ease-in-out infinite; }
 @keyframes trng-pulse { 50% { opacity: 0.45; } }
 @media (max-width: 560px) { .trng-scopes { grid-template-columns: 1fr; } .trng-source { grid-template-columns: 10px 1fr auto; } .trng-source .muted { display: none; } }
+
+/* Wallet dalle parole del profilo (settings-page.js: showWallets) */
+.wallets-modal { width: min(640px, 100%); }
+.wallets { display: grid; gap: 6px; margin-top: 10px; }
+.wallets h4 { margin: 10px 0 2px; }
+.wallet-row { display: grid; grid-template-columns: 150px 1fr auto; align-items: center; gap: 8px; padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.wallet-label { font: 500 11px var(--mono); color: var(--muted); }
+.wallet-value { font-size: 12px; word-break: break-all; }
+.seed-words.xmr { grid-template-columns: repeat(5, 1fr); font-size: 13px; }
+@media (max-width: 560px) { .wallet-row { grid-template-columns: 1fr auto; } .wallet-label { grid-column: 1 / -1; } .seed-words.xmr { grid-template-columns: repeat(2, 1fr); } }
