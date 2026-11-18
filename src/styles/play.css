@@ -616,3 +616,27 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
   .se-body { display: flex; flex-direction: column; flex: none; }
   .se-editor { flex: none; height: 55vh; }
 }
+
+/* Profilo nuovo con parole dal rumore fisico (src/ui/random-seed.js) */
+.trng-modal { width: min(620px, 100%); }
+.trng-setup { display: grid; gap: 10px; }
+.trng-live { display: grid; gap: 12px; }
+.trng-scopes { display: grid; grid-template-columns: 160px 1fr; gap: 10px; }
+.trng-scopes figure { margin: 0; display: grid; gap: 4px; }
+.trng-scopes canvas { width: 100%; height: 120px; background: #000; border: 1px solid var(--line); image-rendering: pixelated; }
+.trng-scopes figcaption { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.trng-sources { display: grid; gap: 4px; }
+.trng-source { display: grid; grid-template-columns: 10px auto 1fr auto; align-items: center; gap: 8px; padding: 5px 10px; background: var(--panel-2); border: 1px solid var(--line); font-size: 13px; }
+.trng-source .muted { text-align: right; }
+.trng-bits { font-size: 11px; color: var(--accent-soft); min-width: 64px; text-align: right; }
+.trng-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.5; }
+.trng-dot.on { background: var(--ok); opacity: 1; box-shadow: 0 0 8px var(--ok); }
+.trng-dot.warn { background: var(--star); opacity: 1; }
+.trng-dot.err { background: var(--danger); opacity: 1; }
+.trng-meter-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.trng-meter { height: 10px; background: var(--panel-3); border: 1px solid var(--line); overflow: hidden; }
+.trng-meter-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent-2), var(--accent)); transition: width 0.2s; }
+.trng-meter-fill.full { background: var(--ok); box-shadow: 0 0 12px var(--ok); }
+.trng-hint { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--accent-soft); font-size: 13px; animation: trng-pulse 1.6s ease-in-out infinite; }
+@keyframes trng-pulse { 50% { opacity: 0.45; } }
+@media (max-width: 560px) { .trng-scopes { grid-template-columns: 1fr; } .trng-source { grid-template-columns: 10px 1fr auto; } .trng-source .muted { display: none; } }

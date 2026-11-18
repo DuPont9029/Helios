@@ -7,7 +7,8 @@ import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../da
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
 import { aiKeyFields } from "./ai-card.js";
-import { identity, importIdentity, newIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
+import { newRandomProfile } from "./random-seed.js";
+import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
 import { eloRelays } from "../net/elo.js";
@@ -118,11 +119,12 @@ function profileSection(field, area) {
         h("button.btn.small", { onclick: exportWithPassword }, "Backup with a password"),
         h("button.btn.small", { onclick: () => importProfile(draw) }, icon("upload_file"), " Import profile"),
         h("button.btn.small.ghost", {
+          // parole dal rumore fisico (webcam, microfono, movimenti): src/ui/random-seed.js
           onclick: async () => {
-            if (!(await confirmModal("New profile", "A new player key with new seed words: your rating and your friends stay with the old key, which is lost if you have not backed it up.", "Create", "Cancel", { danger: true }))) return;
-            newIdentity();
+            if (!(await newRandomProfile())) return;
             draw();
-            toast("New profile created");
+            toast("New profile created: write down your seed words", { kind: "ok" });
+            showSeed();
           },
         }, "New profile")),
       h("h4", "Friends"),
