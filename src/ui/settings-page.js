@@ -824,4 +824,43 @@ export function showSettings(app) {
       )
     )
   );
+  masonry(root.querySelector(".settings-grid"));
+}
+
+/**
+ * Schede in colonne bilanciate: nell'ordine, ognuna va nella colonna più corta (altezze vere, misurate). Si rifà quando
+ * cambia la larghezza o l'altezza di una scheda (es. una sezione che si apre).
+ */
+function masonry(grid, minCol = 340, gap = 18) {
+  const cards = [...grid.children];
+  let cols = [];
+  let placed = "";
+  const layout = () => {
+    if (!grid.isConnected) return ro.disconnect();
+    const n = Math.max(1, Math.floor((grid.clientWidth + gap) / (minCol + gap)));
+    if (cols.length !== n) {
+      cols = Array.from({ length: n }, () => h("div.settings-col"));
+      grid.replaceChildren(...cols);
+      cards.forEach((c, i) => cols[i % n].append(c)); // prima disposizione, per misurare alla larghezza giusta
+      placed = "";
+    }
+    const heights = cols.map(() => 0);
+    const where = cards.map((c) => {
+      const k = heights.indexOf(Math.min(...heights));
+      heights[k] += c.offsetHeight + gap;
+      return k;
+    });
+    const key = where.join();
+    if (key === placed) return;
+    placed = key;
+    cards.forEach((c, i) => cols[where[i]].append(c));
+  };
+  let raf = 0;
+  const ro = new ResizeObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(layout);
+  });
+  ro.observe(grid);
+  cards.forEach((c) => ro.observe(c));
+  layout();
 }
