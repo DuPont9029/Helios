@@ -102,5 +102,13 @@ export function moneroWallet(seed, account = 0) {
   const view = scReduce32(keccak_256(spend));
   const body = new Uint8Array([0x12, ...pubOf(spend), ...pubOf(view)]);
   const address = moneroBase58(new Uint8Array([...body, ...keccak_256(body).slice(0, 4)]));
-  return { path: `m/44'/128'/${account}'/0/0`, address, spendKey: hex(spend), viewKey: hex(view), seed: legacySeed(spend) };
+  return {
+    path: `m/44'/128'/${account}'/0/0`,
+    address,
+    spendKey: hex(spend),
+    viewKey: hex(view),
+    seed: legacySeed(spend),
+    // per la scansione dei blocchi (net/monero-scan.js)
+    scanKeys: { viewInt: leToInt(view), spendInt: leToInt(spend), spendPub: pubOf(spend) },
+  };
 }

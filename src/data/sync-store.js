@@ -80,7 +80,8 @@ export function mergeForSave(type, prev, next) {
  * Impostazioni salvate con il profilo (aspetto: sleeve, gemme Pendulum, Moai). Ognuna è un elemento "setting:nome";
  * tornare a null equivale a cancellarla.
  */
-export const SYNCED_SETTINGS = ["sleeve", "pendulumIcon", "moai"];
+// xmrBirthdays: { indirizzo Monero: blocco da cui cercare i fondi } (ui/wallets.js), uguale su tutti i browser
+export const SYNCED_SETTINGS = ["sleeve", "pendulumIcon", "moai", "xmrBirthdays"];
 
 /** Da settings.js quando cambia un'impostazione sincronizzata. */
 export function settingChanged(key, before, after) {

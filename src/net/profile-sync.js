@@ -61,7 +61,10 @@ async function unpack(text) {
 
 // ---------------------------------------------------------------- elenchi locali
 
-const VALID_SETTING = { sleeve: validSleeve, pendulumIcon: validPendulumIcons, moai: validMoai };
+const validBirthdays = (v) =>
+  !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length <= 50 &&
+  Object.entries(v).every(([k, h]) => /^[1-9A-HJ-NP-Za-km-z]{95}$/.test(k) && Number.isInteger(h) && h > 0);
+const VALID_SETTING = { sleeve: validSleeve, pendulumIcon: validPendulumIcons, moai: validMoai, xmrBirthdays: validBirthdays };
 
 /**
  * Un adattatore per tipo: list() l'elenco salvato (elementi con id), write(arr) lo riscrive senza registrare
