@@ -14,6 +14,7 @@ import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType, artBase, artVariants, deckCover,
 } from "../deck/deck.js";
 import { forgetItems } from "../data/sync-store.js";
+import { DEFAULT_DECKS } from "../data/default-decks.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
 
@@ -68,7 +69,8 @@ function pasteModal() {
 // Colori proposti per le scatole dei mazzi (deck.boxColor); senza scelta un colore che dipende dall'id del mazzo.
 const BOX_COLORS = ["#b8323c", "#d2691e", "#c9a227", "#2e8b57", "#1d8f74", "#1f5fc8", "#4b3fb8", "#6a2a9a", "#c2185b", "#26262b", "#d8d8de"];
 const HEX = /^#[0-9a-f]{6}$/i;
-const boxColor = (deck) => (HEX.test(deck.boxColor ?? "") ? deck.boxColor : `hsl(${[...String(deck.id ?? deck.name ?? "")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 0)} 62% 44%)`);
+// Base decks (e le loro copie fatte prima dei colori): il colore del Base deck con lo stesso nome
+const boxColor = (deck) => (HEX.test(deck.boxColor ?? "") ? deck.boxColor : DEFAULT_DECKS.find((d) => d.name === deck.name)?.boxColor ?? `hsl(${[...String(deck.id ?? deck.name ?? "")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 0)} 62% 44%)`);
 
 // Scatola del mazzo disegnata in CSS (fronte, cima e fianco allineati), con l'artwork della copertina sul fronte.
 export function deckBox(deck) {
@@ -215,7 +217,7 @@ export function showDeckList(app) {
       .map((d) => {
         const copy = (e) => {
           e.stopPropagation();
-          add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] });
+          add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side], boxColor: d.boxColor });
         };
         const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: BASE_READY ? "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." : "A Base deck of the game. Add a copy to your Decks to change it." });
         const tile = h(

@@ -195,7 +195,7 @@ export function loadDecks() {
     /* ignore */
   }
   // Primo avvio: una copia dei Base decks del gioco (data/default-decks.js).
-  return DEFAULT_DECKS.map((d) => ({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] }));
+  return DEFAULT_DECKS.map((d) => ({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side], boxColor: d.boxColor }));
 }
 
 const storedDecks = () => {
