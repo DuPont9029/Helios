@@ -246,7 +246,9 @@ input[type="range"] { accent-color: var(--accent); }
 .status-box { margin-top: 12px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--muted); white-space: pre-wrap; font: 500 12px/1.6 var(--mono); }
 .status-box.ok { border-color: rgba(67, 214, 139, 0.45); border-left-color: var(--ok); }
 .status-box.error { border-color: rgba(255, 90, 110, 0.45); border-left-color: var(--danger); color: #ffc2ca; }
-.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; align-items: start; }
+/* a colonne (come un muro di mattoni): una scheda alta non lascia spazio vuoto sotto le vicine */
+.settings-grid { columns: 340px; column-gap: 18px; }
+.settings-grid > * { display: inline-flex; width: 100%; box-sizing: border-box; margin: 0 0 18px; break-inside: avoid; vertical-align: top; }
 .ice-out { white-space: pre-wrap; font: 11px var(--mono); background: var(--bg-2); padding: 8px; margin: 0; min-height: 20px; }
 
 

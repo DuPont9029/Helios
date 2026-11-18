@@ -122,7 +122,8 @@ html.mobile .page-head h1 { font-size: 22px; }
 html.mobile .page-back { width: 38px; height: 38px; font-size: 19px; }
 html.mobile .online-grid, html.mobile .hdpc-grid, html.mobile .combo-setup, html.mobile .card-box.sheet-head,
 html.mobile .card-box.hdpc-setup { grid-template-columns: minmax(0, 1fr); }
-html.mobile .settings-grid, html.mobile .row-group, html.mobile .draft-formats, html.mobile .draft-bundles, html.mobile .draft-runs,
+html.mobile .settings-grid { columns: 1; }
+html.mobile .row-group, html.mobile .draft-formats, html.mobile .draft-bundles, html.mobile .draft-runs,
 html.mobile .ol-body, html.mobile .used-cards, html.mobile .combo-how-points { grid-template-columns: minmax(0, 1fr); }
 html.mobile .combo-start-grid, html.mobile .combo-start-grid.two { grid-template-columns: minmax(0, 1fr); }
 html.mobile .combo-list:has(.cc-card) { grid-template-columns: minmax(0, 1fr); }
@@ -261,7 +262,8 @@ html.mobile.landscape .home-foot { grid-row: 3; }
 /* Pagine: lo spazio in larghezza c'è, le griglie tornano su più colonne dove serve. */
 html.mobile.landscape .decks-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 
-html.mobile.landscape .settings-grid, html.mobile.landscape .draft-formats, html.mobile.landscape .draft-bundles,
+html.mobile.landscape .settings-grid { columns: 300px; }
+html.mobile.landscape .draft-formats, html.mobile.landscape .draft-bundles,
 html.mobile.landscape .draft-runs, html.mobile.landscape .ol-body, html.mobile.landscape .combo-how-points { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
 html.mobile.landscape .dt-items { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 html.mobile.landscape .modal.card-sheet .detail-panel { flex-direction: row; align-items: flex-start; }
