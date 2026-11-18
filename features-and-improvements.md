@@ -41,6 +41,9 @@ Tre sezioni:
 - [ ] **Esporta come immagine**: esportare un deck come immagine.
 - [ ] **No deck**: tra i deck c'è "No deck", da usare come calcolatore ipergeometrico (tipo https://stattrek.com/online-calculator/hypergeometric).
 - [ ] **Copertina a scelta**: la copertina di bundle e deck si sceglie tra le carte che contengono; senza scelta è la prima.
+- [ ] **Deck box vera**: la scatola del mazzo è un parallelepipedo con cima e fianco allineati agli spigoli del fronte e la linea del coperchio.
+- [ ] **Colore e copertina della deck box**: pulsante con la tavolozza su ogni mazzo dell'elenco (e Deck → Deck box nell'editor) per scegliere la carta di copertina e il colore (11 proposti, automatico o libero).
+- [ ] **Colori dei Base decks**: Radiant Typhoon indaco, Labrynth cremisi, Centur-ion bianco, Melorbious viola, Blue-Eyes oro (anche le copie già salvate).
 
 ### Cube editor
 - [ ] **Bundle e carte più grandi**: bundle e carte più grossi sullo schermo.
@@ -75,6 +78,9 @@ Tre sezioni:
 
 ### Account management
 - [ ] **Creare account crypto**: ogni utente ha un account generato con un trng di 24 words le prime 12 andranno poi a costituire 
+- [ ] **Profilo salvato su Nostr**: deck, combo, spreadsheet, cube, draft giocati contro i bot (pool, deck, risultati), sleeve, gemme Pendulum e Moai sono salvati cifrati con il profilo e tornano importandolo su un altro browser; le cancellazioni si propagano; gli elementi grandi si spezzano in parti e si riuniscono.
+- [ ] **Seed veramente casuale**: "New profile" crea le 12 parole dal rumore fisico (webcam, microfono, movimenti del mouse), con la logica di Noise TRNG e la finestra in stile Helios.
+- [ ] **Wallets**: Settings → Profile → Wallets mostra un indirizzo Ethereum e uno Monero derivati dalle parole del profilo come Cake Wallet, con i saldi (ETH da RPC pubblico, XMR scansionando i blocchi nel browser). In Advanced: passphrase, seed Monero a 25 parole, rescan.
 
 ---
 

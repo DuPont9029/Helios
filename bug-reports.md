@@ -41,6 +41,10 @@ Nessun bug aperto.
 ### Deck builder
 - [ ] **Schermate del deck senza deck builder**: ![alt text](image-5.png) alcune schermate che lavorano sul deck non usano il deck builder.
 
+### Interfaccia
+- [ ] **Spazio vuoto e colonne sbilanciate in Settings**: una scheda alta lasciava spazio vuoto sotto le vicine e le schede finivano quasi tutte in una colonna; ora ognuna va nella colonna più corta.
+- [ ] **Colore della deck box non applicato**: il colore scelto non arrivava alla scatola (le variabili CSS nello style venivano ignorate).
+
 ### Draft
 - [ ] **Draft bloccato dopo l'ultima pick**: il draft si ferma del tutto dopo l'ultima pick (trovato contro i bot; uscendo il draft appare ma non si riesce a rientrare). Non riprodotto né in locale né online: ora l'errore compare a schermo, il draft viene salvato e "Rejoin" apre il draft finito. Testare e mandare il messaggio d'errore se ricapita.
 - [ ] **Contorno della copertina del bundle**: ![alt text](image-6.png) quando si sceglie la copertina di un bundle il contorno è in parte offuscato.
