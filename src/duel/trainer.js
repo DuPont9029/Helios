@@ -6,6 +6,7 @@ import { h, clear } from "../ui/dom.js";
 import { miniCards } from "../ui/card.js";
 import { cardName, descString, getCard, isExtraDeckCard } from "../data/db.js";
 import { sortDeckPart, loadDecks } from "../deck/deck.js";
+import { mergeForSave } from "../data/sync-store.js";
 import { MSG, RESP, IDLE, BATTLE, PHASE, LOC, POS } from "../core/constants.js";
 import { availableZones } from "../core/zones.js";
 
@@ -1205,7 +1206,25 @@ export function loadComboStore() {
   return store;
 }
 
+/**
+ * Salva l'archivio. Combo e spreadsheet già salvati che mancano restano: si cancellano con forgetItems("combo" |
+ * "sheet", ids) prima di salvare (data/sync-store.js, per il backup sul profilo).
+ */
 export function saveComboStore(store) {
+  let prev = {};
+  try {
+    prev = JSON.parse(localStorage.getItem(KEY) || "{}") ?? {};
+  } catch {
+    /* archivio illeggibile: si riscrive */
+  }
+  writeComboStoreRaw({
+    combos: mergeForSave("combo", Array.isArray(prev.combos) ? prev.combos : [], store.combos),
+    sheets: mergeForSave("sheet", Array.isArray(prev.sheets) ? prev.sheets : [], store.sheets),
+  });
+}
+
+/** Scrive l'archivio così com'è (ripristino dal backup del profilo: niente registro delle modifiche). */
+export function writeComboStoreRaw(store) {
   try {
     localStorage.setItem(KEY, JSON.stringify({ v: 2, combos: store.combos, sheets: store.sheets }));
   } catch {

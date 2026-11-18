@@ -7,6 +7,8 @@ import { schnorr } from "@noble/secp256k1";
 import { generateSeedWords, privateKeyFromSeedWords, validateWords } from "nostr-tools/nip06";
 import * as nip19 from "nostr-tools/nip19";
 import * as nip49 from "nostr-tools/nip49";
+import { entropyToMnemonic } from "@scure/bip39";
+import { wordlist } from "@scure/bip39/wordlists/english.js";
 
 const KEY = "ygoweb.identity";
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -48,9 +50,19 @@ function save(sk, seed = null) {
   return v;
 }
 
-/** Nuova identità da 12 parole nuove. */
-function fromNewSeed() {
-  const seed = generateSeedWords();
+/**
+ * Nuova identità da 12 parole nuove. entropy: 16 byte del generatore di rumore fisico (net/trng.js), mescolati in XOR
+ * con quelli del browser: il risultato è casuale almeno quanto la migliore delle due fonti.
+ */
+function fromNewSeed(entropy = null) {
+  let seed;
+  if (entropy) {
+    if (entropy.length !== 16) throw new Error("16 bytes of entropy are needed");
+    const mix = crypto.getRandomValues(new Uint8Array(16));
+    for (let i = 0; i < 16; i++) mix[i] ^= entropy[i];
+    seed = entropyToMnemonic(mix, wordlist);
+    mix.fill(0);
+  } else seed = generateSeedWords();
   return save(toHex(privateKeyFromSeedWords(seed)), seed);
 }
 
@@ -110,9 +122,9 @@ export function importIdentity(text, password = "") {
   return changed();
 }
 
-/** Profilo nuovo (parole nuove): quello di prima si perde se non è stato esportato. */
-export function newIdentity() {
-  current = fromNewSeed();
+/** Profilo nuovo (parole nuove, dal rumore fisico se c'è entropy): quello di prima si perde se non è stato esportato. */
+export function newIdentity(entropy = null) {
+  current = fromNewSeed(entropy);
   return changed();
 }
 

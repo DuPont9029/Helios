@@ -9,6 +9,7 @@ import { newId } from "./format.js";
 import { poolCards } from "./table.js";
 import { seededRandom } from "./packs.js";
 import { tourState, outSeats, pairId } from "./tournament.js";
+import { mergeForSave, forgetItems } from "../data/sync-store.js";
 
 const KEY = "ygoweb.draftRuns";
 export const DRAFT_DECK = { minMain: 30, maxExtra: 15 };
@@ -22,7 +23,22 @@ export function loadRuns() {
   }
 }
 
+const storedRuns = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
+
+// quelli già salvati che mancano restano (si cancella con deleteRun): vedi data/sync-store.js
 function saveRuns(list) {
+  writeRunsRaw(mergeForSave("run", storedRuns(), list));
+}
+
+/** Scrive i draft giocati così come sono (ripristino dal backup del profilo). */
+export function writeRunsRaw(list) {
   localStorage.setItem(KEY, JSON.stringify(list));
 }
 
@@ -36,6 +52,7 @@ export function storeRun(run) {
 }
 
 export function deleteRun(id) {
+  forgetItems("run", [id]);
   saveRuns(loadRuns().filter((r) => r.id !== id));
 }
 

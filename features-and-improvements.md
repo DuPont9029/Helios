@@ -28,10 +28,6 @@ Tre sezioni:
 
 ## 2. Implementate, da testare
 
-### App
-- [ ] **Flag beta e versione 1.0**: indicazione che l'app è una beta, con la versione portata a 1.0.
-- [ ] **Versione per telefono**: lo stesso Helios (e lo stesso Helios.html) su un telefono usa un'interfaccia per il touch, in verticale e girato: duello col campo 3D, home, deck builder a schede con la scheda della carta (pressione lunga al posto del tasto destro), pagine su una colonna, tavolo del draft. Icone sempre centrate nei bottoni.
-
 ### Duello
 - [ ] **Costi di scarto dalla mano**: per i costi che scartano non si apre una finestra, si sceglie direttamente dalla mano.
 - [ ] **Spessore di Deck ed Extra Deck**: mostrare lo spessore del Deck e dell'Extra Deck nella vista inclinata ("Tilted view in the Duel (like Master Duel) instead of from above").
@@ -45,6 +41,9 @@ Tre sezioni:
 - [ ] **Esporta come immagine**: esportare un deck come immagine.
 - [ ] **No deck**: tra i deck c'è "No deck", da usare come calcolatore ipergeometrico (tipo https://stattrek.com/online-calculator/hypergeometric).
 - [ ] **Copertina a scelta**: la copertina di bundle e deck si sceglie tra le carte che contengono; senza scelta è la prima.
+- [ ] **Deck box vera**: la scatola del mazzo è un parallelepipedo con cima e fianco allineati agli spigoli del fronte e la linea del coperchio.
+- [ ] **Colore e copertina della deck box**: pulsante con la tavolozza su ogni mazzo dell'elenco (e Deck → Deck box nell'editor) per scegliere la carta di copertina e il colore (11 proposti, automatico o libero).
+- [ ] **Colori dei Base decks**: Radiant Typhoon indaco, Labrynth cremisi, Centur-ion bianco, Melorbious viola, Blue-Eyes oro (anche le copie già salvate).
 
 ### Cube editor
 - [ ] **Bundle e carte più grandi**: bundle e carte più grossi sullo schermo.
@@ -77,6 +76,12 @@ Tre sezioni:
 ### Online e formati
 - [ ]  **Banlist custom**: supporto alle banlist personalizzate (da aggiungere insieme al drafting).
 
+### Account management
+- [ ] **Creare account crypto**: ogni utente ha un account generato con un trng di 24 words le prime 12 andranno poi a costituire 
+- [ ] **Profilo salvato su Nostr**: deck, combo, spreadsheet, cube, draft giocati contro i bot (pool, deck, risultati), sleeve, gemme Pendulum e Moai sono salvati cifrati con il profilo e tornano importandolo su un altro browser; le cancellazioni si propagano; gli elementi grandi si spezzano in parti e si riuniscono.
+- [ ] **Seed veramente casuale**: "New profile" crea le 12 parole dal rumore fisico (webcam, microfono, movimenti del mouse), con la logica di Noise TRNG e la finestra in stile Helios.
+- [ ] **Wallets**: Settings → Profile → Wallets mostra un indirizzo Ethereum e uno Monero derivati dalle parole del profilo come Cake Wallet, con i saldi (ETH da RPC pubblico, XMR scansionando i blocchi nel browser). In Advanced: passphrase, seed Monero a 25 parole, rescan.
+
 ---
 
 ## 3. Implementate e verificate
@@ -101,3 +106,7 @@ Tre sezioni:
 
 ### Trainer
 - [x] **Nuovo Trainer**: interfaccia e funzionalità ispirate a https://ygopocket.com/combos, con le feature che il client già aveva e l'ispirazione da https://www.masterduelmeta.com/combos-and-counters#spreadsheets.
+
+### App
+- [x] **Flag beta e versione 1.0**: indicazione che l'app è una beta, con la versione portata a 1.0.
+- [x] **Versione per telefono**: lo stesso Helios (e lo stesso Helios.html) su un telefono usa un'interfaccia per il touch, in verticale e girato: duello col campo 3D, home, deck builder a schede con la scheda della carta (pressione lunga al posto del tasto destro), pagine su una colonna, tavolo del draft. Icone sempre centrate nei bottoni.

@@ -11,6 +11,7 @@ import { validSleeve } from "../data/sleeve.js";
 import { pendulumIcons } from "../data/pendulum.js";
 import { moaiConfig, MOAI_CPU } from "../data/moai.js";
 import { loadDecks, saveDecks, sortDeckPart } from "../deck/deck.js";
+import { forgetItems } from "../data/sync-store.js";
 import { DUEL_MODES, LOC, POS, TYPE } from "../core/constants.js";
 import { DuelSession } from "../duel/session.js";
 import {
@@ -91,6 +92,7 @@ export function showComboTrainer(app, { review } = {}) {
       delete heir.parent;
       rest.forEach((x) => (x.parent = heir.id));
     }
+    forgetItems("combo", [c.id]);
     store.combos = store.combos.filter((x) => x.id !== c.id);
     for (const sh of store.sheets) sh.combos = sh.combos.filter((id) => id !== c.id);
     save();
@@ -400,6 +402,15 @@ export function showComboTrainer(app, { review } = {}) {
   }
 
   const tabs = h("div.tabs.big.combo-tabs");
+  // combo e spreadsheet arrivati dal backup sul profilo mentre il Trainer è aperto (uno spreadsheet aperto resta com'è)
+  const onSynced = () => {
+    if (!root.isConnected || !tabs.isConnected) return window.removeEventListener("helios-store-synced", onSynced);
+    const fresh = loadComboStore();
+    store.combos = fresh.combos;
+    store.sheets = fresh.sheets;
+    if (!view.sheetId) renderTab();
+  };
+  window.addEventListener("helios-store-synced", onSynced);
   function renderTab() {
     clear(tabs).append(
       h(`button.tab${view.tab === "combos" ? ".on" : ""}`, { onclick: () => { view = { tab: "combos", sheetId: null }; renderTab(); } }, "Combos"),

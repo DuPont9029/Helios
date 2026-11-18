@@ -13,6 +13,8 @@ import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType, artBase, artVariants, deckCover,
 } from "../deck/deck.js";
+import { forgetItems } from "../data/sync-store.js";
+import { DEFAULT_DECKS } from "../data/default-decks.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
 
@@ -64,12 +66,56 @@ function pasteModal() {
   return m.result.then((v) => (v == null ? null : String(v)));
 }
 
-// Scatola del mazzo disegnata in CSS, con l'artwork della copertina sul fronte (scelta, o la prima carta).
-function deckBox(deck) {
+// Colori proposti per le scatole dei mazzi (deck.boxColor); senza scelta un colore che dipende dall'id del mazzo.
+const BOX_COLORS = ["#b8323c", "#d2691e", "#c9a227", "#2e8b57", "#1d8f74", "#1f5fc8", "#4b3fb8", "#6a2a9a", "#c2185b", "#26262b", "#d8d8de"];
+const HEX = /^#[0-9a-f]{6}$/i;
+// Base decks (e le loro copie fatte prima dei colori): il colore del Base deck con lo stesso nome
+const boxColor = (deck) => (HEX.test(deck.boxColor ?? "") ? deck.boxColor : DEFAULT_DECKS.find((d) => d.name === deck.name)?.boxColor ?? `hsl(${[...String(deck.id ?? deck.name ?? "")].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 0)} 62% 44%)`);
+
+// Scatola del mazzo disegnata in CSS (fronte, cima e fianco allineati), con l'artwork della copertina sul fronte.
+export function deckBox(deck) {
   const lead = deckCover(deck);
-  const hue = [...deck.id].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 360, 0);
   const art = lead && h("img", { src: artUrl(lead), alt: "", loading: "lazy", draggable: false, onerror: (e) => e.target.remove() });
-  return h("div.deck-box", { style: { "--hue": hue } }, h("div.deck-box-front", art), h("div.deck-box-side"), h("div.deck-box-top"));
+  return h("div.deck-box", { style: { "--box": boxColor(deck) } }, h("div.deck-box-top"), h("div.deck-box-side"), h("div.deck-box-front", h("div.deck-box-art", art)));
+}
+
+/** Copertina e colore della scatola del mazzo. Restituisce { cover, boxColor } o null se annullato. */
+export async function customizeDeckBox(deck) {
+  const draft = { ...deck, cover: deckCover(deck), boxColor: deck.boxColor ?? null };
+  const preview = h("div.box-preview");
+  const coverBtn = h("button.btn.cover-pick");
+  const swatches = h("div.box-swatches");
+  // colore libero: mentre si trascina si aggiorna solo l'anteprima (ridisegnare il selettore lo chiuderebbe)
+  const custom = h("input.box-custom", { type: "color", title: "Any color", oninput: (e) => {
+    draft.boxColor = e.target.value;
+    preview.replaceChildren(deckBox(draft));
+    swatches.querySelectorAll(".box-swatch.on").forEach((b) => b.classList.remove("on"));
+  } });
+  const paint = () => {
+    preview.replaceChildren(deckBox(draft));
+    coverBtn.replaceChildren(draft.cover ? cardFace(draft.cover) : icon("image"), h("span", draft.cover ? getCard(draft.cover)?.name ?? "" : "Choose a card"), icon("swap_horiz"));
+    swatches.replaceChildren(
+      h(`button.box-swatch.auto${draft.boxColor ? "" : ".on"}`, { title: "Automatic", onclick: () => { draft.boxColor = null; paint(); } }, icon("auto_awesome")),
+      ...BOX_COLORS.map((c) => h(`button.box-swatch${draft.boxColor?.toLowerCase() === c ? ".on" : ""}`, { style: { background: c }, title: c, onclick: () => { draft.boxColor = c; paint(); } })),
+      custom
+    );
+    if (HEX.test(draft.boxColor ?? "")) custom.value = draft.boxColor;
+  };
+  coverBtn.onclick = async () => {
+    const code = await openCardChooser({ main: deck.main, extra: deck.extra, side: deck.side, title: `${deck.name}: cover`, subtitle: "Click the card to show on the deck box" });
+    if (code) {
+      draft.cover = code;
+      paint();
+    }
+  };
+  paint();
+  const ok = await openModal({
+    title: "Deck box",
+    className: "box-modal",
+    body: [preview, h("div.box-options", h("label.field", h("span", "Cover card"), coverBtn), h("div.field", h("span", "Color"), swatches))],
+    actions: [{ label: "Cancel", value: false }, { label: "Save", primary: true, value: true }],
+  }).result;
+  return ok ? { cover: draft.cover, boxColor: draft.boxColor } : null;
 }
 
 // ------------------------------------------------------------ elenco mazzi (schermata "DECK" di MDPro3)
@@ -94,6 +140,7 @@ export function showDeckList(app) {
       ? await confirmModal("Delete deck?", `"${names[0]}" will be permanently deleted.`, "Delete", "Cancel", { danger: true })
       : await confirmModal(`Delete ${ids.length} decks?`, names.map((n) => `• ${n}`).join("\n"), "Delete", "Cancel", { danger: true });
     if (!ok) return;
+    forgetItems("deck", ids);
     decks = decks.filter((d) => !ids.includes(d.id));
     if (ids.includes(settings.lastDeck)) settings.lastDeck = decks[0]?.id ?? null;
     save();
@@ -109,6 +156,14 @@ export function showDeckList(app) {
     save();
     open(d);
   };
+
+  // mazzi arrivati dal backup sul profilo mentre l'elenco è aperto
+  const onSynced = () => {
+    if (!grid.isConnected) return window.removeEventListener("helios-store-synced", onSynced);
+    decks = loadDecks();
+    render();
+  };
+  window.addEventListener("helios-store-synced", onSynced);
 
   function render() {
     const text = filter.value.trim().toLowerCase();
@@ -130,7 +185,21 @@ export function showDeckList(app) {
           h("div.deck-tile-meta", `${d.main.length} · ${d.extra.length} · ${d.side.length}`),
           selecting
             ? h("span.deck-tile-check", icon(chosen.has(d.id) ? "check_box" : "check_box_outline_blank"))
-            : h("button.deck-tile-del", { title: "Delete deck", onclick: (e) => { e.stopPropagation(); remove([d.id]); } }, icon("delete"))
+            : h("button.deck-tile-del", { title: "Delete deck", onclick: (e) => { e.stopPropagation(); remove([d.id]); } }, icon("delete")),
+          selecting
+            ? null
+            : h("button.deck-tile-box", {
+              title: "Deck box: cover card and color",
+              onclick: async (e) => {
+                e.stopPropagation();
+                const v = await customizeDeckBox(d);
+                if (!v) return;
+                Object.assign(d, v);
+                if (!d.boxColor) delete d.boxColor;
+                save();
+                render();
+              },
+            }, icon("palette"))
         );
         const act = () => {
           if (!selecting) return open(d);
@@ -148,7 +217,7 @@ export function showDeckList(app) {
       .map((d) => {
         const copy = (e) => {
           e.stopPropagation();
-          add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] });
+          add({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side], boxColor: d.boxColor });
         };
         const view = () => openDeckViewer({ main: d.main, extra: d.extra, side: d.side, title: d.name, subtitle: `Base deck · ${d.level} level`, legend: BASE_READY ? "A Base deck of the game. Add a copy to your Decks to change it; the Trainer has a combo for it (Training → Trainer → Base combos)." : "A Base deck of the game. Add a copy to your Decks to change it." });
         const tile = h(
@@ -480,7 +549,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   const detail = createDetailPanel({ related: true });
 
   // ------------------------------------------------------------ bozza, salvataggio, annulla/ripeti
-  const snap = () => JSON.stringify({ name: deck.name, cover: deck.cover ?? null, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
+  const snap = () => JSON.stringify({ name: deck.name, cover: deck.cover ?? null, boxColor: deck.boxColor ?? null, main: deck.main, extra: deck.extra, side: deck.side, ...Object.fromEntries(PARTS.map((p) => [p, deck[p]])) });
   const isDirty = () => snap() !== baseline;
 
   function openDeck(d) {
@@ -716,6 +785,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   // Elimina i mazzi indicati; ne resta sempre almeno uno (vuoto) da modificare.
   const deleteDecks = (ids) => {
+    forgetItems("deck", ids);
     decks = decks.filter((d) => !ids.includes(d.id));
     if (!decks.length) decks.push(emptyDeck());
     saveDecks(decks);
@@ -795,10 +865,14 @@ export function showEditor(app, { side = null, embed = null } = {}) {
         addDeck({ ...cloneDeck(deck), id: crypto.randomUUID(), name: deck.name + " (copy)" });
       }],
       ["Sort", () => change(() => { for (const p of ["main", "extra", "side"]) deck[p] = sortDeckPart(deck[p]); })],
-      // Copertina del mazzo (la scatola nell'elenco dei mazzi, il mazzo attivo nella home): senza scelta la prima carta.
-      ["Choose cover…", async () => {
-        const code = await openCardChooser({ main: deck.main, extra: deck.extra, side: deck.side, title: `${deck.name}: cover`, subtitle: "Click the card to show on the deck box" });
-        if (code) change(() => (deck.cover = code));
+      // Scatola del mazzo (elenco dei mazzi, mazzo attivo nella home): copertina (senza scelta la prima carta) e colore.
+      ["Deck box (cover, color)…", async () => {
+        const v = await customizeDeckBox(deck);
+        if (v) change(() => {
+          deck.cover = v.cover;
+          if (v.boxColor) deck.boxColor = v.boxColor;
+          else delete deck.boxColor;
+        });
       }],
       ["Clear", async () => { if (await confirmModal("Clear the deck?", deck.name, "Clear", "Cancel", { danger: true })) change(() => { deck.main = []; deck.extra = []; deck.side = []; }); }],
       ["Manage decks…", manageDecks],

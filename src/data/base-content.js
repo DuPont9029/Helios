@@ -31,6 +31,7 @@ export function baseDecks() {
     main: [...d.main],
     extra: [...d.extra],
     side: [...(d.side ?? [])],
+    boxColor: d.boxColor,
   }));
 }
 

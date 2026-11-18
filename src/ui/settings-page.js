@@ -7,7 +7,9 @@ import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../da
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
 import { aiKeyFields } from "./ai-card.js";
-import { identity, importIdentity, newIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
+import { newRandomProfile } from "./random-seed.js";
+import { showWallets } from "./wallets.js";
+import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
 import { eloRelays } from "../net/elo.js";
@@ -111,18 +113,21 @@ function profileSection(field, area) {
         h("button.btn.small", { onclick: () => copyText(npubOf(me.pk)).then((ok) => toast(ok ? "Friend code copied" : "Copy failed")) }, icon("content_copy"), " Copy")),
       h("h4", "Backup"),
       me.seed
-        ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"), h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
+        ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"),
+          h("button.btn.small", { title: "Ethereum and Monero addresses from your seed words (like Cake Wallet)", onclick: showWallets }, icon("account_balance_wallet"), " Wallets"),
+          h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
         : h("p.muted.small", "This profile was created before seed words existed: back it up with the nsec key or a password backup."),
       h("div.row",
         h("button.btn.small", { onclick: () => copySecret("Export nsec key", "Your secret key (nsec1…) works in any Nostr app. Anyone with it can play as you: keep it private.", nsec) }, "Copy nsec key"),
         h("button.btn.small", { onclick: exportWithPassword }, "Backup with a password"),
         h("button.btn.small", { onclick: () => importProfile(draw) }, icon("upload_file"), " Import profile"),
         h("button.btn.small.ghost", {
+          // parole dal rumore fisico (webcam, microfono, movimenti): src/ui/random-seed.js
           onclick: async () => {
-            if (!(await confirmModal("New profile", "A new player key with new seed words: your rating and your friends stay with the old key, which is lost if you have not backed it up.", "Create", "Cancel", { danger: true }))) return;
-            newIdentity();
+            if (!(await newRandomProfile())) return;
             draw();
-            toast("New profile created");
+            toast("New profile created: write down your seed words", { kind: "ok" });
+            showSeed();
           },
         }, "New profile")),
       h("h4", "Friends"),
@@ -819,4 +824,43 @@ export function showSettings(app) {
       )
     )
   );
+  masonry(root.querySelector(".settings-grid"));
+}
+
+/**
+ * Schede in colonne bilanciate: nell'ordine, ognuna va nella colonna più corta (altezze vere, misurate). Si rifà quando
+ * cambia la larghezza o l'altezza di una scheda (es. una sezione che si apre).
+ */
+function masonry(grid, minCol = 340, gap = 18) {
+  const cards = [...grid.children];
+  let cols = [];
+  let placed = "";
+  const layout = () => {
+    if (!grid.isConnected) return ro.disconnect();
+    const n = Math.max(1, Math.floor((grid.clientWidth + gap) / (minCol + gap)));
+    if (cols.length !== n) {
+      cols = Array.from({ length: n }, () => h("div.settings-col"));
+      grid.replaceChildren(...cols);
+      cards.forEach((c, i) => cols[i % n].append(c)); // prima disposizione, per misurare alla larghezza giusta
+      placed = "";
+    }
+    const heights = cols.map(() => 0);
+    const where = cards.map((c) => {
+      const k = heights.indexOf(Math.min(...heights));
+      heights[k] += c.offsetHeight + gap;
+      return k;
+    });
+    const key = where.join();
+    if (key === placed) return;
+    placed = key;
+    cards.forEach((c, i) => cols[where[i]].append(c));
+  };
+  let raf = 0;
+  const ro = new ResizeObserver(() => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(layout);
+  });
+  ro.observe(grid);
+  cards.forEach((c) => ro.observe(c));
+  layout();
 }

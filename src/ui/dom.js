@@ -19,7 +19,8 @@ export function h(tag, props, ...children) {
     if (RAW_HTML.has(k)) throw new Error(`h(): "${k}" is not allowed`);
     if (URL_PROPS.has(k) && SCRIPT_URL.test(String(v).replace(/[\t\n\r]/g, ""))) continue;
     if (k === "dataset") Object.assign(el.dataset, v);
-    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    // le variabili CSS (--nome) si impostano solo con setProperty: Object.assign le ignora
+    else if (k === "style" && typeof v === "object") for (const [p, x] of Object.entries(v)) p.startsWith("--") ? el.style.setProperty(p, x) : (el.style[p] = x);
     else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else if (k === "class") el.className += " " + v;
     else if (k in el && k !== "list") el[k] = v;

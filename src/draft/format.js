@@ -10,6 +10,7 @@
 //     singles:  [{ id, code, rarity, tags }]                                    round 2
 //     rules:    [{ id, round, kind: "apart" | "atLeast" | "atMost", a?, b?, tag?, n? }]  regole dei pacchetti }
 import { getCard, isExtraDeckCard } from "../data/db.js";
+import { mergeForSave, forgetItems } from "../data/sync-store.js";
 
 const KEY = "ygoweb.drafts";
 export const FORMAT_VERSION = 1;
@@ -73,7 +74,22 @@ export function loadFormats() {
   }
 }
 
+const storedFormats = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Salva i cube; quelli già salvati che mancano restano (si cancella con deleteFormat). */
 export function saveFormats(list) {
+  writeFormatsRaw(mergeForSave("cube", storedFormats(), list));
+}
+
+/** Scrive i cube così come sono (ripristino dal backup del profilo). */
+export function writeFormatsRaw(list) {
   localStorage.setItem(KEY, JSON.stringify(list));
 }
 
@@ -89,6 +105,7 @@ export function storeFormat(f) {
 }
 
 export function deleteFormat(id) {
+  forgetItems("cube", [id]);
   saveFormats(loadFormats().filter((f) => f.id !== id));
 }
 
