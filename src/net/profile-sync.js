@@ -1,0 +1,235 @@
+// Mazzi, combo e spreadsheet salvati con il profilo, come le carte personalizzate (net/custom-cards-sync.js): ogni
+// elemento è un evento NIP-78 (kind 30078) sostituibile sui relay della classifica, cifrato per sé stessi (NIP-44),
+// con d = "helios-store-v1:tipo:id". Importando il profilo su un altro browser tornano; le cancellazioni lasciano un
+// evento "cancellato" al posto dell'elemento. Il contenuto è compresso (gzip): le combo lunghe restano sotto i 64 KB.
+//
+// Le modifiche fatte qui arrivano da data/sync-store.js (evento helios-store-change); i Base decks non modificati
+// non vanno nel backup (ogni browser ne ha già una copia).
+import { SimplePool } from "nostr-tools/pool";
+import { finalizeEvent, verifyEvent } from "nostr-tools/pure";
+import * as nip44 from "nostr-tools/nip44";
+import { identity, fromHex } from "./identity.js";
+import { eloRelays } from "./elo.js";
+import { sharedPool } from "./social.js";
+import { syncTimes, syncDeleted, setSyncTimes, setSyncDeleted, noteReplaced } from "../data/sync-store.js";
+import { loadDecks, writeDecksRaw, isDefaultDeck } from "../deck/deck.js";
+import { loadComboStore, writeComboStoreRaw } from "../duel/trainer.js";
+
+const KIND = 30078;
+const TAG = "helios-store-v1";
+const TYPES = ["deck", "combo", "sheet"];
+const MAX_PLAIN = 44_000; // vedi custom-cards-sync.js
+const now = () => Math.floor(Date.now() / 1000);
+
+let ownPool = null;
+const pool = () => sharedPool() ?? (ownPool ??= new SimplePool({ enablePing: true, enableReconnect: true }));
+const selfKey = () => {
+  const { sk, pk } = identity();
+  return nip44.v2.utils.getConversationKey(fromHex(sk), pk);
+};
+
+// ---------------------------------------------------------------- compressione
+
+const toB64 = (buf) => {
+  let s = "";
+  const b = new Uint8Array(buf);
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+const fromB64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const pipe = (data, stream) => new Response(new Blob([data]).stream().pipeThrough(stream)).arrayBuffer();
+
+async function pack(obj) {
+  const json = JSON.stringify(obj);
+  if (typeof CompressionStream === "undefined") return json;
+  return JSON.stringify({ z: toB64(await pipe(json, new CompressionStream("gzip"))) });
+}
+async function unpack(text) {
+  const v = JSON.parse(text);
+  if (typeof v?.z !== "string") return v;
+  return JSON.parse(new TextDecoder().decode(await pipe(fromB64(v.z), new DecompressionStream("gzip"))));
+}
+
+// ---------------------------------------------------------------- elenchi locali
+
+const lists = () => {
+  const store = loadComboStore();
+  return { deck: loadDecks(), combo: store.combos, sheet: store.sheets };
+};
+const localItem = (type, id) => lists()[type].find((x) => x.id === id) ?? null;
+const uploadable = (type, item) => !(type === "deck" && isDefaultDeck(item));
+
+/** Mette (o toglie, item = null) un elemento arrivato dal backup, senza registrarlo come modifica fatta qui. */
+function applyRemote(type, id, item, at) {
+  const key = `${type}:${id}`;
+  if (type === "deck") {
+    const decks = loadDecks();
+    const i = decks.findIndex((x) => x.id === id);
+    if (i >= 0) noteReplaced(key, decks[i]);
+    if (!item) decks.splice(i, 1);
+    else if (i >= 0) decks[i] = item;
+    else decks.push(item);
+    writeDecksRaw(decks);
+  } else {
+    const store = loadComboStore();
+    const arr = type === "combo" ? store.combos : store.sheets;
+    const i = arr.findIndex((x) => x.id === id);
+    if (i >= 0) noteReplaced(key, arr[i]);
+    if (!item) arr.splice(i, 1);
+    else if (i >= 0) arr[i] = item;
+    else arr.push(item);
+    writeComboStoreRaw(store);
+  }
+  const times = syncTimes();
+  const dead = syncDeleted();
+  if (item) {
+    times[key] = at;
+    delete dead[key];
+  } else {
+    delete times[key];
+    dead[key] = { at, sent: true };
+  }
+  setSyncTimes(times);
+  setSyncDeleted(dead);
+}
+
+// ---------------------------------------------------------------- relay
+
+async function publish(type, id, data) {
+  const text = await pack({ v: 1, type, id, ...data });
+  if (new TextEncoder().encode(text).length > MAX_PLAIN) {
+    console.warn(`profile backup: ${type} ${id} is too large`);
+    return false;
+  }
+  const { sk } = identity();
+  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", `${TAG}:${type}:${id}`], ["t", TAG]], content: nip44.v2.encrypt(text, selfKey()) }, fromHex(sk));
+  const res = await Promise.allSettled(pool().publish(eloRelays(), ev));
+  return res.some((r) => r.status === "fulfilled");
+}
+
+async function uploadItem(type, id) {
+  const item = localItem(type, id);
+  const at = syncTimes()[`${type}:${id}`];
+  if (!item || !at || !uploadable(type, item)) return false;
+  return publish(type, id, { at, item });
+}
+
+async function uploadDeletion(type, id) {
+  const key = `${type}:${id}`;
+  const d = syncDeleted()[key];
+  if (!d) return false;
+  const ok = await publish(type, id, { at: d.at, deleted: true });
+  const dead = syncDeleted();
+  if (ok && dead[key]?.at === d.at) {
+    dead[key].sent = true;
+    setSyncDeleted(dead);
+  }
+  return ok;
+}
+
+/** Il backup di questo profilo: "tipo:id" → { type, id, at, item } o { type, id, at, deleted } (l'ultimo di ognuno). */
+async function fetchBackup() {
+  const { pk } = identity();
+  const evs = await pool().querySync(eloRelays(), { kinds: [KIND], authors: [pk], "#t": [TAG], limit: 2000 }, { maxWait: 7000 });
+  const by = new Map();
+  for (const ev of evs) {
+    if (!verifyEvent(ev)) continue;
+    try {
+      const data = await unpack(nip44.v2.decrypt(ev.content, selfKey()));
+      if (!TYPES.includes(data?.type) || typeof data.id !== "string" || !data.id) continue;
+      const at = Number(data.at) || 0;
+      if (!data.deleted && (data.item?.id !== data.id)) continue;
+      const key = `${data.type}:${data.id}`;
+      if (!by.has(key) || by.get(key).at < at) by.set(key, { type: data.type, id: data.id, at, item: data.deleted ? null : data.item });
+    } catch {
+      /* non è un nostro backup leggibile */
+    }
+  }
+  return by;
+}
+
+// ---------------------------------------------------------------- modifiche fatte qui → relay
+
+const timers = new Map();
+window.addEventListener("helios-store-change", (e) => {
+  const { type, id, deleted } = e.detail ?? {};
+  if (!TYPES.includes(type) || !id) return;
+  const key = `${type}:${id}`;
+  clearTimeout(timers.get(key));
+  if (deleted) {
+    timers.delete(key);
+    uploadDeletion(type, id).catch(() => {});
+    return;
+  }
+  // il mazzo si salva a ogni modifica: si pubblica solo quando ci si ferma
+  timers.set(key, setTimeout(() => {
+    timers.delete(key);
+    uploadItem(type, id).catch(() => {});
+  }, 4000));
+});
+
+// ---------------------------------------------------------------- allineamento
+
+// stesso nome e stesse carte: un Base deck (o un mazzo) che questo browser ha già con un altro id
+const sameDeck = (a, b) => a.name === b.name && ["main", "extra", "side"].every((p) => (a[p] ?? []).join() === (b[p] ?? []).join());
+
+let running = null;
+/**
+ * Allinea mazzi, combo e spreadsheet del browser con il backup del profilo: arrivano quelli nuovi o più recenti (e
+ * spariscono quelli cancellati altrove), partono quelli che il backup non ha o ha più vecchi.
+ * Restituisce { restored: { deck, combo, sheet }, removed, uploaded }.
+ */
+export function syncProfileStore() {
+  running ??= (async () => {
+    const backup = await fetchBackup();
+    const restored = { deck: 0, combo: 0, sheet: 0 };
+    let removed = 0;
+    let uploaded = 0;
+    for (const [key, r] of backup) {
+      const times = syncTimes();
+      const dead = syncDeleted();
+      const mine = localItem(r.type, r.id);
+      if (!r.item) {
+        if (mine && (times[key] ?? 0) <= r.at) {
+          applyRemote(r.type, r.id, null, r.at);
+          removed++;
+        }
+        continue;
+      }
+      if (dead[key] && dead[key].at >= r.at) continue; // cancellato qui dopo
+      if (mine && (times[key] ?? 0) >= r.at) continue;
+      if (!mine && r.type === "deck" && lists().deck.some((d) => sameDeck(d, r.item))) continue;
+      applyRemote(r.type, r.id, r.item, r.at);
+      restored[r.type]++;
+    }
+    for (const [key, d] of Object.entries(syncDeleted())) {
+      const [type, ...rest] = key.split(":");
+      const id = rest.join(":");
+      const r = backup.get(key);
+      if (!d.sent || (r && r.item && r.at < d.at)) await uploadDeletion(type, id).catch(() => {});
+    }
+    const times = syncTimes();
+    for (const [type, arr] of Object.entries(lists())) {
+      for (const item of arr) {
+        if (!item?.id || !uploadable(type, item)) continue;
+        const key = `${type}:${item.id}`;
+        // mai modificato qui (es. salvato prima del backup sul profilo): conta come appena modificato
+        if (!times[key]) {
+          times[key] = Date.now();
+          setSyncTimes(times);
+        }
+        const theirs = backup.get(key)?.at ?? -1;
+        if (times[key] > theirs && (await uploadItem(type, item.id).catch(() => false))) uploaded++;
+      }
+    }
+    const any = restored.deck + restored.combo + restored.sheet + removed;
+    if (any) window.dispatchEvent(new CustomEvent("helios-store-synced", { detail: { restored, removed } }));
+    return { restored, removed, uploaded };
+  })().finally(() => (running = null));
+  return running;
+}
+
+// Profilo importato (o nuovo): i suoi mazzi e combo arrivano, quelli di questo browser si aggiungono al suo backup.
+window.addEventListener("helios-identity", () => {
+  syncProfileStore().catch(() => {});
+});

@@ -2,6 +2,7 @@
 import { db, getCard, isExtraDeckCard } from "../data/db.js";
 import { TYPE } from "../core/constants.js";
 import { DEFAULT_DECKS } from "../data/default-decks.js";
+import { mergeForSave } from "../data/sync-store.js";
 
 const KEY = "ygoweb.decks";
 
@@ -197,12 +198,37 @@ export function loadDecks() {
   return DEFAULT_DECKS.map((d) => ({ ...emptyDeck(d.name), main: [...d.main], extra: [...d.extra], side: [...d.side] }));
 }
 
+const storedDecks = () => {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || "[]");
+    return Array.isArray(v) ? v : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Salva i mazzi. Quelli già salvati che mancano restano (si cancella con forgetItems("deck", ids) prima). */
 export function saveDecks(decks) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(mergeForSave("deck", storedDecks(), decks)));
+  } catch (e) {
+    console.warn("failed to save decks", e);
+  }
+}
+
+/** Scrive i mazzi così come sono (ripristino dal backup del profilo: niente registro delle modifiche). */
+export function writeDecksRaw(decks) {
   try {
     localStorage.setItem(KEY, JSON.stringify(decks));
   } catch (e) {
     console.warn("failed to save decks", e);
   }
+}
+
+/** Il mazzo è uguale a uno dei Base decks (nome e carte): non va nel backup del profilo. */
+export function isDefaultDeck(d) {
+  const same = (a, b) => (a ?? []).join() === (b ?? []).join();
+  return DEFAULT_DECKS.some((x) => x.name === d.name && same(x.main, d.main) && same(x.extra, d.extra) && same(x.side, d.side));
 }
 
 // ------------------------------------------------------------- regole

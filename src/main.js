@@ -17,6 +17,7 @@ import { updateBanlists } from "./data/banlist-update.js";
 import { syncCustomBanlists } from "./data/custom-banlists.js";
 import { loadCustomCards } from "./data/custom-cards.js";
 import { syncCustomCards } from "./net/custom-cards-sync.js";
+import { syncProfileStore } from "./net/profile-sync.js";
 import { toast, openModal } from "./ui/modal.js";
 import { startSocial, onInvite, onInviteCancel, onFriendRequest, replyInvite, statusChanged, goingOffline, onlineCount, onSocialChange } from "./net/social.js";
 import { showComboTrainer } from "./ui/combos.js";
@@ -312,6 +313,13 @@ async function boot() {
     // ...e quelle salvate con il profilo sui relay Nostr (senza aspettare)
     syncCustomCards()
       .then(({ restored }) => restored && toast(`${restored === 1 ? "1 custom card" : `${restored} custom cards`} restored from your profile`, { kind: "ok" }))
+      .catch(() => {});
+    // mazzi, combo e spreadsheet salvati con il profilo
+    syncProfileStore()
+      .then(({ restored: r }) => {
+        const parts = [[r.deck, "deck"], [r.combo, "combo"], [r.sheet, "spreadsheet"]].filter(([n]) => n).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
+        if (parts.length) toast(`${parts.join(", ")} restored from your profile`, { kind: "ok" });
+      })
       .catch(() => {});
     seedBookmarks();
     // Banlist aggiornate da ProjectIgnis/LFLists (senza aspettare: si gioca subito con quelle che ci sono);

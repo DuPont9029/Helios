@@ -13,6 +13,7 @@ import { ATTRIBUTES, RACES, TYPE } from "../core/constants.js";
 import {
   loadDecks, saveDecks, emptyDeck, parseDeckText, toYdk, toYdke, toOmega, toRecipe, banlistByName, cardLimit, validateDeck, sortDeckPart, OT, cardPoints, deckPoints, bannedType, artBase, artVariants, deckCover,
 } from "../deck/deck.js";
+import { forgetItems } from "../data/sync-store.js";
 
 const MAX = { main: 60, extra: 15, side: 15 };
 
@@ -94,6 +95,7 @@ export function showDeckList(app) {
       ? await confirmModal("Delete deck?", `"${names[0]}" will be permanently deleted.`, "Delete", "Cancel", { danger: true })
       : await confirmModal(`Delete ${ids.length} decks?`, names.map((n) => `• ${n}`).join("\n"), "Delete", "Cancel", { danger: true });
     if (!ok) return;
+    forgetItems("deck", ids);
     decks = decks.filter((d) => !ids.includes(d.id));
     if (ids.includes(settings.lastDeck)) settings.lastDeck = decks[0]?.id ?? null;
     save();
@@ -109,6 +111,14 @@ export function showDeckList(app) {
     save();
     open(d);
   };
+
+  // mazzi arrivati dal backup sul profilo mentre l'elenco è aperto
+  const onSynced = () => {
+    if (!grid.isConnected) return window.removeEventListener("helios-store-synced", onSynced);
+    decks = loadDecks();
+    render();
+  };
+  window.addEventListener("helios-store-synced", onSynced);
 
   function render() {
     const text = filter.value.trim().toLowerCase();
@@ -716,6 +726,7 @@ export function showEditor(app, { side = null, embed = null } = {}) {
 
   // Elimina i mazzi indicati; ne resta sempre almeno uno (vuoto) da modificare.
   const deleteDecks = (ids) => {
+    forgetItems("deck", ids);
     decks = decks.filter((d) => !ids.includes(d.id));
     if (!decks.length) decks.push(emptyDeck());
     saveDecks(decks);

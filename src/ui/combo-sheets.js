@@ -7,6 +7,7 @@ import { openModal, toast, confirmModal, alertModal } from "./modal.js";
 import { cardName } from "../data/db.js";
 import { settings } from "../data/settings.js";
 import { parseDeckText, saveDecks, loadDecks, emptyDeck, sortDeckPart } from "../deck/deck.js";
+import { forgetItems } from "../data/sync-store.js";
 import { sheetCards, sheetToCode, sheetFromCode, isSheetCode, NOTES_MAX } from "../duel/trainer.js";
 import { openDecklistEditor, openDeckViewer } from "./editor.js";
 
@@ -61,6 +62,7 @@ export function renderSheets(panel, ctx, sheetId, mode = "view") {
             title: "Delete the spreadsheet (its combos stay in the Trainer)",
             onclick: async () => {
               if (!(await confirmModal("Delete spreadsheet", `Delete "${s.name}"? Its combos are not deleted.`, "Delete", "Cancel", { danger: true }))) return;
+              forgetItems("sheet", [s.id]);
               ctx.store.sheets = ctx.store.sheets.filter((x) => x.id !== s.id);
               ctx.save();
             },
