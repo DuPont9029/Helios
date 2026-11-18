@@ -28,10 +28,6 @@ Tre sezioni:
 
 ## 2. Implementate, da testare
 
-### App
-- [ ] **Flag beta e versione 1.0**: indicazione che l'app è una beta, con la versione portata a 1.0.
-- [ ] **Versione per telefono**: lo stesso Helios (e lo stesso Helios.html) su un telefono usa un'interfaccia per il touch, in verticale e girato: duello col campo 3D, home, deck builder a schede con la scheda della carta (pressione lunga al posto del tasto destro), pagine su una colonna, tavolo del draft. Icone sempre centrate nei bottoni.
-
 ### Duello
 - [ ] **Costi di scarto dalla mano**: per i costi che scartano non si apre una finestra, si sceglie direttamente dalla mano.
 - [ ] **Spessore di Deck ed Extra Deck**: mostrare lo spessore del Deck e dell'Extra Deck nella vista inclinata ("Tilted view in the Duel (like Master Duel) instead of from above").
@@ -77,6 +73,9 @@ Tre sezioni:
 ### Online e formati
 - [ ]  **Banlist custom**: supporto alle banlist personalizzate (da aggiungere insieme al drafting).
 
+### Account management
+- [ ] **Creare account crypto**: ogni utente ha un account generato con un trng di 24 words le prime 12 andranno poi a costituire 
+
 ---
 
 ## 3. Implementate e verificate
@@ -101,3 +100,7 @@ Tre sezioni:
 
 ### Trainer
 - [x] **Nuovo Trainer**: interfaccia e funzionalità ispirate a https://ygopocket.com/combos, con le feature che il client già aveva e l'ispirazione da https://www.masterduelmeta.com/combos-and-counters#spreadsheets.
+
+### App
+- [x] **Flag beta e versione 1.0**: indicazione che l'app è una beta, con la versione portata a 1.0.
+- [x] **Versione per telefono**: lo stesso Helios (e lo stesso Helios.html) su un telefono usa un'interfaccia per il touch, in verticale e girato: duello col campo 3D, home, deck builder a schede con la scheda della carta (pressione lunga al posto del tasto destro), pagine su una colonna, tavolo del draft. Icone sempre centrate nei bottoni.

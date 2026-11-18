@@ -1,5 +1,6 @@
 // Impostazioni utente salvate in localStorage.
 import { customImages, customArts } from "./card-images.js";
+import { SYNCED_SETTINGS, settingChanged } from "./sync-store.js";
 
 const KEY = "ygoweb.settings";
 
@@ -89,16 +90,24 @@ export const settings = new Proxy(
   {
     get: (_, k) => current[k],
     set: (_, k, v) => {
-      current[k] = v;
-      try {
-        localStorage.setItem(KEY, JSON.stringify(current));
-      } catch {
-        /* storage non disponibile */
-      }
+      const before = current[k];
+      setSettingRaw(k, v);
+      // sleeve, gemme Pendulum e Moai vanno anche nel backup sul profilo (net/profile-sync.js)
+      if (SYNCED_SETTINGS.includes(k)) settingChanged(k, before, v);
       return true;
     },
   }
 );
+
+/** Imposta senza avvisare il backup sul profilo (per i valori che arrivano da lì). */
+export function setSettingRaw(k, v) {
+  current[k] = v;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(current));
+  } catch {
+    /* storage non disponibile */
+  }
+}
 
 export function resetSettings() {
   current = { ...DEFAULTS };

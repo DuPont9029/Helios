@@ -1,4 +1,5 @@
-// Mazzi, combo e spreadsheet salvati con il profilo, come le carte personalizzate (net/custom-cards-sync.js): ogni
+// Mazzi, combo, spreadsheet, cube, draft giocati (pool, mazzo e risultati) e aspetto (sleeve, gemme Pendulum, Moai)
+// salvati con il profilo, come le carte personalizzate (net/custom-cards-sync.js): ogni
 // elemento è un evento NIP-78 (kind 30078) sostituibile sui relay della classifica, cifrato per sé stessi (NIP-44),
 // con d = "helios-store-v1:tipo:id". Importando il profilo su un altro browser tornano; le cancellazioni lasciano un
 // evento "cancellato" al posto dell'elemento. Il contenuto è compresso (gzip); se resta oltre il limite dei relay
@@ -12,13 +13,18 @@ import * as nip44 from "nostr-tools/nip44";
 import { identity, fromHex } from "./identity.js";
 import { eloRelays } from "./elo.js";
 import { sharedPool } from "./social.js";
-import { syncTimes, syncDeleted, setSyncTimes, setSyncDeleted, noteReplaced } from "../data/sync-store.js";
+import { syncTimes, syncDeleted, setSyncTimes, setSyncDeleted, noteReplaced, SYNCED_SETTINGS } from "../data/sync-store.js";
 import { loadDecks, writeDecksRaw, isDefaultDeck } from "../deck/deck.js";
 import { loadComboStore, writeComboStoreRaw } from "../duel/trainer.js";
+import { loadFormats, writeFormatsRaw, cleanFormat } from "../draft/format.js";
+import { loadRuns, writeRunsRaw } from "../draft/runs.js";
+import { settings, setSettingRaw } from "../data/settings.js";
+import { validSleeve } from "../data/sleeve.js";
+import { validPendulumIcons } from "../data/pendulum.js";
+import { validMoai } from "../data/moai.js";
 
 const KIND = 30078;
 const TAG = "helios-store-v1";
-const TYPES = ["deck", "combo", "sheet"];
 const MAX_PLAIN = 44_000; // vedi custom-cards-sync.js
 const PART = 40_000; // caratteri di una parte (il testo compresso è base64: un carattere = un byte)
 const MAX_PARTS = 64; // ~2,5 MB: oltre non si salva
@@ -55,34 +61,52 @@ async function unpack(text) {
 
 // ---------------------------------------------------------------- elenchi locali
 
-const lists = () => {
-  const store = loadComboStore();
-  return { deck: loadDecks(), combo: store.combos, sheet: store.sheets };
+const VALID_SETTING = { sleeve: validSleeve, pendulumIcon: validPendulumIcons, moai: validMoai };
+
+/**
+ * Un adattatore per tipo: list() l'elenco salvato (elementi con id), write(arr) lo riscrive senza registrare
+ * modifiche, skip(item) se non va nel backup, clean(item) controlla quelli che arrivano (null = scartato),
+ * slim(item) una versione più leggera se è troppo grande anche a parti.
+ */
+const ADAPTERS = {
+  deck: { list: loadDecks, write: writeDecksRaw, skip: isDefaultDeck },
+  combo: { list: () => loadComboStore().combos, write: (combos) => writeComboStoreRaw({ ...loadComboStore(), combos }) },
+  sheet: { list: () => loadComboStore().sheets, write: (sheets) => writeComboStoreRaw({ ...loadComboStore(), sheets }) },
+  cube: { list: loadFormats, write: writeFormatsRaw, clean: cleanFormat },
+  // i draft online hanno già il loro backup (net/tournament-store.js)
+  run: {
+    list: loadRuns,
+    write: writeRunsRaw,
+    skip: (r) => !!r.online,
+    slim: (r) => ({ ...r, results: (r.results ?? []).map((x) => ({ ...x, replay: null })), botMatches: r.botMatches?.map((x) => ({ ...x, replay: null })) ?? null }),
+  },
+  setting: {
+    list: () => SYNCED_SETTINGS.filter((k) => settings[k] != null).map((k) => ({ id: k, value: settings[k] })),
+    write: (arr) => {
+      for (const k of SYNCED_SETTINGS) {
+        const v = arr.find((x) => x.id === k)?.value ?? null;
+        if (JSON.stringify(v) !== JSON.stringify(settings[k] ?? null)) setSettingRaw(k, v);
+      }
+    },
+    clean: (x) => (VALID_SETTING[x.id]?.(x.value) ? { id: x.id, value: x.value } : null),
+  },
 };
-const localItem = (type, id) => lists()[type].find((x) => x.id === id) ?? null;
-const uploadable = (type, item) => !(type === "deck" && isDefaultDeck(item));
+const TYPES = Object.keys(ADAPTERS);
+const lists = () => Object.fromEntries(TYPES.map((t) => [t, ADAPTERS[t].list()]));
+const localItem = (type, id) => ADAPTERS[type].list().find((x) => x.id === id) ?? null;
+const uploadable = (type, item) => !ADAPTERS[type].skip?.(item);
 
 /** Mette (o toglie, item = null) un elemento arrivato dal backup, senza registrarlo come modifica fatta qui. */
 function applyRemote(type, id, item, at) {
   const key = `${type}:${id}`;
-  if (type === "deck") {
-    const decks = loadDecks();
-    const i = decks.findIndex((x) => x.id === id);
-    if (i >= 0) noteReplaced(key, decks[i]);
-    if (!item) decks.splice(i, 1);
-    else if (i >= 0) decks[i] = item;
-    else decks.push(item);
-    writeDecksRaw(decks);
-  } else {
-    const store = loadComboStore();
-    const arr = type === "combo" ? store.combos : store.sheets;
-    const i = arr.findIndex((x) => x.id === id);
-    if (i >= 0) noteReplaced(key, arr[i]);
-    if (!item) arr.splice(i, 1);
-    else if (i >= 0) arr[i] = item;
-    else arr.push(item);
-    writeComboStoreRaw(store);
-  }
+  const arr = ADAPTERS[type].list();
+  const i = arr.findIndex((x) => x.id === id);
+  if (i >= 0) noteReplaced(key, arr[i]);
+  if (!item) {
+    if (i >= 0) arr.splice(i, 1);
+  } else if (i >= 0) arr[i] = item;
+  else arr.push(item);
+  ADAPTERS[type].write(arr);
   const times = syncTimes();
   const dead = syncDeleted();
   if (item) {
@@ -115,10 +139,7 @@ async function publish(type, id, data) {
   const step = size === text.length ? PART : Math.floor(PART / 4); // senza compressione può esserci testo non ASCII
   const parts = [];
   for (let i = 0; i < text.length; i += step) parts.push(text.slice(i, i + step));
-  if (parts.length > MAX_PARTS) {
-    console.warn(`profile backup: ${type} ${id} is too large`);
-    return false;
-  }
+  if (parts.length > MAX_PARTS) return null; // troppo grande
   const sent = await Promise.all(parts.map((part, i) => send(`${d}:#${i}`, JSON.stringify({ v: 1, type, id, at: data.at, part: i, data: part }))));
   if (sent.includes(false)) return false;
   return send(d, JSON.stringify({ v: 1, type, id, at: data.at, parts: parts.length }));
@@ -128,7 +149,11 @@ async function uploadItem(type, id) {
   const item = localItem(type, id);
   const at = syncTimes()[`${type}:${id}`];
   if (!item || !at || !uploadable(type, item)) return false;
-  return publish(type, id, { at, item });
+  let ok = await publish(type, id, { at, item });
+  const slim = ADAPTERS[type].slim;
+  if (ok === null && slim) ok = await publish(type, id, { at, item: slim(item) });
+  if (ok === null) console.warn(`profile backup: ${type} ${id} is too large`);
+  return !!ok;
 }
 
 async function uploadDeletion(type, id) {
@@ -176,7 +201,11 @@ async function fetchBackup() {
         if (whole?.type !== data.type || whole?.id !== data.id) continue;
         data = whole;
       }
-      if (!data.deleted && (data.item?.id !== data.id)) continue;
+      if (!data.deleted) {
+        const clean = ADAPTERS[data.type].clean;
+        if (clean) data.item = data.item && typeof data.item === "object" ? clean(data.item) : null;
+        if (data.item?.id !== data.id) continue;
+      }
       const key = `${data.type}:${data.id}`;
       if (!by.has(key) || by.get(key).at < at) by.set(key, { type: data.type, id: data.id, at, item: data.deleted ? null : data.item });
     } catch {
@@ -213,14 +242,14 @@ const sameDeck = (a, b) => a.name === b.name && ["main", "extra", "side"].every(
 
 let running = null;
 /**
- * Allinea mazzi, combo e spreadsheet del browser con il backup del profilo: arrivano quelli nuovi o più recenti (e
+ * Allinea mazzi, combo, spreadsheet, cube, draft e aspetto del browser con il backup del profilo: arrivano quelli nuovi o più recenti (e
  * spariscono quelli cancellati altrove), partono quelli che il backup non ha o ha più vecchi.
- * Restituisce { restored: { deck, combo, sheet }, removed, uploaded }.
+ * Restituisce { restored: { tipo: quanti }, removed, uploaded }.
  */
 export function syncProfileStore() {
   running ??= (async () => {
     const backup = await fetchBackup();
-    const restored = { deck: 0, combo: 0, sheet: 0 };
+    const restored = Object.fromEntries(TYPES.map((t) => [t, 0]));
     let removed = 0;
     let uploaded = 0;
     for (const [key, r] of backup) {
@@ -260,14 +289,14 @@ export function syncProfileStore() {
         if (times[key] > theirs && (await uploadItem(type, item.id).catch(() => false))) uploaded++;
       }
     }
-    const any = restored.deck + restored.combo + restored.sheet + removed;
+    const any = Object.values(restored).reduce((a, b) => a + b, removed);
     if (any) window.dispatchEvent(new CustomEvent("helios-store-synced", { detail: { restored, removed } }));
     return { restored, removed, uploaded };
   })().finally(() => (running = null));
   return running;
 }
 
-// Profilo importato (o nuovo): i suoi mazzi e combo arrivano, quelli di questo browser si aggiungono al suo backup.
+// Profilo importato (o nuovo): i suoi mazzi, combo, cube... arrivano, quelli di questo browser si aggiungono al suo backup.
 window.addEventListener("helios-identity", () => {
   syncProfileStore().catch(() => {});
 });

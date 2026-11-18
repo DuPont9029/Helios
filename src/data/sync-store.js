@@ -76,6 +76,25 @@ export function mergeForSave(type, prev, next) {
   return out;
 }
 
+/**
+ * Impostazioni salvate con il profilo (aspetto: sleeve, gemme Pendulum, Moai). Ognuna è un elemento "setting:nome";
+ * tornare a null equivale a cancellarla.
+ */
+export const SYNCED_SETTINGS = ["sleeve", "pendulumIcon", "moai"];
+
+/** Da settings.js quando cambia un'impostazione sincronizzata. */
+export function settingChanged(key, before, after) {
+  if (JSON.stringify(before ?? null) === JSON.stringify(after ?? null)) return;
+  if (after == null) return forgetItems("setting", [key]);
+  const times = syncTimes();
+  const dead = syncDeleted();
+  times[`setting:${key}`] = Date.now();
+  delete dead[`setting:${key}`];
+  setSyncTimes(times);
+  setSyncDeleted(dead);
+  changed({ type: "setting", id: key });
+}
+
 /** Cancellazione esplicita: da fare prima di salvare l'elenco senza quegli elementi. */
 export function forgetItems(type, ids) {
   const times = syncTimes();

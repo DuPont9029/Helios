@@ -314,10 +314,12 @@ async function boot() {
     syncCustomCards()
       .then(({ restored }) => restored && toast(`${restored === 1 ? "1 custom card" : `${restored} custom cards`} restored from your profile`, { kind: "ok" }))
       .catch(() => {});
-    // mazzi, combo e spreadsheet salvati con il profilo
+    // mazzi, combo, spreadsheet, cube, draft e aspetto (sleeve, gemme Pendulum, Moai) salvati con il profilo
     syncProfileStore()
       .then(({ restored: r }) => {
-        const parts = [[r.deck, "deck"], [r.combo, "combo"], [r.sheet, "spreadsheet"]].filter(([n]) => n).map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
+        const parts = [[r.deck, "deck"], [r.combo, "combo"], [r.sheet, "spreadsheet"], [r.cube, "cube"], [r.run, "draft"], [r.setting, "appearance setting"]]
+          .filter(([n]) => n)
+          .map(([n, w]) => `${n} ${w}${n === 1 ? "" : "s"}`);
         if (parts.length) toast(`${parts.join(", ")} restored from your profile`, { kind: "ok" });
       })
       .catch(() => {});
