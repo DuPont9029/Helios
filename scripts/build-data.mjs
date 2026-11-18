@@ -115,10 +115,55 @@ function buildCards() {
     db.close();
     console.log(`  ${file}: ${added} carte`);
   }
+  return seen;
+}
+
+function writeCards(seen) {
   const cards = [...seen.values()];
   fs.writeFileSync(path.join(OUT, "cards.json"), JSON.stringify(cards));
   console.log(`cards.json: ${cards.length} carte`);
-  return seen;
+}
+
+// Tutte le carte di YGOPRODeck (API pubblica, con misc_info), scaricate una volta per la popolarità e per le uscite
+// TCG. null se l'API non risponde: il build continua senza.
+let ygoCache;
+async function ygoCards() {
+  if (ygoCache !== undefined) return ygoCache;
+  try {
+    const r = await fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes", { headers: { "user-agent": "Helios data build (github.com/DuPont9029/Helios)" } });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    ygoCache = (await r.json()).data ?? null;
+    if (!ygoCache?.length) throw new Error("no data");
+  } catch (e) {
+    console.warn(`  [YGOPRODeck] non disponibile (${e.message})`);
+    ygoCache = null;
+  }
+  return ygoCache;
+}
+
+// Uscite TCG che BabelCDB non ha ancora: ProjectIgnis aggiorna ot (e nome e testo, tradotti dall'OCG) anche settimane
+// dopo l'uscita in TCG, e intanto la carta appare "solo OCG" (es. W:P Fancy Ball, gli Unchained di MAMS). Se per
+// YGOPRODeck è uscita in TCG, la carta diventa TCG+OCG e prende nome e testo ufficiali TCG.
+function applyTcgReleases(seen, ygo) {
+  if (!ygo) return;
+  const today = new Date().toISOString().slice(0, 10);
+  const fixed = [];
+  for (const c of ygo) {
+    const m = c.misc_info?.[0];
+    // la data, non i formati: YGOPRODeck mette "TCG" anche per le carte annunciate e non ancora uscite
+    const tcg = !!m?.tcg_date && m.tcg_date <= today;
+    if (!tcg) continue;
+    for (const id of new Set([c.id, ...(c.card_images ?? []).map((i) => i.id)])) {
+      const row = seen.get(id);
+      // solo le carte ufficiali (source 0/2) segnate solo OCG
+      if (!row || row[14] === 1 || (row[1] & 0x3) !== 0x1) continue;
+      row[1] |= 0x2;
+      if (c.name) row[11] = c.name;
+      if (c.desc) row[12] = c.desc.replace(/\r\n/g, "\n");
+      fixed.push(c.name);
+    }
+  }
+  console.log(`  uscite TCG non ancora in BabelCDB: ${fixed.length}${fixed.length ? ` (${[...new Set(fixed)].slice(0, 8).join(", ")}${fixed.length > 8 ? "…" : ""})` : ""}`);
 }
 
 // ---------------------------------------------------------------- stringhe
@@ -247,15 +292,14 @@ function buildScripts(cards) {
 // della carta e "staple" (carte usate in molti mazzi). Nel client: ordinare la ricerca per popolarità, filtro
 // Staples, carte più cercate per prime (src/data/db.js: card.pop). Se l'API non risponde il build continua senza.
 // popularity.json: { v, built, cards: { id: [visualizzazioni, della settimana, staple 0/1] } }.
-async function buildPopularity() {
+async function buildPopularity(ygo) {
   const file = path.join(OUT, "popularity.json");
   try {
-    const r = await fetch("https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes", { headers: { "user-agent": "Helios data build (github.com/DuPont9029/Helios)" } });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    if (!ygo) throw new Error("no data");
     const cards = {};
     // Numeri arrotondati a 3 cifre significative: l'ordine resta quello e il file pesa meno.
     const round = (n) => (n > 0 ? Number(n.toPrecision(3)) : 0);
-    for (const c of (await r.json()).data ?? []) {
+    for (const c of ygo) {
       const m = c.misc_info?.[0];
       if (!m) continue;
       const row = [round(m.views ?? 0), round(m.viewsweek ?? 0), m.staple === "Yes" ? 1 : 0];
@@ -290,6 +334,9 @@ async function buildStarters(cards) {
 await syncRepos();
 fs.mkdirSync(OUT, { recursive: true });
 const cards = buildCards();
+const ygo = offline ? null : await ygoCards();
+applyTcgReleases(cards, ygo);
+writeCards(cards);
 buildStrings();
 await buildBanlists();
 buildScripts(cards);
@@ -297,7 +344,7 @@ buildScripts(cards);
 const { buildLuaApi } = await import("./build-lua-api.mjs");
 console.log("lua-api.json:", buildLuaApi());
 await buildStarters(cards);
-if (!offline) await buildPopularity();
+if (!offline) await buildPopularity(ygo);
 
 const manifest = { built: new Date().toISOString(), repos: {} };
 for (const name of Object.keys(REPOS)) {

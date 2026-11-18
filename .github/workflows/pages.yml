@@ -8,8 +8,8 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    # Una volta a settimana, per avere carte e script aggiornati.
-    - cron: "0 4 * * 1"
+    # Ogni giorno, per avere carte, script e uscite TCG aggiornati.
+    - cron: "0 4 * * *"
     # Ogni 3 ore si controlla se le banlist di Project Ignis (LFLists) sono cambiate: se sì, si ripubblica.
     - cron: "23 */3 * * *"
 
