@@ -1,7 +1,8 @@
 // Mazzi, combo e spreadsheet salvati con il profilo, come le carte personalizzate (net/custom-cards-sync.js): ogni
 // elemento è un evento NIP-78 (kind 30078) sostituibile sui relay della classifica, cifrato per sé stessi (NIP-44),
 // con d = "helios-store-v1:tipo:id". Importando il profilo su un altro browser tornano; le cancellazioni lasciano un
-// evento "cancellato" al posto dell'elemento. Il contenuto è compresso (gzip): le combo lunghe restano sotto i 64 KB.
+// evento "cancellato" al posto dell'elemento. Il contenuto è compresso (gzip); se resta oltre il limite dei relay
+// (64 KB) si spezza in parti, eventi a sé con d = "...:tipo:id:#n", che si riuniscono leggendo il backup.
 //
 // Le modifiche fatte qui arrivano da data/sync-store.js (evento helios-store-change); i Base decks non modificati
 // non vanno nel backup (ogni browser ne ha già una copia).
@@ -19,6 +20,8 @@ const KIND = 30078;
 const TAG = "helios-store-v1";
 const TYPES = ["deck", "combo", "sheet"];
 const MAX_PLAIN = 44_000; // vedi custom-cards-sync.js
+const PART = 40_000; // caratteri di una parte (il testo compresso è base64: un carattere = un byte)
+const MAX_PARTS = 64; // ~2,5 MB: oltre non si salva
 const now = () => Math.floor(Date.now() / 1000);
 
 let ownPool = null;
@@ -95,16 +98,30 @@ function applyRemote(type, id, item, at) {
 
 // ---------------------------------------------------------------- relay
 
+async function send(d, text) {
+  const { sk } = identity();
+  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", d], ["t", TAG]], content: nip44.v2.encrypt(text, selfKey()) }, fromHex(sk));
+  const res = await Promise.allSettled(pool().publish(eloRelays(), ev));
+  return res.some((r) => r.status === "fulfilled");
+}
+
 async function publish(type, id, data) {
+  const d = `${TAG}:${type}:${id}`;
   const text = await pack({ v: 1, type, id, ...data });
-  if (new TextEncoder().encode(text).length > MAX_PLAIN) {
+  const size = new TextEncoder().encode(text).length;
+  if (size <= MAX_PLAIN) return send(d, text);
+  // troppo grande per un evento solo: prima le parti, poi l'evento principale che dice quante sono (stesso at:
+  // parti rimaste da una versione precedente non si mescolano)
+  const step = size === text.length ? PART : Math.floor(PART / 4); // senza compressione può esserci testo non ASCII
+  const parts = [];
+  for (let i = 0; i < text.length; i += step) parts.push(text.slice(i, i + step));
+  if (parts.length > MAX_PARTS) {
     console.warn(`profile backup: ${type} ${id} is too large`);
     return false;
   }
-  const { sk } = identity();
-  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", `${TAG}:${type}:${id}`], ["t", TAG]], content: nip44.v2.encrypt(text, selfKey()) }, fromHex(sk));
-  const res = await Promise.allSettled(pool().publish(eloRelays(), ev));
-  return res.some((r) => r.status === "fulfilled");
+  const sent = await Promise.all(parts.map((part, i) => send(`${d}:#${i}`, JSON.stringify({ v: 1, type, id, at: data.at, part: i, data: part }))));
+  if (sent.includes(false)) return false;
+  return send(d, JSON.stringify({ v: 1, type, id, at: data.at, parts: parts.length }));
 }
 
 async function uploadItem(type, id) {
@@ -130,14 +147,35 @@ async function uploadDeletion(type, id) {
 /** Il backup di questo profilo: "tipo:id" → { type, id, at, item } o { type, id, at, deleted } (l'ultimo di ognuno). */
 async function fetchBackup() {
   const { pk } = identity();
-  const evs = await pool().querySync(eloRelays(), { kinds: [KIND], authors: [pk], "#t": [TAG], limit: 2000 }, { maxWait: 7000 });
+  const evs = await pool().querySync(eloRelays(), { kinds: [KIND], authors: [pk], "#t": [TAG], limit: 5000 }, { maxWait: 7000 });
   const by = new Map();
+  const mains = [];
+  const parts = new Map(); // "tipo:id:at" → [testo delle parti]
   for (const ev of evs) {
     if (!verifyEvent(ev)) continue;
     try {
       const data = await unpack(nip44.v2.decrypt(ev.content, selfKey()));
       if (!TYPES.includes(data?.type) || typeof data.id !== "string" || !data.id) continue;
+      if (Number.isInteger(data.part) && typeof data.data === "string") {
+        const k = `${data.type}:${data.id}:${Number(data.at) || 0}`;
+        if (!parts.has(k)) parts.set(k, []);
+        parts.get(k)[data.part] = data.data;
+      } else mains.push(data);
+    } catch {
+      /* non è un nostro backup leggibile */
+    }
+  }
+  for (let data of mains) {
+    try {
       const at = Number(data.at) || 0;
+      if (Number.isInteger(data.parts) && data.parts > 0) {
+        // elemento spezzato: si riunisce solo se ci sono tutte le parti di questa versione
+        const got = parts.get(`${data.type}:${data.id}:${at}`) ?? [];
+        if (got.filter((x) => typeof x === "string").length < data.parts) continue;
+        const whole = await unpack(got.slice(0, data.parts).join(""));
+        if (whole?.type !== data.type || whole?.id !== data.id) continue;
+        data = whole;
+      }
       if (!data.deleted && (data.item?.id !== data.id)) continue;
       const key = `${data.type}:${data.id}`;
       if (!by.has(key) || by.get(key).at < at) by.set(key, { type: data.type, id: data.id, at, item: data.deleted ? null : data.item });
