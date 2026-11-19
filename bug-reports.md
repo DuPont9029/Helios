@@ -44,6 +44,7 @@ Nessun bug aperto.
 - [ ] **Token di Helios nella ricerca**: le carte personalizzate con "Token look" comparivano cercando "token"; ora, come i Token veri, non compaiono nella ricerca e non entrano nel Deck, ma restano tra le carte collegate (1.0.44).
 
 ### Interfaccia
+- [ ] **Registrazione dello username ripresa sul contratto sbagliato**: dopo un nuovo deploy del registro, Helios riprendeva il primo passo (commit) fatto sul registro vecchio e il secondo passo falliva; ora una registrazione a metà vale solo per il suo registro e la sua rete.
 - [ ] **Player card fuori dal riquadro in Settings**: testi, pulsanti, motivi e mazzi della Player card uscivano dalla colonna di Settings e venivano tagliati; ora la colonna si adatta e motivi e mazzi vanno a capo.
 - [ ] **Scheda svuotata da un altro browser**: aprendo Helios in un secondo browser con lo stesso profilo (es. Chrome oltre a Zen), la scheda pubblica veniva ripubblicata senza immagine, frase, colori e mazzi, che stanno solo nel browser dove si sono scelti. Ora all'avvio i dati mancanti si prendono dalla scheda pubblicata, e se questa è diversa da quella del browser (es. già svuotata) viene ripubblicata completa.
 - [ ] **Esc chiudeva anche le finestre sotto**: con due finestre aperte (o il deck builder aperto sopra una finestra) Esc le chiudeva tutte; ora chiude solo quella in cima.

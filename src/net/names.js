@@ -216,7 +216,9 @@ const writePending = (list) => {
     /* storage pieno */
   }
 };
-export const pendingRegistrations = () => readPending().filter((p) => Date.now() / 1000 - p.at < 86400);
+// una registrazione a metà vale solo per il suo registro (indirizzo e rete): dopo un nuovo deploy si ricomincia
+const registryId = () => `${config().chainId}:${config().address.toLowerCase()}`;
+export const pendingRegistrations = () => readPending().filter((p) => Date.now() / 1000 - p.at < 86400 && p.registry === registryId());
 
 // Limite di gas: la stima della rete più il 30% (le regole del gas cambiano: su Sepolia, con i prezzi nuovi della
 // creazione di dati, commit costa ~128k invece di ~45k). Se la stima non riesce (es. blockchain locale che stima con
@@ -270,7 +272,7 @@ export async function registerName(signer, name, { auth = null, steps } = {}) {
     steps?.("Step 1 of 2: confirm in the wallet");
     const r = await sendAndWait(c.commit(cm, { gasLimit: await gasLimit(c, "commit", [cm]) }), steps, "Step 1");
     const at = Number((await r.getBlock()).timestamp);
-    pend = { name, owner, nostr, secret, payer, at };
+    pend = { name, owner, nostr, secret, payer, at, registry: registryId() };
     writePending([...readPending(), pend]);
   }
   await waitUntil(pend.at + 61, steps);
