@@ -7,6 +7,7 @@ import { hasDefaultTurn, settings, resetSettings, BUILD_SIGNAL_URL } from "../da
 import { resolveIceServers } from "../net/signaling.js";
 import { db } from "../data/db.js";
 import { aiKeyFields } from "./ai-card.js";
+import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
@@ -78,7 +79,14 @@ async function importProfile(onDone) {
   input.addEventListener("input", () => (pass.hidden = profileKind(input.value) !== "ncryptsec"));
   const v = await openModal({
     title: "Import profile",
-    body: [h("p.muted.small", "It replaces the profile of this browser (player key, rating, friends): export the current one first if you want to keep it."), input, pass, err],
+    body: [
+      h("p.muted.small", "It replaces the profile of this browser (player key, rating, friends): export the current one first if you want to keep it."),
+      input,
+      h("div.row", h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag instead of typing the words", onclick: async () => {
+        const words = await openKeyTag({ title: "Words from your OneKey KeyTag" });
+        if (words) { input.value = words; input.dispatchEvent(new Event("input")); }
+      } }, icon("grid_on"), " From a OneKey KeyTag…")),
+      pass, err],
     actions: [{ label: "Cancel", value: null }, {
       label: "Import",
       primary: true,
@@ -114,9 +122,10 @@ function profileSection(field, area) {
       h("h4", "Backup"),
       me.seed
         ? h("div.row", h("button.btn.small.primary", { onclick: async () => { if (await confirmModal("Show seed words", "Make sure nobody is looking at your screen.", "Show", "Cancel")) showSeed(); } }, icon("key"), " Show seed words"),
-          h("button.btn.small", { title: "Ethereum and Monero addresses from your seed words (like Cake Wallet)", onclick: showWallets }, icon("account_balance_wallet"), " Wallets"),
+          h("button.btn.small", { title: "Ethereum and Monero addresses from your seed words (like Cake Wallet)", onclick: () => showWallets({ onProfile: draw }) }, icon("account_balance_wallet"), " Wallets"),
           h("span.muted.small", "12 words (NIP-06): the easiest way to restore your profile."))
-        : h("p.muted.small", "This profile was created before seed words existed: back it up with the nsec key or a password backup."),
+        : h("div.row", h("span.muted.small", "This profile was created before seed words existed: back it up with the nsec key or a password backup."),
+          h("button.btn.small", { title: "Log in with a OneKey KeyTag or connect a browser wallet", onclick: () => showWallets({ onProfile: draw }) }, icon("account_balance_wallet"), " Wallets")),
       h("div.row",
         h("button.btn.small", { onclick: () => copySecret("Export nsec key", "Your secret key (nsec1…) works in any Nostr app. Anyone with it can play as you: keep it private.", nsec) }, "Copy nsec key"),
         h("button.btn.small", { onclick: exportWithPassword }, "Backup with a password"),

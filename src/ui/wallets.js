@@ -2,9 +2,13 @@
 // con i loro saldi. ETH: eth_getBalance su RPC pubblici. XMR: scansione dei blocchi qui nel browser
 // (net/monero-scan.js) da quando il wallet è stato aperto la prima volta (xmrBirthdays, salvato con il profilo);
 // il punto raggiunto e gli output trovati restano in questo browser, così la volta dopo si riparte da lì.
+// Accesso: con un OneKey KeyTag (ui/keytag.js: si rifanno i buchi della piastra e le parole diventano il profilo) o
+// collegando il wallet del browser (net/web-wallet.js: OneKey, MetaMask… ne mostra indirizzo e saldo ETH).
 import { h, clear, icon } from "./dom.js";
 import { openModal, toast, confirmModal, promptModal } from "./modal.js";
-import { identity } from "../net/identity.js";
+import { identity, importIdentity } from "../net/identity.js";
+import { openKeyTag } from "./keytag.js";
+import { discoverWallets, connectWallet, restoreWallet, forgetWallet } from "../net/web-wallet.js";
 import { copyText } from "../net/clipboard.js";
 import { settings } from "../data/settings.js";
 
@@ -48,7 +52,8 @@ const writeState = (address, st) => {
   }
 };
 
-export async function showWallets() {
+/** onProfile: il profilo è cambiato (accesso con il KeyTag), chi ha aperto Wallets si ridisegna. */
+export async function showWallets({ onProfile } = {}) {
   const [{ bip39Seed, ethAddresses, moneroWallet }, scan, { syncProfileStore }] = await Promise.all([
     import("../net/wallets.js"),
     import("../net/monero-scan.js"),
@@ -72,6 +77,71 @@ export async function showWallets() {
   };
   const eth = card("eth", "Ethereum", "ETH");
   const xmr = card("xmr", "Monero", "XMR");
+  const web = card("web", "Browser wallet", "ETH");
+  web.el.hidden = true;
+  const webIcon = h("img.wallet-icon", { alt: "", hidden: true });
+  web.el.querySelector(".wallet-head").prepend(webIcon);
+  web.el.querySelector(".wallet-coin").remove();
+  const webName = web.el.querySelector(".wallet-name");
+  web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; toast("Browser wallet disconnected"); } }, "Disconnect"));
+  const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with a KeyTag, or connect a browser wallet.");
+
+  // ---- accesso: KeyTag o wallet del browser
+  async function keyTagLogin() {
+    const words = await openKeyTag({
+      title: "Log in with OneKey KeyTag",
+      action: "Log in",
+      intro: "Punch here the holes of your KeyTag: its words become your Helios profile (rating, friends, custom cards and these wallets). Each row is one word, the holes add up to its number in the BIP39 list (2048 + … + 1).",
+    });
+    if (!words) return;
+    if (words === identity().seed) return toast("These are already the words of your profile", { kind: "ok" });
+    if (!(await confirmModal("Log in with these words?", "They replace the profile of this browser (player key, rating, friends): if you have not backed up the current one, it is lost.", "Log in", "Cancel", { danger: true, top: true }))) return;
+    try {
+      importIdentity(words);
+    } catch (e) {
+      return toast(e.message, { kind: "error" });
+    }
+    toast("Logged in with your KeyTag: friends, settings and custom cards are loaded from the Nostr relays", { kind: "ok", ms: 4000 });
+    onProfile?.();
+    derive();
+  }
+
+  function showWeb(w) {
+    web.el.hidden = false;
+    webName.textContent = w.name;
+    webIcon.hidden = !w.icon;
+    if (w.icon) webIcon.src = w.icon;
+    web.addr.textContent = w.address;
+    web.copy.onclick = () => copyText(w.address).then((ok) => toast(ok ? "Address copied" : "Copy failed"));
+    web.status.textContent = w.missing ? `${w.name} is not available now (extension missing or locked): the balance still shows.` : "";
+    web.amount.textContent = "…";
+    ethBalance(w.address).then((wei) => (web.amount.textContent = fmt(wei, 18))).catch((e) => { web.amount.textContent = "—"; web.status.textContent = e.message; });
+  }
+
+  async function connectWeb() {
+    const list = await discoverWallets();
+    if (!list.length) {
+      return openModal({
+        title: "No browser wallet found",
+        body: [h("p", "Install a wallet extension (for example OneKey, MetaMask or Rabby), unlock it and reload Helios. Helios only reads its address: the seed stays in the extension.")],
+        actions: [{ label: "OK", primary: true, value: true }],
+      });
+    }
+    let picker = null;
+    const pick = list.length === 1 ? list[0] : await (picker = openModal({
+      title: "Connect a browser wallet",
+      className: "top",
+      body: [h("div.web-wallets", list.map((w) => h("button.btn.web-wallet", { onclick: () => picker.close(w) }, w.info.icon ? h("img.wallet-icon", { src: w.info.icon, alt: "" }) : icon("account_balance_wallet"), w.info.name)))],
+      actions: [{ label: "Cancel", value: null }],
+    })).result;
+    if (!pick) return;
+    try {
+      showWeb(await connectWallet(pick));
+      toast(`${pick.info.name} connected`, { kind: "ok" });
+    } catch (e) {
+      toast(e.message, { kind: "error" });
+    }
+  }
 
   const passInput = h("input.input", { type: "password", placeholder: "Passphrase (optional)", autocomplete: "off" });
   const seedBox = h("div", { hidden: true });
@@ -181,6 +251,14 @@ export async function showWallets() {
   }
 
   function derive() {
+    const has = !!identity().seed;
+    eth.el.hidden = xmr.el.hidden = !has;
+    noSeed.hidden = has;
+    advancedBtn && (advancedBtn.hidden = !has);
+    if (!has) {
+      ctrl?.abort();
+      return;
+    }
     const seed = bip39Seed(identity().seed, passphrase);
     wallet = { eth: ethAddresses(seed, 1)[0], xmr: moneroWallet(seed) };
     for (const [c, a] of [[eth, wallet.eth.address], [xmr, wallet.xmr.address]]) {
@@ -201,16 +279,23 @@ export async function showWallets() {
     }, 400);
   });
 
+  let advancedBtn = null;
   derive();
-  openModal({
+  restoreWallet().then((w) => w && showWeb(w));
+  const access = h("div.wallet-access",
+    h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag: its words become your profile", onclick: keyTagLogin }, icon("grid_on"), " Log in with OneKey KeyTag"),
+    h("button.btn.small", { title: "OneKey, MetaMask, Rabby… as a browser extension: Helios reads its address and ETH balance", onclick: connectWeb }, icon("link"), " Connect browser wallet"));
+  const modal = openModal({
     title: "Wallets",
     className: "wallets-modal",
-    body: [h("div.wallet-cards", eth.el, xmr.el), advanced],
+    body: [access, noSeed, h("div.wallet-cards", eth.el, xmr.el, web.el), advanced],
     onClose: () => ctrl?.abort(),
     actions: [
       { label: "Advanced", onClick: () => (advanced.hidden = !advanced.hidden) },
-      { label: "Refresh", onClick: () => { refreshEth(); refreshXmr(); } },
+      { label: "Refresh", onClick: () => { if (identity().seed) { refreshEth(); refreshXmr(); } restoreWallet().then((w) => w && showWeb(w)); } },
       { label: "Done", primary: true, value: true },
     ],
   });
+  advancedBtn = modal.buttons[0];
+  advancedBtn.hidden = !identity().seed;
 }

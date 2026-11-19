@@ -40,6 +40,8 @@ Nessun bug aperto.
 
 ### Deck builder
 - [ ] **Schermate del deck senza deck builder**: ![alt text](image-5.png) alcune schermate che lavorano sul deck non usano il deck builder.
+- [ ] **Carte TCG segnate come OCG**: carte uscite sia in TCG sia in OCG (es. W:P Fancy Ball, Unchained Oni of Shyma) avevano il badge OCG e il nome tradotto dall'OCG, perché il database di ProjectIgnis non le ha ancora aggiornate. Ora, se per YGOPRODeck sono già uscite in TCG, diventano TCG+OCG con nome e testo ufficiali; i dati si rigenerano ogni giorno (1.0.56).
+- [ ] **Token di Helios nella ricerca**: le carte personalizzate con "Token look" comparivano cercando "token"; ora, come i Token veri, non compaiono nella ricerca e non entrano nel Deck, ma restano tra le carte collegate (1.0.44).
 
 ### Interfaccia
 - [ ] **Spazio vuoto e colonne sbilanciate in Settings**: una scheda alta lasciava spazio vuoto sotto le vicine e le schede finivano quasi tutte in una colonna; ora ognuna va nella colonna più corta.

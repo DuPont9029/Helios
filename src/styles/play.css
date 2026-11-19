@@ -661,3 +661,37 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .wallet-advanced { display: grid; gap: 10px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .seed-words.xmr { grid-template-columns: repeat(5, 1fr); font-size: 13px; }
 @media (max-width: 600px) { .wallet-cards { grid-template-columns: 1fr; } .seed-words.xmr { grid-template-columns: repeat(2, 1fr); } }
+.wallet-card.web { --c: #44d7b6; }
+.wallet-card[hidden], .wallet-access[hidden] { display: none; }
+.wallet-icon { width: 34px; height: 34px; border-radius: 8px; object-fit: contain; flex: none; }
+.wallet-off { margin-left: auto; }
+.wallet-access { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.web-wallets { display: grid; gap: 8px; }
+.web-wallet { display: flex; align-items: center; gap: 10px; justify-content: flex-start; padding: 10px 12px; }
+.web-wallet .wallet-icon { width: 28px; height: 28px; }
+
+/* OneKey KeyTag (src/ui/keytag.js): piastra di metallo, una riga per parola, 12 buchi da 2048 a 1 */
+.keytag-modal { width: min(720px, 100%); }
+.kt-plates { display: grid; gap: 14px; margin: 10px 0; }
+.kt-plate { --hole: clamp(16px, 4.2vw, 26px); padding: 12px 14px 14px; border-radius: 14px; color: #1d2130;
+  background: linear-gradient(115deg, #e9ecf1 0%, #b9bfc8 22%, #eef1f5 45%, #a9b0ba 70%, #dfe3e9 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -2px 6px rgba(0,0,0,.25), 0 6px 18px rgba(0,0,0,.45); }
+.kt-plate-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+.kt-brand { font: 700 14px var(--display); letter-spacing: .14em; text-transform: uppercase; }
+.kt-side { font: 600 11px var(--mono); opacity: .7; }
+.kt-row { display: grid; grid-template-columns: 26px auto minmax(70px, 1fr); align-items: center; gap: 10px; padding: 2px 0; }
+.kt-num { font: 700 11px var(--mono); opacity: .75; text-align: right; }
+.kt-holes { display: grid; grid-template-columns: repeat(12, var(--hole)); gap: 4px; }
+.kt-cols .kt-holes { align-items: end; }
+.kt-col { font: 600 8px/1 var(--mono); text-align: center; opacity: .7; letter-spacing: -.03em; }
+.kt-hole { width: var(--hole); height: var(--hole); padding: 0; border-radius: 50%; cursor: pointer; border: 1px solid rgba(40,45,60,.45);
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.7), rgba(150,156,168,.35) 60%, rgba(90,96,108,.4)); box-shadow: inset 0 1px 2px rgba(0,0,0,.25); }
+.kt-hole:hover { border-color: #1b6fd1; box-shadow: 0 0 0 2px rgba(27,111,209,.35); }
+.kt-hole:focus-visible { outline: 2px solid #1b6fd1; outline-offset: 1px; }
+.kt-hole.punched { border-color: #05070c; background: radial-gradient(circle at 50% 60%, #000 0 55%, #1a1d26 75%, #3b404c); box-shadow: inset 0 3px 5px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.6); }
+.kt-word { font: 600 13px var(--mono); color: #10131c; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kt-word.bad { color: #b3001b; }
+.kt-status { margin: 4px 0 0; }
+.kt-status.ok { color: #7dffb0; }
+.kt-status.bad { color: var(--danger); }
+@media (max-width: 600px) { .kt-plate { --hole: 18px; padding: 10px 8px; } .kt-holes { gap: 2px; } .kt-row { grid-template-columns: 18px auto minmax(56px, 1fr); gap: 6px; } .kt-word { font-size: 11px; } }
