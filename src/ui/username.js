@@ -234,6 +234,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
   const owner = settings.usernameWallet;
   const preview = h("div.mint-preview", h("p.muted.small", "Preparing your card…"));
   const xmrBox = h("input", { type: "checkbox", checked: true });
+  const cost = h("p.small.muted.mint-cost");
   let built = null;
   let painting = 0;
   const paintPreview = async () => {
@@ -243,6 +244,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
     const next = await buildCardInput({ showXmr: xmrBox.checked });
     if (my !== painting) return;
     built = next;
+    showCost(my);
     const p = built.preview;
     const { titleOf } = await import("../data/titles.js");
     const t = titleOf(p.rank.rating, p.rank.games, p.rank.peak);
@@ -262,6 +264,26 @@ export function openMintDialog({ update = false, onDone } = {}) {
       h("div.muted.small", `${t.name}${p.rank.games ? ` · ELO ${p.rank.rating} (peak ${p.rank.peak}, ${p.rank.games} ranked Duels)` : ""}: the ranking on the card is a snapshot of now.`),
       h("p.muted.small", "This is your Helios player card: change picture, line, colors and decks in Settings → Profile → Player card, then update the NFT."));
   };
+  // costo di adesso (stima della rete, niente inviato): gas, prezzo e saldo del wallet a cui è intestato il nome
+  const showCost = async (my) => {
+    cost.className = "small muted mint-cost";
+    cost.textContent = "Estimating the gas…";
+    try {
+      const k = await names.txCost(update ? "setStyle" : "mint", [built.input], owner);
+      if (my !== painting) return;
+      const gwei = (w) => (Number(w) / 1e9).toPrecision(3);
+      cost.textContent = `Cost now: about ${fmtEth(k.likely)} (${Number(k.gas).toLocaleString("en")} gas at ${gwei(k.base + k.tip)} gwei), at most ${fmtEth(k.max)} if gas gets pricier. Wallet ${owner.slice(0, 6)}…${owner.slice(-4)}: ${fmtEth(k.balance)}`;
+      if (k.tooBig) {
+        cost.className = "small mint-cost error";
+        cost.textContent = `Too big for one Ethereum transaction (${Number(k.gas).toLocaleString("en")} gas, the limit is 16,777,216): show fewer decks or use a simpler picture`;
+      } else if (k.balance < k.likely) {
+        cost.className = "small mint-cost error";
+        cost.textContent += ` - not enough: add at least ${fmtEth(k.likely - k.balance)}`;
+      }
+    } catch (e) {
+      if (my === painting) cost.textContent = `Cannot estimate the cost now (${e.shortMessage ?? e.message})`;
+    }
+  };
   const ownWallet = async () => {
     // la card la conia (e la aggiorna) il wallet a cui è intestato il nome
     const helios = identity().seed ? await (await names.heliosSigner()).getAddress() : "";
@@ -273,7 +295,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
   const m = openModal({
     title: update ? "Update your on-chain card" : "Mint your on-chain card",
     className: "username-modal",
-    body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, progress],
+    body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, cost, progress],
     actions: [
       { label: "Close", value: null },
       {
