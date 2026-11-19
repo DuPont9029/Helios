@@ -220,16 +220,65 @@ const writePending = (list) => {
 const registryId = () => `${config().chainId}:${config().address.toLowerCase()}`;
 export const pendingRegistrations = () => readPending().filter((p) => Date.now() / 1000 - p.at < 86400 && p.registry === registryId());
 
-// Limite di gas: la stima della rete più il 30% (le regole del gas cambiano: su Sepolia, con i prezzi nuovi della
+// Limite di gas: la stima della rete più il 20% (le regole del gas cambiano: su Sepolia, con i prezzi nuovi della
 // creazione di dati, commit costa ~128k invece di ~45k). Se la stima non riesce (es. blockchain locale che stima con
 // un tempo vecchio), un limite largo: il gas non usato non si paga.
 const GAS_FALLBACK = { commit: 400000n, register: 1500000n, registerFor: 1800000n, mint: 4000000n, mintFor: 4000000n, setStyle: 4000000n };
-async function gasLimit(c, fn, args) {
+const GWEI = 1000000000n;
+const TX_GAS_CAP = 16777216n; // tetto di gas per transazione su Ethereum (EIP-7825, da Fusaka)
+
+/**
+ * Prezzo del gas: base fee dell'ultimo blocco, mancia piccola (quella suggerita dalla rete, tra 0,01 e 0,1 gwei) e
+ * tetto = base fee × 1,5 + mancia. Si paga base fee + mancia: il tetto serve solo se la base fee sale nel frattempo.
+ * (Il default di ethers, 2 × base fee + 1 gwei, chiede al wallet di avere molto più ETH di quello che spende.)
+ */
+async function feePrices() {
+  const p = await provider();
+  const [block, fd] = await Promise.all([p.getBlock("latest"), p.getFeeData().catch(() => ({}))]);
+  const base = block?.baseFeePerGas ?? fd.gasPrice ?? GWEI;
+  let tip = fd.maxPriorityFeePerGas ?? GWEI / 20n;
+  if (tip > GWEI / 10n) tip = GWEI / 10n;
+  if (tip < GWEI / 100n) tip = GWEI / 100n;
+  return { base, tip, maxFee: (base * 3n) / 2n + tip };
+}
+
+/**
+ * Quanto costa adesso chiamare `fn(args)` dal wallet `from`, senza inviare niente: { gas, limit, base, tip, maxFee,
+ * likely, max, balance, enough } (wei). likely = gas × (base fee + mancia), max = limite × tetto.
+ */
+export async function txCost(fn, args, from) {
+  const c = await contract();
+  let gas;
   try {
-    return ((await c[fn].estimateGas(...args)) * 13n) / 10n + 10000n;
+    gas = await c[fn].estimateGas(...args, { from });
   } catch {
-    return GAS_FALLBACK[fn];
+    gas = GAS_FALLBACK[fn];
   }
+  const [prices, balance] = await Promise.all([feePrices(), balanceOf(from)]);
+  let limit = (gas * 12n) / 10n + 10000n;
+  if (limit > TX_GAS_CAP) limit = gas > TX_GAS_CAP ? gas : TX_GAS_CAP;
+  const likely = gas * (prices.base + prices.tip);
+  return { gas, limit, ...prices, likely, max: limit * prices.maxFee, balance, enough: balance >= limit * prices.maxFee, tooBig: gas > TX_GAS_CAP };
+}
+
+/** Opzioni della transazione (limite e prezzo del gas); se il saldo non basta, un errore che dice quanto serve. */
+async function txOptions(c, fn, args) {
+  const from = await c.runner.getAddress();
+  const k = await txCost(fn, args, from);
+  if (k.tooBig) throw new Error("This card is too big for one Ethereum transaction: show fewer decks or use a simpler picture");
+  if (!k.enough) {
+    // il saldo copre il costo probabile ma non il tetto: tetto più basso (non sotto base fee × 1,1 + mancia)
+    const fit = k.balance / k.limit;
+    if (fit >= (k.base * 11n) / 10n + k.tip) return { gasLimit: k.limit, maxFeePerGas: fit, maxPriorityFeePerGas: k.tip };
+    throw new Error(`Not enough ETH in this wallet to pay the gas: it needs about ${fmtWei(k.likely)} ETH (up to ${fmtWei(k.max)}), it has ${fmtWei(k.balance)}`);
+  }
+  return { gasLimit: k.limit, maxFeePerGas: k.maxFee, maxPriorityFeePerGas: k.tip };
+}
+
+/** wei → ETH leggibile (6 cifre significative al massimo). */
+export function fmtWei(wei) {
+  const eth = Number(wei) / 1e18;
+  return eth === 0 ? "0" : eth >= 1 ? eth.toFixed(4) : eth.toPrecision(3).replace(/0+$/, "").replace(/\.$/, "");
 }
 
 /** Aspetta che la blockchain arrivi a `ts` (secondi): steps(text) per il conto alla rovescia. */
@@ -270,7 +319,7 @@ export async function registerName(signer, name, { auth = null, steps } = {}) {
     const secret = ethers.hexlify(ethers.randomBytes(32));
     const cm = await c.makeCommitment(name, owner, nostr, secret, payer);
     steps?.("Step 1 of 2: confirm in the wallet");
-    const r = await sendAndWait(c.commit(cm, { gasLimit: await gasLimit(c, "commit", [cm]) }), steps, "Step 1");
+    const r = await sendAndWait(c.commit(cm, await txOptions(c, "commit", [cm])), steps, "Step 1");
     const at = Number((await r.getBlock()).timestamp);
     pend = { name, owner, nostr, secret, payer, at, registry: registryId() };
     writePending([...readPending(), pend]);
@@ -280,7 +329,7 @@ export async function registerName(signer, name, { auth = null, steps } = {}) {
   const args = auth ? [name, owner, nostr, pend.secret, auth.deadline, auth.sig] : [name, nostr, pend.secret];
   const fn = auth ? "registerFor" : "register";
   await c[fn].staticCall(...args, { blockTag: "latest" }); // errore vero del contratto prima di spendere gas
-  await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Step 2");
+  await sendAndWait(c[fn](...args, await txOptions(c, fn, args)), steps, "Step 2");
   writePending(readPending().filter((p) => p !== pend && !(p.name === pend.name && p.owner === pend.owner && p.payer === pend.payer)));
   return { name, owner };
 }
@@ -324,7 +373,7 @@ export async function mintCard(signer, card, { auth = null, steps } = {}) {
   const args = auth ? [auth.owner, auth.card, auth.deadline, auth.sig] : [card];
   const fn = auth ? "mintFor" : "mint";
   await c[fn].staticCall(...args, { blockTag: "latest" });
-  await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Card");
+  await sendAndWait(c[fn](...args, await txOptions(c, fn, args)), steps, "Card");
 }
 
 /**
@@ -354,7 +403,7 @@ export async function updateCard(signer, card, { steps } = {}) {
   const c = await contract(signer);
   steps?.("Confirm in the wallet");
   await c.setStyle.staticCall(card, { blockTag: "latest" });
-  await sendAndWait(c.setStyle(card, { gasLimit: await gasLimit(c, "setStyle", [card]) }), steps, "Card");
+  await sendAndWait(c.setStyle(card, await txOptions(c, "setStyle", [card])), steps, "Card");
 }
 
 /**

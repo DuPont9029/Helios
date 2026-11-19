@@ -9,6 +9,7 @@ import { socialState, sendDirect, onNameMessage } from "../net/social.js";
 import { cardFace } from "./card.js";
 import * as names from "../net/names.js";
 import { CHAINS } from "../data/names-config.js";
+import { savedWallet } from "../net/web-wallet.js";
 
 const fmtEth = (wei) => {
   const s = (Number(wei) / 1e18).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
@@ -16,8 +17,12 @@ const fmtEth = (wei) => {
 };
 
 /** Scelta di chi paga: wallet del profilo, wallet del browser o un amico. Restituisce un elemento e get(). */
+// Con un wallet del browser collegato (MetaMask, OneKey…) l'Ethereum del giocatore è quello: il wallet ETH derivato
+// dalle parole di Helios non si propone.
+const webWalletOn = () => !!savedWallet();
+
 function payerPicker({ allowFriend = true, note = "" } = {}) {
-  let via = identity().seed ? "helios" : "browser";
+  let via = identity().seed && !webWalletOn() ? "helios" : "browser";
   let friendPk = "";
   const box = h("div.payer-box");
   const paint = async () => {
@@ -27,14 +32,14 @@ function payerPicker({ allowFriend = true, note = "" } = {}) {
       h("div", h("b", label), h("div.muted.small", desc)));
     const helios = h("div.muted.small", "…");
     clear(box).append(...[
-      opt("helios", "My Helios wallet", helios, !identity().seed),
+      webWalletOn() ? null : opt("helios", "My Helios wallet", helios, !identity().seed),
       opt("browser", "My browser wallet", "OneKey, MetaMask, Rabby… (the extension asks you to confirm)"),
       allowFriend ? opt("friend", "Ask a friend to pay", friends.length ? "You sign for free with your Helios wallet, your friend pays the gas" : "Add a friend first (Online → Friends)", !friends.length || !identity().seed) : null,
       via === "friend" && friends.length
         ? h("select.select", { onchange: (e) => (friendPk = e.target.value) }, h("option", { value: "" }, "Choose a friend…"), friends.map((f) => h("option", { value: f.pk, selected: friendPk === f.pk }, names.displayName(f.pk, f.name))))
         : null,
       note ? h("p.muted.small", note) : null].filter(Boolean)); // append() scriverebbe "null"
-    if (identity().seed) {
+    if (identity().seed && !webWalletOn()) {
       try {
         const s = await names.heliosSigner();
         const a = await s.getAddress();
@@ -112,7 +117,7 @@ export function openUsernameDialog({ first = false, onDone } = {}) {
           progress.className = "small name-progress muted";
           const steps = (s) => (progress.textContent = s);
           try {
-            const signer = await signerFor(via === "friend" ? "helios" : via);
+            const signer = await signerFor(via === "friend" ? (webWalletOn() ? "browser" : "helios") : via);
             if (via === "friend") {
               if (!friendPk) throw new Error("Choose a friend");
               steps("Signing the request (free)…");
@@ -234,6 +239,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
   const owner = settings.usernameWallet;
   const preview = h("div.mint-preview", h("p.muted.small", "Preparing your card…"));
   const xmrBox = h("input", { type: "checkbox", checked: true });
+  const cost = h("p.small.muted.mint-cost");
   let built = null;
   let painting = 0;
   const paintPreview = async () => {
@@ -243,6 +249,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
     const next = await buildCardInput({ showXmr: xmrBox.checked });
     if (my !== painting) return;
     built = next;
+    showCost(my);
     const p = built.preview;
     const { titleOf } = await import("../data/titles.js");
     const t = titleOf(p.rank.rating, p.rank.games, p.rank.peak);
@@ -262,8 +269,29 @@ export function openMintDialog({ update = false, onDone } = {}) {
       h("div.muted.small", `${t.name}${p.rank.games ? ` · ELO ${p.rank.rating} (peak ${p.rank.peak}, ${p.rank.games} ranked Duels)` : ""}: the ranking on the card is a snapshot of now.`),
       h("p.muted.small", "This is your Helios player card: change picture, line, colors and decks in Settings → Profile → Player card, then update the NFT."));
   };
+  // costo di adesso (stima della rete, niente inviato): gas, prezzo e saldo del wallet a cui è intestato il nome
+  const showCost = async (my) => {
+    cost.className = "small muted mint-cost";
+    cost.textContent = "Estimating the gas…";
+    try {
+      const k = await names.txCost(update ? "setStyle" : "mint", [built.input], owner);
+      if (my !== painting) return;
+      const gwei = (w) => (Number(w) / 1e9).toPrecision(3);
+      cost.textContent = `Cost now: about ${fmtEth(k.likely)} (${Number(k.gas).toLocaleString("en")} gas at ${gwei(k.base + k.tip)} gwei), at most ${fmtEth(k.max)} if gas gets pricier. Wallet ${owner.slice(0, 6)}…${owner.slice(-4)}: ${fmtEth(k.balance)}`;
+      if (k.tooBig) {
+        cost.className = "small mint-cost error";
+        cost.textContent = `Too big for one Ethereum transaction (${Number(k.gas).toLocaleString("en")} gas, the limit is 16,777,216): show fewer decks or use a simpler picture`;
+      } else if (k.balance < k.likely) {
+        cost.className = "small mint-cost error";
+        cost.textContent += ` - not enough: add at least ${fmtEth(k.likely - k.balance)}`;
+      }
+    } catch (e) {
+      if (my === painting) cost.textContent = `Cannot estimate the cost now (${e.shortMessage ?? e.message})`;
+    }
+  };
   const ownWallet = async () => {
     // la card la conia (e la aggiorna) il wallet a cui è intestato il nome
+    if (savedWallet()?.address.toLowerCase() === owner.toLowerCase()) return "browser";
     const helios = identity().seed ? await (await names.heliosSigner()).getAddress() : "";
     return owner.toLowerCase() === helios.toLowerCase() ? "helios" : "browser";
   };
@@ -273,7 +301,7 @@ export function openMintDialog({ update = false, onDone } = {}) {
   const m = openModal({
     title: update ? "Update your on-chain card" : "Mint your on-chain card",
     className: "username-modal",
-    body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, progress],
+    body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, cost, progress],
     actions: [
       { label: "Close", value: null },
       {
@@ -416,7 +444,7 @@ export async function showDeployPage(app) {
   const { ethers } = await import("ethers");
   const wallets = await discoverWallets();
   // la rete si sceglie esplicitamente: prima del deploy il wallet passa a quella (niente deploy per sbaglio su mainnet)
-  const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "11155111" }, `${c.name} (chain ${id})`)));
+  const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "1" }, `${c.name} (chain ${id})`)));
   const walletSel = h("select.select", wallets.map((w, i) => h("option", { value: i }, w.info.name)));
   const costOut = h("div.deploy-cost");
   // stima del costo senza inviare niente: nodo pubblico della rete scelta, dal wallet scelto (se già collegato)

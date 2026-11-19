@@ -83,8 +83,8 @@ export async function showWallets({ onProfile } = {}) {
   web.el.querySelector(".wallet-head").prepend(webIcon);
   web.el.querySelector(".wallet-coin").remove();
   const webName = web.el.querySelector(".wallet-name");
-  web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; toast("Browser wallet disconnected"); } }, "Disconnect"));
-  const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with a KeyTag, or connect a browser wallet.");
+  web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; webOn = false; eth.el.hidden = !identity().seed; toast("Browser wallet disconnected"); } }, "Disconnect"));
+  const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with your seed words or a KeyTag.");
 
   // ---- accesso: KeyTag o wallet del browser
   async function keyTagLogin() {
@@ -106,7 +106,11 @@ export async function showWallets({ onProfile } = {}) {
     derive();
   }
 
+  // con un wallet del browser collegato l'Ethereum è il suo: il wallet ETH derivato dalle parole non si mostra
+  let webOn = false;
   function showWeb(w) {
+    webOn = true;
+    eth.el.hidden = true;
     web.el.hidden = false;
     webName.textContent = w.name;
     webIcon.hidden = !w.icon;
@@ -116,6 +120,33 @@ export async function showWallets({ onProfile } = {}) {
     web.status.textContent = w.missing ? `${w.name} is not available now (extension missing or locked): the balance still shows.` : "";
     web.amount.textContent = "…";
     ethBalance(w.address).then((wei) => (web.amount.textContent = fmt(wei, 18))).catch((e) => { web.amount.textContent = "—"; web.status.textContent = e.message; });
+    if (!w.missing) otherAccount(w);
+  }
+
+  // Il wallet ha uno username registrato con un altro account Helios: l'account sono le sue parole, si entra con quelle
+  // (lo username lega wallet e chiave del profilo, e un profilo diverso non lo può usare).
+  async function otherAccount(w) {
+    try {
+      const names = await import("../net/names.js");
+      if (!names.namesActive()) return null;
+      const r = await names.nameOfWallet(w.address);
+      if (!r.name || r.nostr.toLowerCase() === `0x${identity().pk}`) return null;
+      web.status.replaceChildren(
+        h("p", `This wallet is ${r.name}${r.number ? ` #${r.number}` : ""} on another Helios account. Your account is its seed words: log in with them to get the name, friends, rating, decks and card.`),
+        h("button.btn.small.primary", { onclick: () => accountLogin() }, icon("key"), " Log in with the seed words"));
+      return r.name;
+    } catch {
+      return null; // rete: niente avviso
+    }
+  }
+
+  async function accountLogin() {
+    const { importProfile } = await import("./settings-page.js");
+    await importProfile(() => {
+      onProfile?.();
+      derive();
+      restoreWallet().then((w) => w && showWeb(w));
+    });
   }
 
   async function connectWeb() {
@@ -136,8 +167,19 @@ export async function showWallets({ onProfile } = {}) {
     })).result;
     if (!pick) return;
     try {
-      showWeb(await connectWallet(pick));
+      const w = await connectWallet(pick);
+      showWeb(w);
       toast(`${pick.info.name} connected`, { kind: "ok" });
+      // il wallet ha già uno username su questo account (es. profilo senza nome): lo si prende subito
+      const names = await import("../net/names.js");
+      if (names.namesActive() && !settings.username) {
+        const mine = await names.checkMyUsername().catch(() => null);
+        if (mine) {
+          toast(`You are ${mine} on Helios`, { kind: "ok" });
+          onProfile?.();
+          window.dispatchEvent(new CustomEvent("helios-account"));
+        }
+      }
     } catch (e) {
       toast(e.message, { kind: "error" });
     }
@@ -252,7 +294,8 @@ export async function showWallets({ onProfile } = {}) {
 
   function derive() {
     const has = !!identity().seed;
-    eth.el.hidden = xmr.el.hidden = !has;
+    xmr.el.hidden = !has;
+    eth.el.hidden = !has || webOn;
     noSeed.hidden = has;
     advancedBtn && (advancedBtn.hidden = !has);
     if (!has) {
@@ -282,13 +325,17 @@ export async function showWallets({ onProfile } = {}) {
   let advancedBtn = null;
   derive();
   restoreWallet().then((w) => w && showWeb(w));
+  // all'account si accede solo con le parole o con il KeyTag; il wallet del browser serve solo a pagare (gas)
   const access = h("div.wallet-access",
-    h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag: its words become your profile", onclick: keyTagLogin }, icon("grid_on"), " Log in with OneKey KeyTag"),
-    h("button.btn.small", { title: "OneKey, MetaMask, Rabby… as a browser extension: Helios reads its address and ETH balance", onclick: connectWeb }, icon("link"), " Connect browser wallet"));
+    h("button.btn.small", { title: "Type your 12 seed words: they are your account", onclick: () => accountLogin() }, icon("key"), " Log in with seed words"),
+    h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag: its words become your profile", onclick: keyTagLogin }, icon("grid_on"), " Log in with OneKey KeyTag"));
+  const connect = h("div.row.wallet-connect",
+    h("button.btn.small", { title: "OneKey, MetaMask, Rabby… as a browser extension: Helios reads its address and ETH balance, to pay gas with it", onclick: connectWeb }, icon("link"), " Connect browser wallet"),
+    h("span.muted.small", "To pay gas only: it does not log you in."));
   const modal = openModal({
     title: "Wallets",
     className: "wallets-modal",
-    body: [access, noSeed, h("div.wallet-cards", eth.el, xmr.el, web.el), advanced],
+    body: [access, noSeed, h("div.wallet-cards", eth.el, xmr.el, web.el), connect, advanced],
     onClose: () => ctrl?.abort(),
     actions: [
       { label: "Advanced", onClick: () => (advanced.hidden = !advanced.hidden) },

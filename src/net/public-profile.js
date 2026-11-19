@@ -272,5 +272,55 @@ export async function syncOwnProfile() {
   if (!remote || !sameContent(remote, mine)) await publishProfile({ force: true }).catch(() => {});
 }
 
-// Cambio di profilo (KeyTag, import): il nuovo prende i suoi dati pubblicati e si pubblica.
-window.addEventListener("helios-identity", () => setTimeout(() => syncOwnProfile().catch(() => {}), 3000));
+// ---------------------------------------------------------------- cambio di account
+
+// Le parole (o la chiave) sono l'account: scheda, username, mazzi della scheda sono suoi, non del browser. Entrando
+// con un altro account quelli del profilo di prima si tolgono e arrivano quelli pubblicati dall'account (amici, mazzi,
+// card personalizzate e impostazioni sincronizzate arrivano da social.js, profile-sync.js e custom-cards-sync.js).
+const accountDefaults = () => ({
+  avatar: "", bio: "", cardDecks: [], cardColor: DEFAULT_COLOR, cardPattern: DEFAULT_PATTERN, profileShowDecks: true, profileShowWallets: false,
+  username: "", usernameWallet: "", usernameNumber: 0, usernameAsked: null,
+});
+
+async function switchAccount() {
+  clearTimeout(timer); // niente pubblicazioni dei dati di prima con la chiave nuova
+  for (const [k, v] of Object.entries(accountDefaults())) settings[k] = v;
+  try {
+    localStorage.removeItem(PLAYED);
+    localStorage.removeItem(PUBLISHED);
+  } catch {
+    /* niente */
+  }
+  const me = identity().pk;
+  const remote = await fetchProfile(me, { fresh: true });
+  if (identity().pk !== me) return; // un altro cambio nel frattempo
+  if (remote) {
+    settings.avatar = remote.avatar || "";
+    settings.bio = remote.bio || "";
+    if (remote.theme?.color) {
+      settings.cardColor = remote.theme.color;
+      settings.cardPattern = remote.theme.pattern || DEFAULT_PATTERN;
+    }
+    settings.cardDecks = remote.decks.slice(0, MAX_DECKS).map(({ games, at, ...d }) => d);
+    settings.profileShowWallets = !!remote.wallets?.xmr;
+    const list = [];
+    for (const d of remote.decks) list.push({ key: await sha256Hex(canonical({ main: [...d.main].sort(), extra: [...d.extra].sort() })), ...d, at: d.at || Date.now() });
+    try {
+      localStorage.setItem(PLAYED, JSON.stringify(list));
+    } catch {
+      /* storage pieno */
+    }
+  }
+  // username: quello registrato sul wallet dell'account (il suo wallet ETH o quello del browser collegato)
+  try {
+    await (await import("./names.js")).checkMyUsername();
+  } catch {
+    /* rete: si riprova al prossimo avvio */
+  }
+  window.dispatchEvent(new CustomEvent("helios-account"));
+  // senza profilo pubblicato (account nuovo, o relay irraggiungibili) non si pubblica niente adesso: ci pensa
+  // syncOwnProfile al prossimo avvio, così una scheda vuota non copre mai quella vera
+  if (remote) await syncOwnProfile().catch(() => {});
+}
+
+window.addEventListener("helios-identity", () => switchAccount().catch(() => {}));

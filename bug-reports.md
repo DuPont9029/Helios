@@ -15,6 +15,10 @@ Nessun bug aperto.
 
 ## 2. Corretti, da testare
 
+### Username e card NFT
+- [ ] **Account importato con la scheda del browser di prima**: importando le parole su un browser che aveva già un altro profilo, immagine, frase, colori e mazzi della scheda restavano quelli di prima e venivano pubblicati sopra la scheda dell'account; lo username non veniva ripreso finché non si ricaricava. Ora al cambio di account la scheda viene presa da quella pubblicata dall'account e lo username dal suo wallet, e Settings si ridisegna.
+- [ ] **"Not enough ETH" senza dire quanto serve, e ETH richiesti troppo alti**: la finestra del conio diceva solo "Not enough ETH in this wallet to pay the gas" anche con ETH sufficienti per il costo reale, perché il prezzo del gas era quello predefinito di ethers (tetto 2 × base fee + 1 gwei di mancia): il wallet doveva avere fino a 4 volte quello che avrebbe speso. Ora mancia piccola (0,01–0,1 gwei), tetto 1,5 × base fee, abbassato fino al saldo se il saldo copre comunque il costo; la finestra mostra il costo di adesso (gas, gwei, costo probabile e massimo, saldo del wallet, quanto manca) e una card troppo grande per una transazione (limite 16.777.216 gas) viene segnalata prima di firmare.
+
 ### Duello
 - [ ] **Carte rivelate della mano avversaria**: le carte che rivelano o guardano la mano dell'avversario appaiono coperte e non vengono mostrate quando dovrebbero essere rivelate.
 - [ ] **Carte avversarie orientate verso di lui**: le carte dell'avversario sul campo devono essere girate verso di lui, altrimenti si confondono.
