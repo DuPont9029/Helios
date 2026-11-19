@@ -71,3 +71,6 @@ Nessun bug aperto.
 
 ### Duello
 - [x] **Mostri normali in mano**: i mostri normali non venivano mostrati correttamente in mano durante le partite.
+
+### Interfaccia
+- [x] **Scheda del giocatore non centrata**: la pagina del link della scheda (#p/…), a finestra grande o a schermo intero, mostrava la scheda attaccata a sinistra; ora è al centro.
