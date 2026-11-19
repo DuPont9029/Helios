@@ -15,7 +15,8 @@
     "test:core": "node scripts/smoke-test.mjs",
     "feature": "node scripts/feature.mjs",
     "vscode-ext": "node scripts/install-vscode-ext.mjs",
-    "contracts": "node scripts/build-contracts.mjs"
+    "contracts": "node scripts/build-contracts.mjs",
+    "contracts:flat": "node scripts/flatten-contracts.mjs"
   },
   "devDependencies": {
     "@openzeppelin/contracts": "5.1.0",

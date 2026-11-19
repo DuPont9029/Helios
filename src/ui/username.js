@@ -418,6 +418,34 @@ export async function showDeployPage(app) {
   // la rete si sceglie esplicitamente: prima del deploy il wallet passa a quella (niente deploy per sbaglio su mainnet)
   const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "11155111" }, `${c.name} (chain ${id})`)));
   const walletSel = h("select.select", wallets.map((w, i) => h("option", { value: i }, w.info.name)));
+  const costOut = h("div.deploy-cost");
+  // stima del costo senza inviare niente: nodo pubblico della rete scelta, dal wallet scelto (se già collegato)
+  const checkCost = async () => {
+    clear(costOut).append(h("p.muted.small", "Asking a public node of this network…"));
+    try {
+      const chainId = Number(netSel.value);
+      const chain = CHAINS[chainId];
+      const rpc = new ethers.JsonRpcProvider(chain.rpc[0], chainId, { staticNetwork: true });
+      const w = wallets[+walletSel.value];
+      const from = (await w?.provider.request({ method: "eth_accounts" }).catch(() => []))?.[0] ?? "0x000000000000000000000000000000000000dEaD";
+      const [gas, block, fee, bal] = await Promise.all([rpc.estimateGas({ from, data: art.bytecode }), rpc.getBlock("latest"), rpc.getFeeData(), rpc.getBalance(from)]);
+      const base = block.baseFeePerGas ?? fee.gasPrice ?? 0n;
+      const tip = fee.maxPriorityFeePerGas ?? 0n;
+      const likely = gas * (base + tip);
+      const max = gas * (fee.maxFeePerGas ?? base * 2n);
+      const row = (k, v) => h("tr", h("td.muted", k), h("td", v));
+      clear(costOut).append(h("table.cost-table",
+        row("Network", `${chain.name} (chain ${chainId})`),
+        row("Gas", `${gas.toLocaleString("en-US")}`),
+        row("Gas price now", `${ethers.formatUnits(base + tip, "gwei").slice(0, 8)} gwei (base ${ethers.formatUnits(base, "gwei").slice(0, 8)} + tip ${ethers.formatUnits(tip, "gwei").slice(0, 8)})`),
+        row("Likely cost", h("b", `${fmtEth(likely)}`)),
+        row("Most the wallet can charge", `${fmtEth(max)} (unused gas is not paid)`),
+        row("Wallet", from.startsWith("0x000000") ? "not connected yet" : `${from.slice(0, 8)}…${from.slice(-4)} · ${fmtEth(bal)}${bal < max ? " · NOT ENOUGH" : ""}`)),
+        h("p.muted.small", "Estimate of this moment: the gas price changes block by block. Nothing was sent."));
+    } catch (e) {
+      clear(costOut).append(h("p.error", e.shortMessage ?? e.message));
+    }
+  };
   const run = async () => {
     clear(out);
     try {
@@ -468,6 +496,7 @@ export async function showDeployPage(app) {
     h("p", "Deploys contracts/HeliosNames.sol (no owner, no fees) with the browser wallet. Do it once per network: then write the address in src/data/names-config.js."),
     h("p.muted.small", `Compiler ${art.compiler} · EVM ${art.evmVersion} · ${(art.bytecode.length - 2) / 2} bytes of init code`),
     h("div.grid2", h("label.field", h("span", "Network"), netSel), h("label.field", h("span", "Wallet"), wallets.length ? walletSel : h("span.muted.small", "No browser wallet found"))),
-    h("button.btn.primary", { onclick: run }, icon("rocket_launch"), " Deploy with my browser wallet"),
+    h("div.row", h("button.btn", { onclick: checkCost }, icon("calculate"), " Check cost"), h("button.btn.primary", { onclick: run }, icon("rocket_launch"), " Deploy with my browser wallet")),
+    costOut,
     out));
 }

@@ -866,3 +866,5 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .mint-shot { margin: 0; display: grid; justify-items: center; gap: 4px; }
 .mint-shot img { width: 210px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
 .username-modal:has(.mint-shots) { width: min(640px, 100%); }
+.cost-table { border-collapse: collapse; margin: 8px 0; font-size: 14px; }
+.cost-table td { padding: 4px 14px 4px 0; vertical-align: top; }
