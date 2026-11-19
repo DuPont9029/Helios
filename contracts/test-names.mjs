@@ -28,7 +28,7 @@ const gas = {};
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBmgAOQSAKoLA/0J1Ja9AAAAAElFTkSuQmCC";
 const XMR = "43SMrTtLZsyZL81653f6b3BWpU5u6XZ2SRdAaM1MxLCGDcTq6mKi9D11ZgN2hbmCdS9j66xu8Wz3J9wgiwkYssLnEK44756";
 const PNGB = ethers.toUtf8Bytes(PNG);
-const card = (o = {}) => ({ color: "0xff7ad9", pattern: 3, bio: "Melorbius is love, Helios is Life", xmr: XMR, avatar: PNGB, decks: [{ name: "Labrynth", main: 40, extra: 15, cover: PNGB }, { name: "Blue-Eyes", main: 40, extra: 15, cover: "0x" }], ...o });
+const card = (o = {}) => ({ color: "0xff7ad9", pattern: 3, bio: "Melorbius is love, Helios is Life", xmr: XMR, avatar: PNGB, decks: [{ name: "Labrynth", main: 40, extra: 15, cover: PNGB }, { name: "Blue-Eyes", main: 40, extra: 15, cover: "0x" }], rating: 1720, peak: 1760, games: 42, ...o });
 async function registerAs(s, name, nk, { skipWait = false } = {}) {
   const sec = secret();
   const cm = await c.makeCommitment(name, await s.getAddress(), nk, sec, await s.getAddress());
@@ -114,6 +114,8 @@ const four = card().decks.concat(card().decks);
 await reverts(as(alice).mint(card({ decks: four })), "BadDecks", "4 mazzi");
 await reverts(as(alice).mint(card({ decks: [{ name: "<b>", main: 40, extra: 15, cover: "0x" }] })), "BadBio", "nome di mazzo con <");
 await reverts(as(alice).mint(card({ decks: [{ name: "Big", main: 61, extra: 15, cover: "0x" }] })), "BadDecks", "mazzo da 61 carte");
+await reverts(as(alice).mint(card({ rating: 5001 })), "BadRanking", "rating oltre 5000");
+await reverts(as(alice).mint(card({ rating: 1800, peak: 1700 })), "BadRanking", "rating massimo più basso del rating");
 const mr = await (await as(alice).mint(card())).wait();
 // card pagata da un amico con la firma di Dave
 { const dl = (await now()) + 3600; const nonce = await c.nonces(await dave.getAddress());
@@ -134,6 +136,7 @@ const meta = JSON.parse(Buffer.from(uri.split(",")[1], "base64").toString());
 const svg = Buffer.from(meta.image.split(",")[1], "base64").toString();
 fs.writeFileSync(new URL("card-test.svg", import.meta.url), svg);
 ok(meta.name === "#1 Alice - Helios Player Card" && svg.includes(">Alice<") && svg.includes("#ff7ad9") && svg.startsWith("<svg"), "tokenURI: JSON valido e SVG con numero, nome e colore");
+ok(svg.includes(">HM<") && svg.includes(">Helios Master<") && svg.includes(">ELO 1720<") && svg.includes("peak 1760 - 42 ranked Duels") && meta.attributes.some((a) => a.trait_type === "Title" && a.value === "Helios Master") && meta.attributes.some((a) => a.trait_type === "ELO" && a.value === 1720), "ranking sulla card: titolo HM, ELO, rating massimo e Duel (e negli attributi)");
 ok(svg.includes(`href="${PNG}"`) && svg.includes(">Labrynth<") && svg.includes(">Blue-Eyes<") && svg.includes(">40+15<") && svg.includes(XMR.slice(0, 8)) && svg.includes(XMR.slice(-6)), "SVG con immagine profilo, mazzi con copertina e indirizzo XMR");
 ok(meta.attributes.some((a) => a.trait_type === "Number" && a.value === 1) && meta.attributes.some((a) => a.trait_type === "OG" && a.value === "Yes") && svg.includes(">#1<") && svg.includes(">OG<"), "card #1: numero e badge OG nei metadati e nell'immagine");
 ok(Number((await c.cardOf(await alice.getAddress())).card.number) === 1 && (await c.cardOf(await alice.getAddress())).card.decks.length === 2, "cardOf restituisce numero, mazzi e immagini");
@@ -142,7 +145,8 @@ for (const [f, args] of [["transferFrom", [await alice.getAddress(), await bob.g
 await reverts(as(alice)["safeTransferFrom(address,address,uint256)"](await alice.getAddress(), await bob.getAddress(), id), "Soulbound", "soulbound: safeTransferFrom");
 ok((await c.locked(id)) === true && (await c.supportsInterface("0xb45a3c0e")) && (await c.supportsInterface("0x80ac58cd")) && (await c.supportsInterface("0x5b5e139f")), "EIP-5192 locked e interfacce ERC-721");
 await reverts(as(bob).setStyle(card()), "ERC721NonexistentToken", "setStyle senza card");
-await (await as(alice).setStyle(card({ color: "0x7dffb0", pattern: 4, bio: "new line", decks: [] }))).wait();
+await (await as(alice).setStyle(card({ color: "0x7dffb0", pattern: 4, bio: "new line", decks: [], rating: 1500, peak: 1500, games: 0 }))).wait();
+{ const m2 = JSON.parse(Buffer.from((await c.tokenURI(id)).split(",")[1], "base64").toString()); ok(m2.attributes.some((a) => a.trait_type === "Title" && a.value === "Unrated"), "setStyle aggiorna anche il ranking (senza Duel: Unrated)"); }
 ok((await c.cardOf(await alice.getAddress())).card.bio === "new line" && (await c.cardOf(await alice.getAddress())).card.decks.length === 0, "setStyle della propria card (anche togliere i mazzi)");
 ok(!art.abi.some((x) => ["withdraw", "owner", "setPrice", "transferOwnership"].includes(x.name)), "nessuna funzione di admin (withdraw, owner)");
 // release

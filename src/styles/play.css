@@ -845,3 +845,11 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .mint-deck { display: grid; justify-items: center; gap: 2px; width: 74px; text-align: center; font-size: 11px; }
 .mint-deck img, .mint-nocover { width: 60px; height: 88px; object-fit: cover; border-radius: 4px; background: var(--panel-3); display: block; }
 .nft-card-preview img { width: 220px; }
+.mint-pick { display: grid; gap: 6px; margin-bottom: 8px; }
+.mint-pick-list { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.mint-pick-deck { flex: none; display: grid; justify-items: center; gap: 2px; width: 84px; padding: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); cursor: pointer; font-size: 11px; text-align: center; }
+.mint-pick-deck .card { width: 58px; }
+.mint-pick-deck.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.mint-pick-deck:disabled { opacity: .45; cursor: default; }
+.card-deck-pick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+.warn-text { color: #ffd23b; }

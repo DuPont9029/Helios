@@ -69,7 +69,8 @@ const DEFAULTS = {
   usernameAsked: null, // nome chiesto a un amico: { name, owner, at } finché non lo paga
   avatar: "", // immagine del profilo pubblico (data URL WebP 160 px, src/net/public-profile.js)
   bio: "", // frase della scheda del giocatore
-  profileShowDecks: true, // scheda: mostra i mazzi giocati online
+  profileShowDecks: true, // scheda: mostra i mazzi (scelti o giocati online)
+  cardDecks: [], // scheda e card NFT: i mazzi scelti dal giocatore (al massimo 3; vuoto = i giocati online)
   profileShowWallets: false, // scheda: mostra l'indirizzo XMR (per ricevere Monero)
   cardColor: "#38c6ff", // scheda: colore scelto dal giocatore
   cardPattern: "rays", // scheda: motivo del fascione (CARD_PATTERNS in src/ui/profile-card.js)

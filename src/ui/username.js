@@ -6,6 +6,7 @@ import { settings } from "../data/settings.js";
 import { identity } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { socialState, sendDirect, onNameMessage } from "../net/social.js";
+import { cardFace } from "./card.js";
 import * as names from "../net/names.js";
 import { CHAINS } from "../data/names-config.js";
 
@@ -192,7 +193,7 @@ const toHex = (dataUrl) => "0x" + [...new TextEncoder().encode(dataUrl)].map((b)
  * wallet di Helios (se showXmr) e i 3 mazzi giocati online più recenti con la copertina. Restituisce { input, preview }.
  */
 export async function buildCardInput({ showXmr = true } = {}) {
-  const { playedDecks } = await import("../net/public-profile.js");
+  const { cardDecks } = await import("../net/public-profile.js");
   const avatar = await shrinkImage(settings.avatar, 96, 96, MAX_AVATAR);
   let xmr = "";
   if (showXmr && identity().seed) {
@@ -200,11 +201,15 @@ export async function buildCardInput({ showXmr = true } = {}) {
     xmr = moneroWallet(bip39Seed(identity().seed)).address;
   }
   const decks = [];
-  for (const d of playedDecks().slice(0, 3)) {
+  for (const d of cardDecks().slice(0, 3)) {
     const name = cardBio(d.name, 24).trim() || "Deck";
     const cover = await coverOf(d.cover && [...d.main, ...d.extra].includes(d.cover) ? d.cover : d.main[0]);
     decks.push({ name, main: Math.min(60, d.main.length), extra: Math.min(15, d.extra.length), cover });
   }
+  // ranking ELO di Helios (classifica su Nostr): sulla card è una fotografia di adesso
+  const { cachedLeaderboard, START_RATING } = await import("../net/elo.js");
+  const me = (await cachedLeaderboard().catch(() => ({ players: [] }))).players.find((x) => x.pk === identity().pk);
+  const rank = { rating: me?.rating ?? START_RATING, peak: Math.max(me?.peak ?? START_RATING, me?.rating ?? START_RATING), games: me?.games ?? 0 };
   const color = (settings.cardColor || "#38c6ff").toLowerCase();
   const input = {
     color: color.replace("#", "0x"),
@@ -213,46 +218,60 @@ export async function buildCardInput({ showXmr = true } = {}) {
     xmr,
     avatar: avatar ? toHex(avatar) : "0x",
     decks: decks.map((d) => ({ name: d.name, main: d.main, extra: d.extra, cover: d.cover ? toHex(d.cover) : "0x" })),
+    rating: Math.min(5000, rank.rating),
+    peak: Math.min(5000, rank.peak),
+    games: rank.games,
   };
-  return { input, preview: { color, avatar, bio: input.bio, xmr, decks } };
+  return { input, preview: { color, avatar, bio: input.bio, xmr, decks, rank } };
 }
 
-/** Conio della card (o richiesta a un amico): i dati vengono dalla scheda del giocatore. */
-export function openMintDialog({ onDone } = {}) {
+/**
+ * Conio della card (o richiesta a un amico) e aggiornamento (update: la card esiste già, la riscrive il suo wallet).
+ * Tutti i dati vengono dalla scheda del giocatore (Settings → Profile → Player card): la card NFT è la scheda di Helios.
+ */
+export function openMintDialog({ update = false, onDone } = {}) {
   const progress = h("p.small.name-progress");
   const owner = settings.usernameWallet;
   const preview = h("div.mint-preview", h("p.muted.small", "Preparing your card…"));
   const xmrBox = h("input", { type: "checkbox", checked: true });
   let built = null;
+  let painting = 0;
   const paintPreview = async () => {
+    const my = ++painting;
     built = null;
     clear(preview).append(h("p.muted.small", "Preparing your card…"));
-    built = await buildCardInput({ showXmr: xmrBox.checked });
+    const next = await buildCardInput({ showXmr: xmrBox.checked });
+    if (my !== painting) return;
+    built = next;
     const p = built.preview;
+    const { titleOf } = await import("../data/titles.js");
+    const t = titleOf(p.rank.rating, p.rank.games, p.rank.peak);
     clear(preview).append(
       h("div.mint-head", p.avatar ? h("img.mint-avatar", { src: p.avatar, alt: "" }) : h("span.mint-avatar.blank", "?"),
         h("div", h("b", settings.username), h("div.muted.small", p.bio || "(no line)"), h("div.mint-color", h("span", { style: { background: p.color } }), ` ${p.color} · ${settings.cardPattern || "rays"}`))),
+      h("div.muted.small", `${t.name}${p.rank.games ? ` · ELO ${p.rank.rating} (peak ${p.rank.peak}, ${p.rank.games} ranked Duels)` : ""} — a snapshot of now`),
       h("div.muted.small", `ETH ${owner.slice(0, 8)}…${owner.slice(-4)}${p.xmr ? ` · XMR ${p.xmr.slice(0, 8)}…${p.xmr.slice(-6)}` : ""}`),
       p.decks.length
         ? h("div.mint-decks", p.decks.map((d) => h("div.mint-deck", d.cover ? h("img", { src: d.cover, alt: "" }) : h("span.mint-nocover"), h("b", d.name), h("span.muted.small", `${d.main}+${d.extra}`))))
-        : h("p.muted.small", "No decks yet: the 3 decks you played online most recently go on the card."));
+        : h("p.muted.small", "No decks on your player card: choose them in Settings → Profile → Player card."),
+      h("p.muted.small", "This is your Helios player card: change picture, line, colors and decks in Settings → Profile → Player card, then update the NFT."));
   };
   const ownWallet = async () => {
-    // la card la conia il wallet a cui è intestato il nome
+    // la card la conia (e la aggiorna) il wallet a cui è intestato il nome
     const helios = identity().seed ? await (await names.heliosSigner()).getAddress() : "";
     return owner.toLowerCase() === helios.toLowerCase() ? "helios" : "browser";
   };
-  const payer = payerPicker({ note: `Your card is an NFT on Ethereum, bound to ${owner.slice(0, 8)}…. It shows your username, picture, colors, wallets and decks, with everything stored on-chain. Only gas, no price.` });
+  const payer = payerPicker({ allowFriend: !update, note: `${update ? "Rewrites your card with the data of your player card (one transaction, same number)." : "Your card is an NFT on Ethereum, bound to " + owner.slice(0, 8) + "…, with everything stored on-chain."} Only gas, no price.` });
   xmrBox.addEventListener("change", paintPreview);
   paintPreview();
   const m = openModal({
-    title: "Mint your on-chain card",
+    title: update ? "Update your on-chain card" : "Mint your on-chain card",
     className: "username-modal",
     body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, progress],
     actions: [
       { label: "Close", value: null },
       {
-        label: "Mint",
+        label: update ? "Update" : "Mint",
         primary: true,
         onClick: async (close) => {
           const { via, friendPk } = payer.get();
@@ -269,9 +288,10 @@ export function openMintDialog({ onDone } = {}) {
               toast("Request sent to your friend", { kind: "ok" });
               return close(true);
             }
-            if (via !== mine) throw new Error(`The card is minted by the wallet that owns the name: choose "${mine === "helios" ? "My Helios wallet" : "My browser wallet"}", or ask a friend`);
-            await names.mintCard(ownerSigner, built.input, { steps });
-            toast("Your on-chain card is minted", { kind: "ok" });
+            if (via !== mine) throw new Error(`The card is ${update ? "updated" : "minted"} by the wallet that owns the name: choose "${mine === "helios" ? "My Helios wallet" : "My browser wallet"}"${update ? "" : ", or ask a friend"}`);
+            if (update) await names.updateCard(ownerSigner, built.input, { steps });
+            else await names.mintCard(ownerSigner, built.input, { steps });
+            toast(update ? "Your on-chain card is updated" : "Your on-chain card is minted", { kind: "ok" });
             close(true);
             onDone?.();
           } catch (e) {
@@ -283,6 +303,12 @@ export function openMintDialog({ onDone } = {}) {
     ],
   });
   return m.result;
+}
+
+/** La card on-chain è uguale alla scheda di adesso? (stessa impronta dei dati, ranking compreso). */
+export async function cardIsCurrent() {
+  const built = await buildCardInput({ showXmr: true });
+  return names.cardMatches(settings.usernameWallet, built.input);
 }
 
 // ---------------------------------------------------------------- richieste degli amici

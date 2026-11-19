@@ -20,7 +20,7 @@ export const profileCode = (pk) => String(pk).slice(0, 10);
 const PLAYED = "ygoweb.playedDecks"; // mazzi giocati online: [{ key, name, main, extra, side, cover, games, at }]
 const PUBLISHED = "ygoweb.publicProfileHash"; // impronta dell'ultimo profilo pubblicato (per non ripubblicarlo uguale)
 export const MAX_AVATAR = 60000; // caratteri del data URL (l'evento resta sotto i 64 KB dei relay)
-const MAX_DECKS = 5;
+export const MAX_DECKS = 3; // mazzi sulla scheda (e sulla card NFT, contracts/HeliosNames.sol)
 const HEX64 = /^[0-9a-f]{64}$/;
 const AVATAR_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
 const XMR_RE = /^[48][1-9A-HJ-NP-Za-km-z]{94}$/;
@@ -53,7 +53,7 @@ export function cleanProfile(v) {
       name: str(d?.name, 40) || "Deck",
       main: codes(d?.main, 60), extra: codes(d?.extra, 15), side: codes(d?.side, 15),
       cover: Number.isInteger(d?.cover) ? d.cover : null,
-      games: Number.isInteger(d?.games) && d.games > 0 ? Math.min(d.games, 1e6) : 1,
+      games: Number.isInteger(d?.games) && d.games >= 0 ? Math.min(d.games, 1e6) : 0,
       at: Number.isFinite(d?.at) ? d.at : 0,
     })).filter((d) => d.main.length || d.extra.length),
     updated: Number.isFinite(v.updated) ? v.updated : 0,
@@ -87,9 +87,23 @@ export async function recordPlayedDeck(deck) {
   schedulePublish();
 }
 
-/** I mazzi della scheda: i più recenti, poi i più giocati. */
+/** I mazzi giocati online, dal più recente. */
 export function playedDecks() {
-  return readPlayed().sort((a, b) => b.at - a.at).slice(0, MAX_DECKS);
+  return readPlayed().sort((a, b) => b.at - a.at).slice(0, 20);
+}
+
+/**
+ * I mazzi della scheda (e della card NFT): quelli scelti dal giocatore (settings.cardDecks), altrimenti i 3 giocati
+ * online più di recente.
+ */
+export function cardDecks() {
+  const chosen = Array.isArray(settings.cardDecks) ? settings.cardDecks.filter((d) => d?.main?.length) : [];
+  if (chosen.length) {
+    // le partite giocate con lo stesso mazzo restano contate
+    const played = readPlayed();
+    return chosen.slice(0, MAX_DECKS).map((d) => ({ ...d, games: played.find((p) => p.name === d.name && p.main.length === d.main.length)?.games ?? 0 }));
+  }
+  return playedDecks().slice(0, MAX_DECKS);
 }
 
 export function forgetPlayedDecks() {
@@ -106,7 +120,7 @@ export function forgetPlayedDecks() {
 /** Il proprio profilo come lo vedono gli altri. */
 export async function myProfile() {
   const p = { name: settings.name, username: settings.username || "", wallet: settings.usernameWallet || "", avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
-  if (settings.profileShowDecks !== false) p.decks = playedDecks();
+  if (settings.profileShowDecks !== false) p.decks = cardDecks();
   if (settings.profileShowWallets && identity().seed) {
     const { bip39Seed, moneroWallet } = await import("./wallets.js");
     p.wallets = { xmr: moneroWallet(bip39Seed(identity().seed)).address };

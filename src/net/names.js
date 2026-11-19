@@ -221,7 +221,7 @@ export const pendingRegistrations = () => readPending().filter((p) => Date.now()
 // Limite di gas: la stima della rete più il 30% (le regole del gas cambiano: su Sepolia, con i prezzi nuovi della
 // creazione di dati, commit costa ~128k invece di ~45k). Se la stima non riesce (es. blockchain locale che stima con
 // un tempo vecchio), un limite largo: il gas non usato non si paga.
-const GAS_FALLBACK = { commit: 400000n, register: 1500000n, registerFor: 1800000n, mint: 2500000n };
+const GAS_FALLBACK = { commit: 400000n, register: 1500000n, registerFor: 1800000n, mint: 4000000n, mintFor: 4000000n, setStyle: 4000000n };
 async function gasLimit(c, fn, args) {
   try {
     return ((await c[fn].estimateGas(...args)) * 13n) / 10n + 10000n;
@@ -323,6 +323,28 @@ export async function mintCard(signer, card, { auth = null, steps } = {}) {
   const fn = auth ? "mintFor" : "mint";
   await c[fn].staticCall(...args, { blockTag: "latest" });
   await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Card");
+}
+
+/** Aggiorna la propria card (setStyle): stessi dati del conio, la riscrive il wallet a cui è intestato il nome. */
+export async function updateCard(signer, card, { steps } = {}) {
+  const c = await contract(signer);
+  steps?.("Confirm in the wallet");
+  await c.setStyle.staticCall(card, { blockTag: "latest" });
+  await sendAndWait(c.setStyle(card, { gasLimit: await gasLimit(c, "setStyle", [card]) }), steps, "Card");
+}
+
+/**
+ * La card on-chain del wallet ha gli stessi dati di `card` (o di `card` con o senza XMR)? Confronta le impronte
+ * (cardHash) dei dati salvati e di quelli nuovi. null se non c'è una card.
+ */
+export async function cardMatches(address, card) {
+  const c = await contract();
+  const r = await c.cardOf(address);
+  if (r.tokenId === 0n) return null;
+  const v = r.card;
+  const onchain = { color: v.color, pattern: v.pattern, bio: v.bio, xmr: v.xmr, avatar: v.avatar, decks: v.decks.map((d) => ({ name: d.name, main: d.main, extra: d.extra, cover: d.cover })), rating: v.rating, peak: v.peak, games: v.games };
+  const [a, b, noXmr] = await Promise.all([c.cardHash(onchain), c.cardHash(card), c.cardHash({ ...card, xmr: "" })]);
+  return a === b || a === noXmr;
 }
 
 /** Il proprio username è registrato: si salva, si pubblica nel profilo e diventa il nome. */

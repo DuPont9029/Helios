@@ -21,6 +21,11 @@ struct CardView {
     string xmr;
     bytes avatar; // data URL o vuoto
     DeckView[] decks;
+    // ranking ELO di Helios (classifica su Nostr, fuori dalla blockchain): fotografia dichiarata all'ultimo aggiornamento
+    uint16 rating;
+    uint16 peak;
+    uint32 games;
+    uint64 rankedAt; // blocco dell'aggiornamento
 }
 
 struct DeckView {
@@ -50,28 +55,30 @@ contract HeliosCardRenderer {
             '","attributes":[{"trait_type":"Number","display_type":"number","value":', num,
             '},{"trait_type":"OG","value":"', c.og ? "Yes" : "No",
             '"},{"trait_type":"Pattern","value":"', _patternName(c.pattern),
-            '"},{"trait_type":"Decks","value":', uint256(c.decks.length).toString(), "}],"
+            '"},{"trait_type":"Decks","value":', uint256(c.decks.length).toString(),
+            '},{"trait_type":"Title","value":"', _titleName(c), '"},{"trait_type":"ELO","display_type":"number","value":', uint256(c.rating).toString(),
+            '},{"trait_type":"Ranked Duels","display_type":"number","value":', uint256(c.games).toString(), "}],"
         );
     }
 
-    /// @notice Solo l'immagine SVG (400 × 640).
+    /// @notice Solo l'immagine SVG (400 × 680).
     function svg(CardView calldata c) public pure returns (string memory) {
         string memory col = string.concat("#", _hex3(c.color));
-        return string.concat(_frame(c.pattern, col), _top(c, col), _body(c, col), _decks(c, col), _footer(c, col), "</svg>");
+        return string.concat(_frame(c.pattern, col), _top(c, col), _body(c, col), _rank(c, col), _decks(c, col), _footer(c, col), "</svg>");
     }
 
     function _frame(uint8 pattern, string memory col) private pure returns (string memory) {
         string memory defs = string.concat(
             '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="', col,
             '"/><stop offset="1" stop-color="#0b0c12"/></linearGradient>', _pattern(pattern),
-            '<clipPath id="c"><rect x="1.5" y="1.5" width="397" height="637" rx="22"/></clipPath>',
+            '<clipPath id="c"><rect x="1.5" y="1.5" width="397" height="677" rx="22"/></clipPath>',
             '<clipPath id="a"><circle cx="200" cy="170" r="62"/></clipPath></defs>'
         );
         return string.concat(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 640" font-family="monospace">', defs,
-            '<rect x="1.5" y="1.5" width="397" height="637" rx="22" fill="#11131c"/>',
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 680" font-family="monospace">', defs,
+            '<rect x="1.5" y="1.5" width="397" height="677" rx="22" fill="#11131c"/>',
             '<g clip-path="url(#c)"><rect width="400" height="170" fill="url(#g)"/><rect width="400" height="170" fill="url(#p)"/></g>',
-            '<rect x="1.5" y="1.5" width="397" height="637" rx="22" fill="none" stroke="', col, '" stroke-width="3"/>'
+            '<rect x="1.5" y="1.5" width="397" height="677" rx="22" fill="none" stroke="', col, '" stroke-width="3"/>'
         );
     }
 
@@ -102,6 +109,42 @@ contract HeliosCardRenderer {
         );
     }
 
+    /// @dev Titolo dagli scacchi (src/data/titles.js): da Candidate Master (1600) in su vale il rating più alto.
+    function _title(CardView calldata c) private pure returns (string memory abbr, string memory name) {
+        if (c.games == 0) return ("", "Unrated");
+        uint256 r = c.peak >= 1600 && c.peak > c.rating ? c.peak : c.rating;
+        if (r >= 1900) return ("GM", "Grandmaster");
+        if (r >= 1800) return ("IM", "International Master");
+        if (r >= 1700) return ("HM", "Helios Master");
+        if (r >= 1600) return ("CM", "Candidate Master");
+        r = c.rating;
+        if (r >= 1550) return ("", "Expert");
+        if (r >= 1500) return ("", "Class A");
+        if (r >= 1450) return ("", "Class B");
+        return ("", "Class C");
+    }
+
+    function _titleName(CardView calldata c) private pure returns (string memory name) {
+        (, name) = _title(c);
+    }
+
+    /// @dev Riga del ranking: titolo, ELO e Duel classificati (fotografia del blocco rankedAt).
+    function _rank(CardView calldata c, string memory col) private pure returns (string memory) {
+        (string memory abbr, string memory name) = _title(c);
+        string memory badge = bytes(abbr).length > 0
+            ? string.concat('<rect x="32" y="425" width="34" height="18" rx="3" fill="', col, '"/><text x="49" y="438" fill="#0b0c12" font-size="11" font-weight="700" text-anchor="middle">', abbr, "</text>")
+            : "";
+        string memory x = bytes(abbr).length > 0 ? "74" : "32";
+        return string.concat(
+            badge,
+            '<text x="', x, '" y="438" fill="#fff" font-size="12" font-weight="700">', name, "</text>",
+            '<text x="368" y="438" fill="#fff" font-size="13" font-weight="700" text-anchor="end">', c.games == 0 ? "" : string.concat("ELO ", uint256(c.rating).toString()), "</text>",
+            '<text x="32" y="456" fill="#8b93a7" font-size="9">',
+            c.games == 0 ? "no ranked Duels" : string.concat("peak ", uint256(c.peak).toString(), " - ", uint256(c.games).toString(), " ranked Duels"),
+            " - ranking at block ", uint256(c.rankedAt).toString(), "</text>"
+        );
+    }
+
     function _row(uint256 y, string memory label, string memory value) private pure returns (string memory) {
         string memory ys = y.toString();
         return string.concat(
@@ -114,7 +157,7 @@ contract HeliosCardRenderer {
     function _decks(CardView calldata c, string memory col) private pure returns (string memory out) {
         uint256 n = c.decks.length;
         if (n == 0) return "";
-        out = string.concat('<text x="32" y="438" fill="#8b93a7" font-size="11" letter-spacing="2">DECKS</text>');
+        out = string.concat('<text x="32" y="474" fill="#8b93a7" font-size="11" letter-spacing="2">DECKS</text>');
         for (uint256 i; i < n; ++i) out = string.concat(out, _deck(c.decks[i], 32 + i * 116, col));
     }
 
@@ -122,19 +165,19 @@ contract HeliosCardRenderer {
         string memory xs = x.toString();
         string memory cx = (x + 52).toString();
         string memory art = d.cover.length > 0
-            ? string.concat('<image href="', string(d.cover), '" x="', (x + 22).toString(), '" y="448" width="60" height="88" preserveAspectRatio="xMidYMid slice"/>')
-            : string.concat('<rect x="', (x + 22).toString(), '" y="448" width="60" height="88" rx="4" fill="#1d2030" stroke="', col, '" stroke-opacity=".4"/>');
+            ? string.concat('<image href="', string(d.cover), '" x="', (x + 22).toString(), '" y="484" width="60" height="88" preserveAspectRatio="xMidYMid slice"/>')
+            : string.concat('<rect x="', (x + 22).toString(), '" y="484" width="60" height="88" rx="4" fill="#1d2030" stroke="', col, '" stroke-opacity=".4"/>');
         return string.concat(
-            '<rect x="', xs, '" y="444" width="104" height="132" rx="8" fill="#0b0c12" fill-opacity=".5"/>', art,
-            '<text x="', cx, '" y="554" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">', d.name, "</text>",
-            '<text x="', cx, '" y="569" fill="#8b93a7" font-size="10" text-anchor="middle">', uint256(d.main).toString(), "+", uint256(d.extra).toString(), "</text>"
+            '<rect x="', xs, '" y="480" width="104" height="128" rx="8" fill="#0b0c12" fill-opacity=".5"/>', art,
+            '<text x="', cx, '" y="588" fill="#fff" font-size="11" font-weight="700" text-anchor="middle">', d.name, "</text>",
+            '<text x="', cx, '" y="602" fill="#8b93a7" font-size="10" text-anchor="middle">', uint256(d.main).toString(), "+", uint256(d.extra).toString(), "</text>"
         );
     }
 
     function _footer(CardView calldata c, string memory col) private pure returns (string memory) {
         return string.concat(
-            '<text x="32" y="612" fill="', col, '" font-size="14" font-weight="700">USERNAME #', uint256(c.number).toString(), c.og ? " - OG" : "", "</text>",
-            '<text x="368" y="612" fill="#8b93a7" font-size="12" text-anchor="end">ygoweb.eu</text>'
+            '<text x="32" y="652" fill="', col, '" font-size="14" font-weight="700">USERNAME #', uint256(c.number).toString(), c.og ? " - OG" : "", "</text>",
+            '<text x="368" y="652" fill="#8b93a7" font-size="12" text-anchor="end">ygoweb.eu</text>'
         );
     }
 

@@ -42,6 +42,10 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         string bio; // ASCII stampabile senza < > & " \ , al massimo 48 caratteri
         string xmr; // indirizzo Monero (o vuoto)
         Deck[] decks; // al massimo 3
+        uint16 rating; // ranking ELO di Helios (fuori dalla blockchain): fotografia dichiarata dal giocatore
+        uint16 peak;
+        uint32 games;
+        uint64 rankedAt; // blocco dell'ultimo aggiornamento
     }
 
     struct Deck {
@@ -59,6 +63,9 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         string xmr;
         bytes avatar;
         DeckInput[] decks;
+        uint16 rating;
+        uint16 peak;
+        uint32 games;
     }
 
     struct DeckInput {
@@ -111,6 +118,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     error BadImage();
     error BadMonero();
     error BadDecks();
+    error BadRanking();
     error CardExists();
     error BadSignature();
     error Expired();
@@ -235,7 +243,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
             DeckInput calldata d = c.decks[i];
             decks[i] = keccak256(abi.encode(keccak256(bytes(d.name)), d.main, d.extra, keccak256(d.cover)));
         }
-        return keccak256(abi.encode(c.color, c.pattern, keccak256(bytes(c.bio)), keccak256(bytes(c.xmr)), keccak256(c.avatar), keccak256(abi.encodePacked(decks))));
+        return keccak256(abi.encode(c.color, c.pattern, keccak256(bytes(c.bio)), keccak256(bytes(c.xmr)), keccak256(c.avatar), keccak256(abi.encodePacked(decks)), c.rating, c.peak, c.games));
     }
 
     function _mintCard(address owner, CardInput calldata input) private {
@@ -272,11 +280,13 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         _checkText(c.bio, 48);
         _checkMonero(c.xmr);
         if (c.decks.length > MAX_DECKS) revert BadDecks();
+        if (c.rating > 5000 || c.peak > 5000 || (c.games > 0 && c.peak < c.rating)) revert BadRanking();
         Card storage card = _cards[id];
         card.color = c.color;
         card.pattern = c.pattern;
         card.bio = c.bio;
         card.xmr = c.xmr;
+        (card.rating, card.peak, card.games, card.rankedAt) = (c.rating, c.peak, c.games, uint64(block.number));
         card.avatar = _image(c.avatar, MAX_AVATAR);
         delete card.decks;
         for (uint256 i; i < c.decks.length; ++i) {
@@ -353,6 +363,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         v.pattern = c.pattern;
         v.bio = c.bio;
         v.xmr = c.xmr;
+        (v.rating, v.peak, v.games, v.rankedAt) = (c.rating, c.peak, c.games, c.rankedAt);
         if (c.avatar != address(0)) v.avatar = SSTORE2.read(c.avatar);
         v.decks = new DeckView[](c.decks.length);
         for (uint256 i; i < c.decks.length; ++i) {
