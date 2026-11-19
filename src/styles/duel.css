@@ -198,6 +198,12 @@
 .lp-body { display: flex; flex-direction: column; min-width: 170px; }
 .lp-op .lp-body { align-items: flex-end; }
 .lp-name { font: 600 12px var(--mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+/* nome con titolo ed ELO, come su chess.com (DuelView.setPlayerInfo) */
+.lp-who { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.lp-name { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.lp-title { --tc: #ffcf3b; padding: 1px 4px; background: var(--tc); color: #0b0c12; font: 800 10px var(--mono); letter-spacing: .04em; border-radius: 2px; }
+.lp-info { font: 600 11px var(--mono); color: var(--muted); opacity: .85; }
+.lp .avatar img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; display: block; }
 .lp-track { height: 6px; width: 170px; background: rgba(255, 255, 255, 0.1); overflow: hidden; margin: 3px 0; transform: skewX(-30deg); }
 .lp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #1f9be0, #9ae2ff); transition: width 0.5s; }
 .lp-op .lp-fill { background: linear-gradient(90deg, #ff3b4e, #ff8a5c); margin-left: auto; }

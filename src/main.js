@@ -289,7 +289,8 @@ function fitScreen() {
   const duel = !!app.root.querySelector(":scope > .duel-screen");
   // Sul telefono niente zoom: l'interfaccia (styles/mobile.css) usa le dimensioni vere dello schermo. Nemmeno nella
   // pagina dello script (editor Monaco): con lo zoom CSS non disegna il testo e sbaglia la posizione dei suoi menu.
-  const plain = isMobile() || !!app.root.querySelector(":scope > .se-page");
+  // Neanche nella pagina della scheda di un giocatore (link #p/…): si apre spesso dal telefono, deve restare leggibile.
+  const plain = isMobile() || !!app.root.querySelector(":scope > .se-page, :scope > .pc-page");
   const k = plain ? 1 : Math.min(3, Math.max(0.3, Math.min(hgt / REF_HEIGHT, w / (duel ? DUEL_WIDTH : MIN_WIDTH))));
   const root = document.documentElement;
   root.style.zoom = k;
@@ -343,7 +344,15 @@ async function boot() {
     import("./net/public-profile.js").then((m) => m.schedulePublish(8000));
     // Report del coaching: dal duello rigiocato si torna alla pagina dei report.
     initCoaching(app, () => showOnline(app, { tab: "social" }));
-    home();
+    // link breve a una scheda giocatore (#p/<codice> o #p/npub1…): si apre solo la scheda
+    const openCardLink = () => {
+      const m = location.hash.match(/^#p\/([0-9a-zA-Z]+)$/);
+      if (!m) return false;
+      import("./ui/profile-card.js").then((pc) => pc.showProfilePage(app, m[1]));
+      return true;
+    };
+    window.addEventListener("hashchange", openCardLink);
+    if (!openCardLink()) home();
   } catch (e) {
     console.error(e);
     status.classList.add("error");

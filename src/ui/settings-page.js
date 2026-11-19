@@ -10,7 +10,9 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
-import { openProfileCard, avatarEl } from "./profile-card.js";
+import { openProfileCard, avatarEl, profileLink, CARD_COLORS, CARD_PATTERNS } from "./profile-card.js";
+import { titleOf, TITLES, UNRATED, KEEP_FROM } from "../data/titles.js";
+import { cachedLeaderboard } from "../net/elo.js";
 import { schedulePublish, forgetPlayedDecks, MAX_AVATAR } from "../net/public-profile.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
@@ -126,6 +128,25 @@ async function avatarFromFile(file) {
   throw new Error("This image is too detailed: try another one");
 }
 
+/** Titolo degli scacchi dal proprio rating ELO (src/ui/profile-card.js: TITLES), con le soglie e quanto manca. */
+function titleBox() {
+  const box = h("div.title-box", h("span.muted.small", "Loading your rating…"));
+  const me = identity().pk;
+  cachedLeaderboard().then(({ players }) => {
+    const p = players.find((x) => x.pk === me);
+    const t = titleOf(p?.rating ?? 1500, p?.games ?? 0, p?.peak);
+    clear(box).append(
+      h("div.title-now", h("span.title-badge", { style: { "--tc": t.color } }, t.abbr), h("div", h("b", t.name), h("div.muted.small",
+        !p ? "Play ranked Duels to get a title (they start from Class A, 1500)."
+          : [`Rating ${p.rating}`, t.kept ? `title kept from your best rating (${p.peak})` : null, t.next ? `${Math.max(0, t.next.min - p.rating)} points to ${t.next.name}` : "the highest title"].filter(Boolean).join(" · ")))),
+      h("details.title-list", h("summary.muted.small", `All titles (from chess, on the Helios rating scale; from ${KEEP_FROM} they are kept for good)`),
+        h("table.title-table", [UNRATED, ...TITLES].map((x) => h(`tr${x.abbr === t.abbr ? ".me" : ""}`,
+          h("td", h("span.title-badge.small", { style: { "--tc": x.color } }, x.abbr)), h("td", x.name),
+          h("td.muted.small", x.min == null ? "no ranked Duels" : x.min === -Infinity ? "below 1450" : `${x.min}+`))))));
+  }, () => clear(box).append(h("span.muted.small", "Ranking unavailable: your title shows when the relays answer.")));
+  return h("label.field", h("span", "Title"), box);
+}
+
 /** Scheda pubblica: immagine, frase e cosa mostrano gli altri (net/public-profile.js). */
 function publicCard() {
   const box = h("div.public-card-box");
@@ -149,15 +170,24 @@ function publicCard() {
             }
           } }, icon("add_photo_alternate"), settings.avatar ? " Change picture" : " Add a picture"),
           settings.avatar ? h("button.btn.small.ghost", { onclick: () => { settings.avatar = ""; schedulePublish(300); draw(); } }, "Remove") : null,
-          h("button.btn.small", { onclick: () => openProfileCard(me, { name: settings.name }) }, icon("badge"), " View my card"))),
+          h("button.btn.small", { onclick: () => openProfileCard(me, { name: settings.name }) }, icon("badge"), " View my card"),
+          h("button.btn.small", { title: "A short link that opens only your card", onclick: () => copyText(profileLink(me)).then((ok) => toast(ok ? `Link copied: ${profileLink(me)}` : "Copy failed")) }, icon("link"), " Copy my card link"))),
       h("label.field", h("span", "About you (one line)"), h("input.input", { value: settings.bio ?? "", maxLength: 160, placeholder: "e.g. Labrynth main, looking for testing partners", oninput: (e) => { settings.bio = e.target.value; schedulePublish(); } })),
+      h("label.field", h("span", "Card color"),
+        h("div.card-colors",
+          CARD_COLORS.map((c) => h(`button.card-swatch${(settings.cardColor || "#38c6ff") === c ? ".on" : ""}`, { title: c, style: { background: c }, onclick: () => { settings.cardColor = c; schedulePublish(300); draw(); } })),
+          h("input.card-swatch-custom", { type: "color", title: "Any color", value: settings.cardColor || "#38c6ff", onchange: (e) => { settings.cardColor = e.target.value; schedulePublish(300); draw(); } }))),
+      h("label.field", h("span", "Card pattern"),
+        h("div.card-patterns", Object.entries(CARD_PATTERNS).map(([k, l]) =>
+          h(`button.card-pattern${(settings.cardPattern || "rays") === k ? ".on" : ""}`, { dataset: { pattern: k }, style: { "--pc": settings.cardColor || "#38c6ff" }, onclick: () => { settings.cardPattern = k; schedulePublish(300); draw(); } }, h("span.pc-banner"), h("span.card-pattern-l", l))))),
+      titleBox(),
       h("label.check", h("input", { type: "checkbox", checked: settings.profileShowDecks !== false, onchange: (e) => { settings.profileShowDecks = e.target.checked; schedulePublish(300); } }), "Show the decks I play online (the last 5)"),
       identity().seed
         ? h("label.check", h("input", { type: "checkbox", checked: !!settings.profileShowWallets, onchange: async (e) => {
-            if (e.target.checked && !(await confirmModal("Show your wallet addresses?", "Anyone who opens your card sees your Ethereum and Monero addresses (and can look up the Ethereum balance) and can send you crypto. You can hide them again later, but who saw them keeps them.", "Show", "Cancel"))) return (e.target.checked = false);
+            if (e.target.checked && !(await confirmModal("Show your Monero address?", "Anyone who opens your card sees your Monero address and can send you XMR (Monero keeps balances private). You can hide it again later, but who saw it keeps it.", "Show", "Cancel"))) return (e.target.checked = false);
             settings.profileShowWallets = e.target.checked;
             schedulePublish(300);
-          } }), "Show my wallet addresses, so players can send me crypto")
+          } }), "Show my Monero address, so players can send me XMR")
         : null,
       h("button.btn.small.ghost", { onclick: () => { forgetPlayedDecks(); toast("Decks removed from your card"); } }, "Clear my played decks"));
   };

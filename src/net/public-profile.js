@@ -13,13 +13,16 @@ import { sharedPool } from "./social.js";
 const KIND = 30078;
 const D = "helios-public-profile";
 const TAG = "helios-profile-v1";
+// Codice breve della scheda (link https://…/#p/<codice>): i primi 10 caratteri della chiave, anche come tag
+// dell'evento ("helios-p-<codice>"), così i relay la trovano senza la chiave intera.
+const CODE_TAG = "helios-p-";
+export const profileCode = (pk) => String(pk).slice(0, 10);
 const PLAYED = "ygoweb.playedDecks"; // mazzi giocati online: [{ key, name, main, extra, side, cover, games, at }]
 const PUBLISHED = "ygoweb.publicProfileHash"; // impronta dell'ultimo profilo pubblicato (per non ripubblicarlo uguale)
 export const MAX_AVATAR = 60000; // caratteri del data URL (l'evento resta sotto i 64 KB dei relay)
 const MAX_DECKS = 5;
 const HEX64 = /^[0-9a-f]{64}$/;
 const AVATAR_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
-const ETH_RE = /^0x[0-9a-fA-F]{40}$/;
 const XMR_RE = /^[48][1-9A-HJ-NP-Za-km-z]{94}$/;
 
 let ownPool = null;
@@ -32,14 +35,17 @@ const str = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().sli
 /** Profilo pulito (anche quello che arriva dai relay, scritto da chiunque). */
 export function cleanProfile(v) {
   if (!v || typeof v !== "object") return null;
+  // per ricevere crypto solo Monero (le schede vecchie con l'indirizzo ETH lo perdono qui)
   const wallets = {};
-  if (ETH_RE.test(v.wallets?.eth ?? "")) wallets.eth = v.wallets.eth;
   if (XMR_RE.test(v.wallets?.xmr ?? "")) wallets.xmr = v.wallets.xmr;
+  const pattern = ["rays", "grid", "waves", "hex", "stars", "plain"].includes(v.theme?.pattern) ? v.theme.pattern : "rays";
+  const theme = /^#[0-9a-f]{6}$/i.test(v.theme?.color ?? "") ? { color: v.theme.color.toLowerCase(), pattern } : { color: "", pattern };
   return {
     name: str(v.name, 24) || "Duelist",
     avatar: typeof v.avatar === "string" && v.avatar.length <= MAX_AVATAR && AVATAR_RE.test(v.avatar) ? v.avatar : "",
     bio: str(v.bio, 160),
     wallets,
+    theme,
     decks: (Array.isArray(v.decks) ? v.decks : []).slice(0, MAX_DECKS).map((d) => ({
       name: str(d?.name, 40) || "Deck",
       main: codes(d?.main, 60), extra: codes(d?.extra, 15), side: codes(d?.side, 15),
@@ -96,12 +102,11 @@ export function forgetPlayedDecks() {
 
 /** Il proprio profilo come lo vedono gli altri. */
 export async function myProfile() {
-  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, decks: [], updated: Date.now() };
+  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
   if (settings.profileShowDecks !== false) p.decks = playedDecks();
   if (settings.profileShowWallets && identity().seed) {
-    const { bip39Seed, ethAddresses, moneroWallet } = await import("./wallets.js");
-    const seed = bip39Seed(identity().seed);
-    p.wallets = { eth: ethAddresses(seed, 1)[0].address, xmr: moneroWallet(seed).address };
+    const { bip39Seed, moneroWallet } = await import("./wallets.js");
+    p.wallets = { xmr: moneroWallet(bip39Seed(identity().seed)).address };
   }
   return cleanProfile(p);
 }
@@ -117,13 +122,14 @@ export function schedulePublish(ms = 1500) {
 export async function publishProfile({ force = false } = {}) {
   const p = await myProfile();
   const { updated, ...content } = p;
-  const hash = await sha256Hex(canonical({ ...content, pk: identity().pk }));
+  // "tags: 2": i profili pubblicati prima del codice breve si ripubblicano una volta con il tag nuovo
+  const hash = await sha256Hex(canonical({ ...content, pk: identity().pk, tags: 2 }));
   try {
     if (!force && localStorage.getItem(PUBLISHED) === hash) return -1;
   } catch {
     /* si pubblica */
   }
-  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", D], ["t", TAG]], content: JSON.stringify({ v: 1, ...p }) }, fromHex(identity().sk));
+  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", D], ["t", TAG], ["t", CODE_TAG + profileCode(identity().pk)]], content: JSON.stringify({ v: 1, ...p }) }, fromHex(identity().sk));
   const res = await Promise.allSettled(pool().publish(eloRelays(), ev));
   const n = res.filter((r) => r.status === "fulfilled").length;
   if (n) {
@@ -164,6 +170,23 @@ export function fetchProfile(pk, { fresh = false } = {}) {
   })().finally(() => pending.delete(pk));
   pending.set(pk, job);
   return job;
+}
+
+/** Giocatore dal codice breve del link: { pk, profile } o null (se più giocatori hanno lo stesso codice, il più recente). */
+export async function findProfileByCode(code) {
+  if (!/^[0-9a-f]{10}$/.test(code)) return null;
+  const evs = await pool().querySync(eloRelays(), { kinds: [KIND], "#t": [CODE_TAG + code], "#d": [D] }, { maxWait: 6000 }).catch(() => []);
+  let best = null;
+  for (const ev of evs) if (ev.pubkey.startsWith(code) && verifyEvent(ev) && (!best || ev.created_at > best.created_at)) best = ev;
+  if (!best) return null;
+  let profile = null;
+  try {
+    profile = cleanProfile(JSON.parse(best.content));
+  } catch {
+    profile = null;
+  }
+  cache.set(best.pubkey, { at: Date.now(), profile });
+  return { pk: best.pubkey, profile };
 }
 
 /** Profili di più giocatori insieme (una richiesta sola ai relay), per gli elenchi: pk → profilo. */

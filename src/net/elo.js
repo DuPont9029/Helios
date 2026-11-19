@@ -302,7 +302,7 @@ export async function leaderboard() {
   const list = await matches(evs);
   const players = new Map();
   const player = (p) => {
-    if (!players.has(p.pk)) players.set(p.pk, { pk: p.pk, name: p.name, rating: START_RATING, games: 0, wins: 0, losses: 0, draws: 0, abandons: 0 });
+    if (!players.has(p.pk)) players.set(p.pk, { pk: p.pk, name: p.name, rating: START_RATING, peak: START_RATING, games: 0, wins: 0, losses: 0, draws: 0, abandons: 0 });
     const x = players.get(p.pk);
     x.name = p.name; // l'ultimo nome usato
     return x;
@@ -322,6 +322,9 @@ export async function leaderboard() {
       const db = -K * (1 - ea);
       a.rating += da;
       b.rating += db;
+      // il rating più alto raggiunto (i titoli da Candidate Master in su restano: src/data/titles.js)
+      a.peak = Math.max(a.peak, a.rating);
+      b.peak = Math.max(b.peak, b.rating);
       for (const x of [a, b]) {
         x.games++;
         x.losses++;
@@ -335,6 +338,8 @@ export async function leaderboard() {
     const delta = K * (sa - ea);
     a.rating += delta;
     b.rating -= delta;
+    a.peak = Math.max(a.peak, a.rating);
+    b.peak = Math.max(b.peak, b.rating);
     for (const [x, s] of [[a, sa], [b, 1 - sa]]) {
       x.games++;
       if (s === 1) x.wins++;
@@ -344,6 +349,17 @@ export async function leaderboard() {
     if (m.kind === "abandon") (m.winner === a.pk ? b : a).abandons++;
     games.push({ match: m.match, at: m.at, a: a.pk, b: b.pk, winner: m.winner, kind: m.kind, delta: Math.round(delta) });
   }
-  const ranked = [...players.values()].filter((p) => p.games > 0).map((p) => ({ ...p, rating: Math.round(p.rating) })).sort((x, y) => y.rating - x.rating || y.games - x.games);
+  const ranked = [...players.values()].filter((p) => p.games > 0).map((p) => ({ ...p, rating: Math.round(p.rating), peak: Math.round(p.peak) })).sort((x, y) => y.rating - x.rating || y.games - x.games);
   return { players: ranked, games: games.reverse() };
+}
+
+// Classifica in memoria per due minuti: la usano schede dei giocatori, titoli e nomi in partita.
+let cached = null;
+let cachedAt = 0;
+export function cachedLeaderboard() {
+  if (!cached || Date.now() - cachedAt > 120000) {
+    cachedAt = Date.now();
+    cached = leaderboard().catch((e) => ((cached = null), Promise.reject(e)));
+  }
+  return cached;
 }

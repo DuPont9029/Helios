@@ -293,11 +293,13 @@ export class DuelView {
       const fill = h("div.lp-fill");
       const num = h("div.lp-num", "8000");
       const name = h("div.lp-name", "");
+      // titolo ed ELO accanto al nome, come su chess.com (setPlayerInfo, solo nei duelli online)
+      const info = h("span.lp-info", { hidden: true });
       const clock = h("div.lp-clock", { hidden: true, title: "Thinking time" }, h("span.icon", { "aria-hidden": "true" }, "timer"), h("b", ""), h("i", ""));
       // Effetti persistenti su questo giocatore e sulle sue carte: compare solo se ce ne sono.
       const effects = h("button.lp-effects", { hidden: true, title: "Lingering effects", onclick: () => this.showLingering() }, h("span.icon", { "aria-hidden": "true" }, "auto_awesome"), h("b", ""));
-      const el = h(`div.lp.lp-${side}`, h("div.avatar", ""), h("div.lp-body", name, h("div.lp-track", fill), h("div.lp-row", num, clock, effects)));
-      return { el, fill, num, name, clock, effects, avatar: el.firstChild };
+      const el = h(`div.lp.lp-${side}`, h("div.avatar", ""), h("div.lp-body", h("div.lp-who", name, info), h("div.lp-track", fill), h("div.lp-row", num, clock, effects)));
+      return { el, fill, num, name, info, clock, effects, avatar: el.firstChild };
     };
     this.lpEls = [lpBar("me"), lpBar("op")];
     this.lpEls[0].name.textContent = this.names[this.me];
@@ -630,6 +632,21 @@ export class DuelView {
   }
 
   /** Amici che guardano il duello (nomi): l'occhio con il numero, i nomi al passaggio del mouse. */
+  /**
+   * Titolo, ELO e immagine di un giocatore (side 0 = io, 1 = avversario), come su chess.com:
+   * { title: { abbr, name, color, master } | null, rating: numero | null, avatar: data URL | "" }.
+   */
+  setPlayerInfo(side, { title = null, rating = null, avatar = "" } = {}) {
+    const lp = this.lpEls?.[side];
+    if (!lp) return;
+    const name = this.names[side === 0 ? this.me : 1 - this.me] ?? "";
+    lp.name.replaceChildren(...[title?.master ? h("span.lp-title", { title: title.name, style: { "--tc": title.color } }, title.abbr) : null, name].filter((x) => x != null));
+    lp.info.hidden = rating == null;
+    lp.info.textContent = rating == null ? "" : `(${rating})`;
+    lp.info.title = title ? `${title.name}${rating != null ? ` · ELO ${rating}` : ""}` : "";
+    if (avatar) lp.avatar.replaceChildren(h("img", { src: avatar, alt: "" }));
+  }
+
   setWatchers(names) {
     this.watchersEl.hidden = !names.length;
     this.watchersEl.title = names.length ? `Watching: ${names.join(", ")}` : "";
