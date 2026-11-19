@@ -44,6 +44,7 @@ Nessun bug aperto.
 - [ ] **Token di Helios nella ricerca**: le carte personalizzate con "Token look" comparivano cercando "token"; ora, come i Token veri, non compaiono nella ricerca e non entrano nel Deck, ma restano tra le carte collegate (1.0.44).
 
 ### Interfaccia
+- [ ] **Esc chiudeva anche le finestre sotto**: con due finestre aperte (o il deck builder aperto sopra una finestra) Esc le chiudeva tutte; ora chiude solo quella in cima.
 - [ ] **Spazio vuoto e colonne sbilanciate in Settings**: una scheda alta lasciava spazio vuoto sotto le vicine e le schede finivano quasi tutte in una colonna; ora ognuna va nella colonna più corta.
 - [ ] **Colore della deck box non applicato**: il colore scelto non arrivava alla scatola (le variabili CSS nello style venivano ignorate).
 

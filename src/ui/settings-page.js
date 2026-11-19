@@ -10,6 +10,8 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
+import { openProfileCard, avatarEl } from "./profile-card.js";
+import { schedulePublish, forgetPlayedDecks, MAX_AVATAR } from "../net/public-profile.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
@@ -109,6 +111,60 @@ async function importProfile(onDone) {
   onDone();
 }
 
+/** Immagine del profilo da un file: quadrata (ritagliata al centro), 160 px, WebP (JPEG se il browser non lo fa). */
+async function avatarFromFile(file) {
+  const bmp = await createImageBitmap(file);
+  const S = 160, side = Math.min(bmp.width, bmp.height);
+  const c = h("canvas", { width: S, height: S });
+  c.getContext("2d").drawImage(bmp, (bmp.width - side) / 2, (bmp.height - side) / 2, side, side, 0, 0, S, S);
+  bmp.close?.();
+  for (const q of [0.85, 0.7, 0.55, 0.4]) {
+    let url = c.toDataURL("image/webp", q);
+    if (!url.startsWith("data:image/webp")) url = c.toDataURL("image/jpeg", q);
+    if (url.length <= MAX_AVATAR) return url;
+  }
+  throw new Error("This image is too detailed: try another one");
+}
+
+/** Scheda pubblica: immagine, frase e cosa mostrano gli altri (net/public-profile.js). */
+function publicCard() {
+  const box = h("div.public-card-box");
+  const draw = () => {
+    const me = identity().pk;
+    clear(box).append(
+      h("h4", "Player card"),
+      h("p.muted.small", "What other players see when they open your card (friends list, ranking, recent opponents): your name, picture, a short line, your ranked stats and the decks you play online."),
+      h("div.row.public-card-row",
+        avatarEl(me, { avatar: settings.avatar, name: settings.name }, settings.name, 64),
+        h("div.public-card-btns",
+          h("button.btn.small", { onclick: async () => {
+            const f = await pickFile("image/*");
+            if (!f) return;
+            try {
+              settings.avatar = await avatarFromFile(f);
+              schedulePublish(300);
+              draw();
+            } catch (e) {
+              toast(e.message, { kind: "error" });
+            }
+          } }, icon("add_photo_alternate"), settings.avatar ? " Change picture" : " Add a picture"),
+          settings.avatar ? h("button.btn.small.ghost", { onclick: () => { settings.avatar = ""; schedulePublish(300); draw(); } }, "Remove") : null,
+          h("button.btn.small", { onclick: () => openProfileCard(me, { name: settings.name }) }, icon("badge"), " View my card"))),
+      h("label.field", h("span", "About you (one line)"), h("input.input", { value: settings.bio ?? "", maxLength: 160, placeholder: "e.g. Labrynth main, looking for testing partners", oninput: (e) => { settings.bio = e.target.value; schedulePublish(); } })),
+      h("label.check", h("input", { type: "checkbox", checked: settings.profileShowDecks !== false, onchange: (e) => { settings.profileShowDecks = e.target.checked; schedulePublish(300); } }), "Show the decks I play online (the last 5)"),
+      identity().seed
+        ? h("label.check", h("input", { type: "checkbox", checked: !!settings.profileShowWallets, onchange: async (e) => {
+            if (e.target.checked && !(await confirmModal("Show your wallet addresses?", "Anyone who opens your card sees your Ethereum and Monero addresses (and can look up the Ethereum balance) and can send you crypto. You can hide them again later, but who saw them keeps them.", "Show", "Cancel"))) return (e.target.checked = false);
+            settings.profileShowWallets = e.target.checked;
+            schedulePublish(300);
+          } }), "Show my wallet addresses, so players can send me crypto")
+        : null,
+      h("button.btn.small.ghost", { onclick: () => { forgetPlayedDecks(); toast("Decks removed from your card"); } }, "Clear my played decks"));
+  };
+  draw();
+  return box;
+}
+
 /** Sezione Profilo: chiave del giocatore (seed, nsec, backup), amici, classifica. */
 function profileSection(field, area) {
   const box = h("section.card-box.profile-box");
@@ -139,6 +195,7 @@ function profileSection(field, area) {
             showSeed();
           },
         }, "New profile")),
+      publicCard(),
       h("h4", "Friends"),
       h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
       h("label.check", h("input", { type: "checkbox", checked: settings.allowSpectators !== false, onchange: (e) => (settings.allowSpectators = e.target.checked) }), `Let my friends watch my Duels (Vs CPU and online)${COACHING ? " and report my mistakes" : ""}`),
@@ -793,7 +850,7 @@ export function showSettings(app) {
         h(
           "section.card-box",
           h("h3", "General"),
-          field("Duelist name", text("name", { maxLength: 24 })),
+          field("Duelist name", text("name", { maxLength: 24, onchange: () => schedulePublish() })),
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
           check("autoPlace", "Auto-pick the zone when summoning/setting"),

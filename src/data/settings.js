@@ -63,6 +63,10 @@ const DEFAULTS = {
   comboStrict: false, // Combo Trainer: modalità strict (le azioni diverse dalla combo vengono bloccate)
   trainerVideoLeft: "combo", // video del Trainer in auto-play: a sinistra "combo" (i passi), "log" o "none"
   replayLeft: "log", // replay: a sinistra "log" (il registro) o "none" (solo il campo)
+  avatar: "", // immagine del profilo pubblico (data URL WebP 160 px, src/net/public-profile.js)
+  bio: "", // frase della scheda del giocatore
+  profileShowDecks: true, // scheda: mostra i mazzi giocati online
+  profileShowWallets: false, // scheda: mostra gli indirizzi ETH e XMR (per ricevere crypto)
   aiKey: "", // chiave dell'IA (Google AI Studio) per generare le carte personalizzate: solo in questo browser (src/net/ai.js)
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };

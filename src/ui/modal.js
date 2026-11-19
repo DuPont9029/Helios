@@ -42,7 +42,11 @@ export function openModal({ title, body = [], actions = [], dismissable = true, 
     backdrop.addEventListener("mousedown", (e) => e.target === backdrop && close(undefined));
   }
   const onKey = (e) => {
-    if (e.key === "Escape" && dismissable) close(undefined);
+    if (e.key !== "Escape" || !dismissable) return;
+    // Esc chiude solo la finestra in cima: non quella sotto un'altra finestra o sotto il deck builder aperto sopra
+    let next = backdrop.nextElementSibling;
+    for (; next; next = next.nextElementSibling) if (next.matches(".side-editor-layer, .modal-backdrop:not(.closing)")) return;
+    close(undefined);
   };
   document.addEventListener("keydown", onKey);
   result.then(() => document.removeEventListener("keydown", onKey));
