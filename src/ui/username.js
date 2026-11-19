@@ -438,7 +438,7 @@ export async function showDeployPage(app) {
   const { ethers } = await import("ethers");
   const wallets = await discoverWallets();
   // la rete si sceglie esplicitamente: prima del deploy il wallet passa a quella (niente deploy per sbaglio su mainnet)
-  const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "11155111" }, `${c.name} (chain ${id})`)));
+  const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "1" }, `${c.name} (chain ${id})`)));
   const walletSel = h("select.select", wallets.map((w, i) => h("option", { value: i }, w.info.name)));
   const costOut = h("div.deploy-cost");
   // stima del costo senza inviare niente: nodo pubblico della rete scelta, dal wallet scelto (se già collegato)
