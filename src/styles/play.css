@@ -709,34 +709,6 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .player-link:hover { color: var(--accent); }
 .friend-info.clickable { cursor: pointer; }
 .friend-info.clickable:hover b { color: var(--accent); }
-.profile-card-modal { width: min(720px, 100%); }
-.pc-head { display: flex; gap: 16px; align-items: center; }
-.pc-head .avatar { border: 2px solid var(--accent); }
-.pc-who { min-width: 0; display: grid; gap: 4px; }
-.pc-name { margin: 0; font: 700 24px var(--display); text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; overflow-wrap: anywhere; }
-.pc-tag { font: 600 10px var(--mono); padding: 3px 7px; border: 1px solid var(--accent); color: var(--accent); letter-spacing: .08em; }
-.pc-tag.friend { border-color: #7dffb0; color: #7dffb0; }
-.pc-key { display: flex; align-items: center; gap: 6px; }
-.pc-bio { margin: 2px 0 0; color: var(--text); }
-.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 4px; }
-.pc-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
-.pc-sec { margin: 18px 0 8px; font: 600 13px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
-.pc-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
-.pc-stat { display: grid; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); }
-.pc-stat-v { font: 700 22px var(--display); color: var(--text); }
-.pc-stat-l { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
-.pc-stat-h { font-size: 11px; color: var(--muted); }
-.pc-games { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
-.pc-game { display: grid; grid-template-columns: 26px 1fr auto 48px; gap: 8px; align-items: center; padding: 5px 8px; background: var(--panel-2); border-left: 3px solid var(--line); font-size: 13px; }
-.pc-game.W { border-left-color: #7dffb0; } .pc-game.L { border-left-color: var(--danger); } .pc-game.D { border-left-color: var(--muted); }
-.pc-res { font: 700 12px var(--mono); }
-.pc-delta { font: 600 12px var(--mono); text-align: right; }
-.pc-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
-.pc-deck { display: grid; gap: 4px; justify-items: center; padding: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); cursor: pointer; text-align: center; }
-.pc-deck:hover { border-color: var(--accent); }
-.pc-deck-cover { width: 72px; }
-.pc-deck-cover .card { width: 100%; }
-.pc-deck-name { font-size: 12px; overflow-wrap: anywhere; }
 .public-card-box { display: grid; gap: 8px; margin: 6px 0 4px; }
 .public-card-row { align-items: center; gap: 14px; }
 .public-card-btns { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -744,3 +716,83 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .send-crypto .warn { color: #ffd23b; margin: 0; }
 .send-crypto .ok { color: #7dffb0; }
 .send-crypto .error { color: var(--danger); }
+
+/* Scheda del giocatore: una carta da collezione colorata dal grado (--pc), in finestra o da sola (#p/<codice>) */
+.profile-card-modal { width: min(640px, 100%); padding: 0; overflow: hidden; }
+.profile-card-modal .modal-body { padding: 0; }
+.profile-card-modal .modal-actions { padding: 0 20px 16px; }
+.pcard { --pc: #38c6ff; position: relative; display: grid; gap: 0; padding: 0 22px 18px; color: var(--text); overflow: hidden;
+  background:
+    radial-gradient(120% 60% at 0% 0%, color-mix(in srgb, var(--pc) 16%, transparent), transparent 60%),
+    repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 2px, transparent 2px 9px),
+    var(--panel); }
+.pc-banner { height: 92px; margin: 0 -22px; position: relative;
+  background:
+    linear-gradient(180deg, transparent 40%, var(--panel)),
+    radial-gradient(60% 140% at 85% 0%, color-mix(in srgb, var(--pc) 70%, white 10%), transparent 70%),
+    linear-gradient(120deg, color-mix(in srgb, var(--pc) 55%, #0b0c12), #0b0c12 75%); }
+.pc-banner::after { content: ""; position: absolute; inset: 0; background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, transparent 1px 22px); mask-image: linear-gradient(180deg, #000, transparent); }
+.pc-head { display: flex; gap: 18px; align-items: flex-end; margin-top: -58px; position: relative; }
+.pc-avatar { position: relative; flex: none; }
+.pc-avatar .avatar { border: 3px solid var(--pc); box-shadow: 0 0 0 4px var(--panel), 0 0 28px color-mix(in srgb, var(--pc) 55%, transparent); }
+.pc-presence { position: absolute; right: 6px; bottom: 6px; width: 16px; height: 16px; border: 3px solid var(--panel); }
+.pc-who { min-width: 0; display: grid; gap: 4px; padding-bottom: 4px; }
+.pc-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.pc-tier { font: 700 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; padding: 4px 9px; color: #0b0c12; background: var(--pc); clip-path: polygon(6px 0, 100% 0, calc(100% - 6px) 100%, 0 100%); }
+.pc-tag { font: 600 10px var(--mono); padding: 3px 8px; border: 1px solid var(--accent); color: var(--accent); letter-spacing: .08em; text-transform: uppercase; }
+.pc-tag.friend { border-color: #7dffb0; color: #7dffb0; }
+.pc-name { margin: 0; font: 700 30px/1.05 var(--display); text-transform: uppercase; letter-spacing: .03em; overflow-wrap: anywhere; text-shadow: 0 2px 18px color-mix(in srgb, var(--pc) 45%, transparent); }
+.pc-bio { margin: 0; color: var(--text); opacity: .9; font-style: italic; }
+.pc-bio::before { content: "“"; color: var(--pc); } .pc-bio::after { content: "”"; color: var(--pc); }
+.pc-key { display: flex; align-items: center; gap: 6px; font: 12px var(--mono); color: var(--muted); }
+.pc-key .icon { font-size: 15px; }
+.pc-mini { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0; display: inline-flex; }
+.pc-mini:hover { color: var(--pc); }
+.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 16px 0 2px; }
+.pc-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.pc-share-msg { flex-basis: 100%; overflow-wrap: anywhere; }
+.pc-share-msg:empty { display: none; }
+.pc-sec { margin: 20px 0 10px; font: 600 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+.pc-sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, color-mix(in srgb, var(--pc) 50%, var(--line)), transparent); }
+.pc-stat-row { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
+.pc-ring-box { position: relative; width: 96px; height: 96px; display: grid; place-items: center; }
+.pc-ring { position: absolute; inset: 0; width: 100%; height: 100%; }
+.pc-ring-v { font: 700 22px var(--display); }
+.pc-ring-box::after { content: "win rate"; position: absolute; bottom: 20px; font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.pc-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; }
+.pc-stat { display: grid; padding: 8px 10px; background: rgba(0,0,0,.25); border: 1px solid var(--line); border-left: 2px solid var(--pc); }
+.pc-stat-v { font: 700 20px var(--display); }
+.pc-stat-l { font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.pc-empty { display: flex; align-items: center; gap: 10px; color: var(--muted); padding: 10px 12px; border: 1px dashed var(--line); }
+.pc-empty .icon { color: var(--pc); font-size: 26px; }
+.pc-form { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 12px; }
+.pc-form-l { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+.pc-dot { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px; cursor: pointer; font: 700 11px var(--mono); color: #0b0c12; }
+.pc-dot.W { background: #7dffb0; } .pc-dot.L { background: #ff5b6b; } .pc-dot.D { background: #8b93a7; }
+.pc-dot:hover { outline: 2px solid var(--text); }
+.pc-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 12px; }
+.pc-decks > p { grid-column: 1 / -1; margin: 0; }
+.pc-deck { display: grid; gap: 4px; justify-items: center; padding: 12px 6px 10px; background: rgba(0,0,0,.25); border: 1px solid var(--line); color: var(--text); cursor: pointer; text-align: center; transition: border-color .15s, transform .15s; }
+.pc-deck:hover { border-color: var(--pc); transform: translateY(-2px); }
+.pc-fan { position: relative; width: 64px; height: 92px; margin-bottom: 4px; }
+.pc-fan-card { position: absolute; inset: 0; transition: transform .2s; }
+.pc-fan-card .card { width: 100%; }
+.pc-fan-card.b0 { transform: rotate(-12deg) translate(-12px, 4px); filter: brightness(.6); }
+.pc-fan-card.b1 { transform: rotate(12deg) translate(12px, 4px); filter: brightness(.6); }
+.pc-deck:hover .pc-fan-card.b0 { transform: rotate(-18deg) translate(-18px, 4px); }
+.pc-deck:hover .pc-fan-card.b1 { transform: rotate(18deg) translate(18px, 4px); }
+.pc-deck-name { font-size: 12px; overflow-wrap: anywhere; }
+.pc-deck-meta { font-size: 11px; color: var(--muted); }
+.pc-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 18px; padding-top: 10px; border-top: 1px solid var(--line); }
+.pc-logo { font: 700 13px var(--display); letter-spacing: .1em; color: var(--muted); } .pc-logo b { color: var(--pc); }
+/* pagina con solo la scheda */
+.pc-page { display: grid; justify-items: center; gap: 18px; padding: 18px 16px 40px; min-height: 100%; }
+.pc-page-top { width: min(640px, 100%); display: flex; justify-content: space-between; align-items: center; }
+.pc-page-card { width: min(640px, 100%); }
+.pc-page-card .pcard { border: 1px solid color-mix(in srgb, var(--pc) 45%, var(--line)); box-shadow: 0 20px 60px rgba(0,0,0,.55), 0 0 60px color-mix(in srgb, var(--pc) 14%, transparent); }
+@media (max-width: 600px) {
+  .pcard { padding: 0 14px 14px; } .pc-banner { margin: 0 -14px; height: 76px; }
+  .pc-head { flex-direction: column; align-items: flex-start; gap: 10px; margin-top: -50px; }
+  .pc-name { font-size: 24px; }
+  .pc-stat-row { grid-template-columns: 1fr; justify-items: center; } .pc-stat-grid { width: 100%; }
+}

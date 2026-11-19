@@ -13,6 +13,10 @@ import { sharedPool } from "./social.js";
 const KIND = 30078;
 const D = "helios-public-profile";
 const TAG = "helios-profile-v1";
+// Codice breve della scheda (link https://…/#p/<codice>): i primi 10 caratteri della chiave, anche come tag
+// dell'evento ("helios-p-<codice>"), così i relay la trovano senza la chiave intera.
+const CODE_TAG = "helios-p-";
+export const profileCode = (pk) => String(pk).slice(0, 10);
 const PLAYED = "ygoweb.playedDecks"; // mazzi giocati online: [{ key, name, main, extra, side, cover, games, at }]
 const PUBLISHED = "ygoweb.publicProfileHash"; // impronta dell'ultimo profilo pubblicato (per non ripubblicarlo uguale)
 export const MAX_AVATAR = 60000; // caratteri del data URL (l'evento resta sotto i 64 KB dei relay)
@@ -117,13 +121,14 @@ export function schedulePublish(ms = 1500) {
 export async function publishProfile({ force = false } = {}) {
   const p = await myProfile();
   const { updated, ...content } = p;
-  const hash = await sha256Hex(canonical({ ...content, pk: identity().pk }));
+  // "tags: 2": i profili pubblicati prima del codice breve si ripubblicano una volta con il tag nuovo
+  const hash = await sha256Hex(canonical({ ...content, pk: identity().pk, tags: 2 }));
   try {
     if (!force && localStorage.getItem(PUBLISHED) === hash) return -1;
   } catch {
     /* si pubblica */
   }
-  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", D], ["t", TAG]], content: JSON.stringify({ v: 1, ...p }) }, fromHex(identity().sk));
+  const ev = finalizeEvent({ kind: KIND, created_at: now(), tags: [["d", D], ["t", TAG], ["t", CODE_TAG + profileCode(identity().pk)]], content: JSON.stringify({ v: 1, ...p }) }, fromHex(identity().sk));
   const res = await Promise.allSettled(pool().publish(eloRelays(), ev));
   const n = res.filter((r) => r.status === "fulfilled").length;
   if (n) {
@@ -164,6 +169,23 @@ export function fetchProfile(pk, { fresh = false } = {}) {
   })().finally(() => pending.delete(pk));
   pending.set(pk, job);
   return job;
+}
+
+/** Giocatore dal codice breve del link: { pk, profile } o null (se più giocatori hanno lo stesso codice, il più recente). */
+export async function findProfileByCode(code) {
+  if (!/^[0-9a-f]{10}$/.test(code)) return null;
+  const evs = await pool().querySync(eloRelays(), { kinds: [KIND], "#t": [CODE_TAG + code], "#d": [D] }, { maxWait: 6000 }).catch(() => []);
+  let best = null;
+  for (const ev of evs) if (ev.pubkey.startsWith(code) && verifyEvent(ev) && (!best || ev.created_at > best.created_at)) best = ev;
+  if (!best) return null;
+  let profile = null;
+  try {
+    profile = cleanProfile(JSON.parse(best.content));
+  } catch {
+    profile = null;
+  }
+  cache.set(best.pubkey, { at: Date.now(), profile });
+  return { pk: best.pubkey, profile };
 }
 
 /** Profili di più giocatori insieme (una richiesta sola ai relay), per gli elenchi: pk → profilo. */

@@ -10,7 +10,7 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
-import { openProfileCard, avatarEl } from "./profile-card.js";
+import { openProfileCard, avatarEl, profileLink } from "./profile-card.js";
 import { schedulePublish, forgetPlayedDecks, MAX_AVATAR } from "../net/public-profile.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
@@ -149,7 +149,8 @@ function publicCard() {
             }
           } }, icon("add_photo_alternate"), settings.avatar ? " Change picture" : " Add a picture"),
           settings.avatar ? h("button.btn.small.ghost", { onclick: () => { settings.avatar = ""; schedulePublish(300); draw(); } }, "Remove") : null,
-          h("button.btn.small", { onclick: () => openProfileCard(me, { name: settings.name }) }, icon("badge"), " View my card"))),
+          h("button.btn.small", { onclick: () => openProfileCard(me, { name: settings.name }) }, icon("badge"), " View my card"),
+          h("button.btn.small", { title: "A short link that opens only your card", onclick: () => copyText(profileLink(me)).then((ok) => toast(ok ? `Link copied: ${profileLink(me)}` : "Copy failed")) }, icon("link"), " Copy my card link"))),
       h("label.field", h("span", "About you (one line)"), h("input.input", { value: settings.bio ?? "", maxLength: 160, placeholder: "e.g. Labrynth main, looking for testing partners", oninput: (e) => { settings.bio = e.target.value; schedulePublish(); } })),
       h("label.check", h("input", { type: "checkbox", checked: settings.profileShowDecks !== false, onchange: (e) => { settings.profileShowDecks = e.target.checked; schedulePublish(300); } }), "Show the decks I play online (the last 5)"),
       identity().seed
