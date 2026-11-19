@@ -14,9 +14,12 @@
     "signal": "node server/signal.mjs",
     "test:core": "node scripts/smoke-test.mjs",
     "feature": "node scripts/feature.mjs",
-    "vscode-ext": "node scripts/install-vscode-ext.mjs"
+    "vscode-ext": "node scripts/install-vscode-ext.mjs",
+    "contracts": "node scripts/build-contracts.mjs"
   },
   "devDependencies": {
+    "@openzeppelin/contracts": "5.1.0",
+    "solc": "0.8.28",
     "vite": "^7.1.0",
     "ws": "^8.18.0"
   },
