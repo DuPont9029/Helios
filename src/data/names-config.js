@@ -9,7 +9,9 @@ export const CHAINS = {
 
 export const NAMES_CONFIG = {
   chainId: 1, // Ethereum mainnet
-  address: "",
+  // Deploy del 19/11/2026, blocco 26451515, tx 0x7c4765423466e5cae3170cbbf71f3b83ca315b36d5ea0e153553251ae9cb734b
+  // (initcode identico a src/data/names-contract.json a parte i metadata; sorgente verificato su Sourcify).
+  address: "0x8539D33A42cf1f2ACDD72DEBD3e31A75C9F136C6",
   rpc: ["https://ethereum-rpc.publicnode.com", "https://eth.drpc.org", "https://cloudflare-eth.com"],
   explorer: "https://etherscan.io",
 };
