@@ -23,7 +23,6 @@ export const MAX_AVATAR = 60000; // caratteri del data URL (l'evento resta sotto
 const MAX_DECKS = 5;
 const HEX64 = /^[0-9a-f]{64}$/;
 const AVATAR_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
-const ETH_RE = /^0x[0-9a-fA-F]{40}$/;
 const XMR_RE = /^[48][1-9A-HJ-NP-Za-km-z]{94}$/;
 
 let ownPool = null;
@@ -36,14 +35,17 @@ const str = (v, n) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().sli
 /** Profilo pulito (anche quello che arriva dai relay, scritto da chiunque). */
 export function cleanProfile(v) {
   if (!v || typeof v !== "object") return null;
+  // per ricevere crypto solo Monero (le schede vecchie con l'indirizzo ETH lo perdono qui)
   const wallets = {};
-  if (ETH_RE.test(v.wallets?.eth ?? "")) wallets.eth = v.wallets.eth;
   if (XMR_RE.test(v.wallets?.xmr ?? "")) wallets.xmr = v.wallets.xmr;
+  const pattern = ["rays", "grid", "waves", "hex", "stars", "plain"].includes(v.theme?.pattern) ? v.theme.pattern : "rays";
+  const theme = /^#[0-9a-f]{6}$/i.test(v.theme?.color ?? "") ? { color: v.theme.color.toLowerCase(), pattern } : { color: "", pattern };
   return {
     name: str(v.name, 24) || "Duelist",
     avatar: typeof v.avatar === "string" && v.avatar.length <= MAX_AVATAR && AVATAR_RE.test(v.avatar) ? v.avatar : "",
     bio: str(v.bio, 160),
     wallets,
+    theme,
     decks: (Array.isArray(v.decks) ? v.decks : []).slice(0, MAX_DECKS).map((d) => ({
       name: str(d?.name, 40) || "Deck",
       main: codes(d?.main, 60), extra: codes(d?.extra, 15), side: codes(d?.side, 15),
@@ -100,12 +102,11 @@ export function forgetPlayedDecks() {
 
 /** Il proprio profilo come lo vedono gli altri. */
 export async function myProfile() {
-  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, decks: [], updated: Date.now() };
+  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
   if (settings.profileShowDecks !== false) p.decks = playedDecks();
   if (settings.profileShowWallets && identity().seed) {
-    const { bip39Seed, ethAddresses, moneroWallet } = await import("./wallets.js");
-    const seed = bip39Seed(identity().seed);
-    p.wallets = { eth: ethAddresses(seed, 1)[0].address, xmr: moneroWallet(seed).address };
+    const { bip39Seed, moneroWallet } = await import("./wallets.js");
+    p.wallets = { xmr: moneroWallet(bip39Seed(identity().seed)).address };
   }
   return cleanProfile(p);
 }

@@ -18,7 +18,8 @@ import { connectViaServer, createInvite, acceptInvite, completeInvite, waitOpen,
 import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { findMatch, watchSeeks, queueOf, MM_PROTO } from "../net/matchmaking.js";
-import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
+import { leaderboard, republishOutbox, START_RATING, cachedLeaderboard } from "../net/elo.js";
+import { titleOf, MASTER_TITLES } from "../data/titles.js";
 import { openProfileCard, avatarEl } from "./profile-card.js";
 import { fetchProfiles, cachedProfile, recordPlayedDeck, schedulePublish } from "../net/public-profile.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
@@ -561,6 +562,27 @@ async function playMatch(app, match, old = null) {
           match.mux.close();
         });
     },
+  });
+  showPlayerInfo(app.current, result.opponent?.pk);
+}
+
+/**
+ * Titolo, ELO e immagine dei due giocatori accanto ai nomi in partita (come su chess.com): arrivano dopo, dalla
+ * classifica e dalle schede sui relay. Chi non ha Duel classificati mostra il rating di partenza.
+ */
+function showPlayerInfo(session, opponentPk) {
+  const pks = [identity().pk, opponentPk];
+  if (!session?.view || !opponentPk) return;
+  Promise.all([cachedLeaderboard().catch(() => null), fetchProfiles(pks).catch(() => new Map())]).then(([board, profiles]) => {
+    pks.forEach((pk, side) => {
+      const p = board?.players.find((x) => x.pk === pk);
+      const t = board ? titleOf(p?.rating ?? START_RATING, p?.games ?? 0, p?.peak) : null;
+      session.view.setPlayerInfo(side, {
+        title: t ? { ...t, master: MASTER_TITLES.has(t.abbr) } : null,
+        rating: board ? p?.rating ?? START_RATING : null,
+        avatar: profiles.get(pk)?.avatar ?? "",
+      });
+    });
   });
 }
 

@@ -66,7 +66,9 @@ const DEFAULTS = {
   avatar: "", // immagine del profilo pubblico (data URL WebP 160 px, src/net/public-profile.js)
   bio: "", // frase della scheda del giocatore
   profileShowDecks: true, // scheda: mostra i mazzi giocati online
-  profileShowWallets: false, // scheda: mostra gli indirizzi ETH e XMR (per ricevere crypto)
+  profileShowWallets: false, // scheda: mostra l'indirizzo XMR (per ricevere Monero)
+  cardColor: "#38c6ff", // scheda: colore scelto dal giocatore
+  cardPattern: "rays", // scheda: motivo del fascione (CARD_PATTERNS in src/ui/profile-card.js)
   aiKey: "", // chiave dell'IA (Google AI Studio) per generare le carte personalizzate: solo in questo browser (src/net/ai.js)
   editorFilters: true, // editor: filtri della ricerca aperti (false = ridotti per avere più spazio per la lista)
 };
