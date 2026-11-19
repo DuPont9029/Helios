@@ -45,5 +45,7 @@ const init = c.evm.bytecode.object.length / 2;
 if (init > 49152) throw new Error(`Init code is ${init} bytes: over the 49,152-byte limit (EIP-3860)`);
 const runtime = c.evm.deployedBytecode.object.length / 2;
 const file = path.join(ROOT, "src/data/names-contract.json");
-fs.writeFileSync(file, JSON.stringify({ compiler: solc.version(), evmVersion: "paris", viaIR: true, abi: c.abi, bytecode: "0x" + c.evm.bytecode.object }, null, 1));
+// rendererAbi: per chiedere l'anteprima di una card al renderer on-chain (svg) prima di firmare
+const rendererAbi = out.contracts["contracts/HeliosCard.sol"].HeliosCardRenderer.abi;
+fs.writeFileSync(file, JSON.stringify({ compiler: solc.version(), evmVersion: "paris", viaIR: true, abi: c.abi, rendererAbi, bytecode: "0x" + c.evm.bytecode.object }, null, 1));
 console.log(`HeliosNames init code: ${init} bytes (limit 49,152) → ${path.relative(ROOT, file)}`);

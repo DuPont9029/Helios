@@ -325,6 +325,28 @@ export async function mintCard(signer, card, { auth = null, steps } = {}) {
   await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Card");
 }
 
+/**
+ * Anteprima esatta di una card, disegnata dal renderer del contratto (chiamata in sola lettura, gratis): restituisce
+ * un data URL SVG. card: i dati di conio/aggiornamento (CardInput); owner: il wallet del nome.
+ */
+export async function previewCard(card, owner) {
+  const ethers = await ethersLib();
+  const c = await contract();
+  const [rendererAddress, name, block] = await Promise.all([c.renderer(), c.nameOfOwner(owner), (await provider()).getBlockNumber()]);
+  const reg = await lookup(name.display);
+  const renderer = new ethers.Contract(rendererAddress, (await abi()).rendererAbi, await provider());
+  const view = {
+    name: reg.display, number: reg.number, og: reg.number > 0 && reg.number <= OG_LIMIT, nostr: reg.nostr, owner, since: reg.atBlock,
+    color: card.color, pattern: card.pattern, bio: card.bio, xmr: card.xmr, avatar: card.avatar,
+    decks: card.decks.map((d) => ({ name: d.name, main: d.main, extra: d.extra, cover: d.cover })),
+    rating: card.rating, peak: card.peak, games: card.games, rankedAt: block,
+  };
+  const bytes = new TextEncoder().encode(await renderer.svg(view));
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return "data:image/svg+xml;base64," + btoa(bin);
+}
+
 /** Aggiorna la propria card (setStyle): stessi dati del conio, la riscrive il wallet a cui è intestato il nome. */
 export async function updateCard(signer, card, { steps } = {}) {
   const c = await contract(signer);

@@ -246,14 +246,20 @@ export function openMintDialog({ update = false, onDone } = {}) {
     const p = built.preview;
     const { titleOf } = await import("../data/titles.js");
     const t = titleOf(p.rank.rating, p.rank.games, p.rank.peak);
+    // anteprima esatta: la card disegnata dal renderer del contratto con questi dati (per l'aggiornamento accanto a quella di adesso)
+    const shots = h("div.mint-shots", h("p.muted.small", "Drawing the preview with the on-chain renderer…"));
+    Promise.all([names.previewCard(built.input, owner), update ? names.cardOfWallet(owner).then((c) => c?.image ?? null) : null])
+      .then(([next, now]) => {
+        if (my !== painting) return;
+        clear(shots).append(...[
+          now ? h("figure.mint-shot", h("img", { src: now, alt: "Your card now" }), h("figcaption.muted.small", "Now")) : null,
+          h("figure.mint-shot", h("img", { src: next, alt: "Your card" }), h("figcaption.muted.small", update ? "After the update" : "Your card")),
+        ].filter(Boolean));
+      })
+      .catch((e) => clear(shots).append(h("p.muted.small", `Preview unavailable (${e.shortMessage ?? e.message})`)));
     clear(preview).append(
-      h("div.mint-head", p.avatar ? h("img.mint-avatar", { src: p.avatar, alt: "" }) : h("span.mint-avatar.blank", "?"),
-        h("div", h("b", settings.username), h("div.muted.small", p.bio || "(no line)"), h("div.mint-color", h("span", { style: { background: p.color } }), ` ${p.color} · ${settings.cardPattern || "rays"}`))),
-      h("div.muted.small", `${t.name}${p.rank.games ? ` · ELO ${p.rank.rating} (peak ${p.rank.peak}, ${p.rank.games} ranked Duels)` : ""} — a snapshot of now`),
-      h("div.muted.small", `ETH ${owner.slice(0, 8)}…${owner.slice(-4)}${p.xmr ? ` · XMR ${p.xmr.slice(0, 8)}…${p.xmr.slice(-6)}` : ""}`),
-      p.decks.length
-        ? h("div.mint-decks", p.decks.map((d) => h("div.mint-deck", d.cover ? h("img", { src: d.cover, alt: "" }) : h("span.mint-nocover"), h("b", d.name), h("span.muted.small", `${d.main}+${d.extra}`))))
-        : h("p.muted.small", "No decks on your player card: choose them in Settings → Profile → Player card."),
+      shots,
+      h("div.muted.small", `${t.name}${p.rank.games ? ` · ELO ${p.rank.rating} (peak ${p.rank.peak}, ${p.rank.games} ranked Duels)` : ""}: the ranking on the card is a snapshot of now.`),
       h("p.muted.small", "This is your Helios player card: change picture, line, colors and decks in Settings → Profile → Player card, then update the NFT."));
   };
   const ownWallet = async () => {

@@ -853,3 +853,16 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .mint-pick-deck:disabled { opacity: .45; cursor: default; }
 .card-deck-pick { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
 .warn-text { color: #ffd23b; }
+
+/* Player card e Username in Settings: la colonna non si allarga oltre il riquadro (i figli della griglia possono
+   restringersi, motivi e mazzi vanno a capo) */
+.public-card-box, .username-box { grid-template-columns: minmax(0, 1fr); }
+.public-card-box > *, .username-box > *, .title-box, .title-now > div, .card-patterns > *, .profile-box > * { min-width: 0; }
+.card-patterns { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); }
+.card-deck-pick { flex-wrap: wrap; overflow: visible; }
+.public-card-btns, .username-box .row, .public-card-row { flex-wrap: wrap; }
+.title-now .muted, .public-card-box > p, .username-box > p { overflow-wrap: anywhere; }
+.mint-shots { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.mint-shot { margin: 0; display: grid; justify-items: center; gap: 4px; }
+.mint-shot img { width: 210px; max-width: 100%; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.username-modal:has(.mint-shots) { width: min(640px, 100%); }
