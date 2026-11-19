@@ -83,7 +83,7 @@ export async function showWallets({ onProfile } = {}) {
   web.el.querySelector(".wallet-head").prepend(webIcon);
   web.el.querySelector(".wallet-coin").remove();
   const webName = web.el.querySelector(".wallet-name");
-  web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; toast("Browser wallet disconnected"); } }, "Disconnect"));
+  web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; webOn = false; eth.el.hidden = !identity().seed; toast("Browser wallet disconnected"); } }, "Disconnect"));
   const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with a KeyTag, or connect a browser wallet.");
 
   // ---- accesso: KeyTag o wallet del browser
@@ -106,7 +106,11 @@ export async function showWallets({ onProfile } = {}) {
     derive();
   }
 
+  // con un wallet del browser collegato l'Ethereum è il suo: il wallet ETH derivato dalle parole non si mostra
+  let webOn = false;
   function showWeb(w) {
+    webOn = true;
+    eth.el.hidden = true;
     web.el.hidden = false;
     webName.textContent = w.name;
     webIcon.hidden = !w.icon;
@@ -252,7 +256,8 @@ export async function showWallets({ onProfile } = {}) {
 
   function derive() {
     const has = !!identity().seed;
-    eth.el.hidden = xmr.el.hidden = !has;
+    xmr.el.hidden = !has;
+    eth.el.hidden = !has || webOn;
     noSeed.hidden = has;
     advancedBtn && (advancedBtn.hidden = !has);
     if (!has) {
