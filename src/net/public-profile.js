@@ -42,6 +42,9 @@ export function cleanProfile(v) {
   const theme = /^#[0-9a-f]{6}$/i.test(v.theme?.color ?? "") ? { color: v.theme.color.toLowerCase(), pattern } : { color: "", pattern };
   return {
     name: str(v.name, 24) || "Duelist",
+    // username on-chain dichiarato da chi firma il profilo (net/names.js lo confronta con il registro)
+    username: /^[A-Za-z0-9_]{3,20}$/.test(v.username ?? "") ? v.username : "",
+    wallet: /^0x[0-9a-fA-F]{40}$/.test(v.wallet ?? "") ? v.wallet : "",
     avatar: typeof v.avatar === "string" && v.avatar.length <= MAX_AVATAR && AVATAR_RE.test(v.avatar) ? v.avatar : "",
     bio: str(v.bio, 160),
     wallets,
@@ -102,7 +105,7 @@ export function forgetPlayedDecks() {
 
 /** Il proprio profilo come lo vedono gli altri. */
 export async function myProfile() {
-  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
+  const p = { name: settings.name, username: settings.username || "", wallet: settings.usernameWallet || "", avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
   if (settings.profileShowDecks !== false) p.decks = playedDecks();
   if (settings.profileShowWallets && identity().seed) {
     const { bip39Seed, moneroWallet } = await import("./wallets.js");

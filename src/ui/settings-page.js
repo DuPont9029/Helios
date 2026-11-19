@@ -10,6 +10,7 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
+import { NAMES_CONFIG } from "../data/names-config.js";
 import { openProfileCard, avatarEl, profileLink, CARD_COLORS, CARD_PATTERNS } from "./profile-card.js";
 import { titleOf, TITLES, UNRATED, KEEP_FROM } from "../data/titles.js";
 import { cachedLeaderboard } from "../net/elo.js";
@@ -128,6 +129,29 @@ async function avatarFromFile(file) {
   throw new Error("This image is too detailed: try another one");
 }
 
+/** Username on-chain (src/net/names.js, src/ui/username.js) e la card NFT. Solo con il registro deployato. */
+function usernameBox(redraw) {
+  const box = h("div.username-box");
+  import("../net/names.js").then(async (names) => {
+    if (!names.namesActive()) return;
+    const ui = await import("./username.js");
+    const card = h("div.nft-card-preview");
+    const has = !!settings.username;
+    box.append(...[
+      h("h4", "Username"),
+      h("div.row",
+        h("b.username-now", has ? settings.username : names.provisionalName(identity().pk)),
+        has ? h("span.verified-tag", { title: `Registered on Ethereum to ${settings.usernameWallet}` }, icon("verified"), ` #${settings.usernameNumber || "?"}`) : h("span.muted.small", "(provisional: choose your username)"),
+        has && settings.usernameNumber && settings.usernameNumber <= names.OG_LIMIT ? h("span.og-tag", { title: `One of the first ${names.OG_LIMIT} Helios usernames` }, "OG") : null,
+        h("button.btn.small.primary", { onclick: () => ui.openUsernameDialog({ onDone: redraw }) }, icon("badge"), has ? " Change" : " Choose username")),
+      h("p.muted.small", "Unique on Helios and bound to your wallet (registered on Ethereum): two players can never have the same name."),
+      has ? h("div.row", h("button.btn.small", { onclick: () => ui.openMintDialog({ onDone: redraw }) }, icon("token"), " Mint my on-chain card")) : null,
+      card].filter(Boolean)); // append() scriverebbe "null"
+    if (has) names.cardOfWallet(settings.usernameWallet).then((c) => c && card.append(h("img", { src: c.image, alt: "On-chain player card", title: `Username #${c.number} on Ethereum` }))).catch(() => {});
+  });
+  return box;
+}
+
 /** Titolo degli scacchi dal proprio rating ELO (src/ui/profile-card.js: TITLES), con le soglie e quanto manca. */
 function titleBox() {
   const box = h("div.title-box", h("span.muted.small", "Loading your rating…"));
@@ -225,6 +249,7 @@ function profileSection(field, area) {
             showSeed();
           },
         }, "New profile")),
+      usernameBox(draw),
       publicCard(),
       h("h4", "Friends"),
       h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
@@ -880,7 +905,7 @@ export function showSettings(app) {
         h(
           "section.card-box",
           h("h3", "General"),
-          field("Duelist name", text("name", { maxLength: 24, onchange: () => schedulePublish() })),
+          field("Duelist name", text("name", { maxLength: 24, onchange: () => schedulePublish(), readOnly: NAMES_CONFIG.address !== "", title: NAMES_CONFIG.address ? "Your name is your username: change it in Profile → Username" : "" })),
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
           check("autoPlace", "Auto-pick the zone when summoning/setting"),

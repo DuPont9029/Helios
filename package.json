@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "1.0.60",
+  "version": "1.0.61",
   "private": true,
   "type": "module",
   "description": "Client web di Yu-Gi-Oh! con motore EDOPro (WASM) e duelli P2P via WebRTC",
@@ -26,6 +26,7 @@
   "dependencies": {
     "@noble/secp256k1": "3.2.0",
     "@scure/bip39": "^2.0.1",
+    "ethers": "6.13.4",
     "monaco-editor": "0.52.2",
     "nostr-tools": "2.25.2",
     "three": "0.170.0",

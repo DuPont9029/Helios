@@ -29,6 +29,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     struct Name {
         address owner; // wallet del giocatore
         uint64 block_; // blocco della registrazione
+        uint32 number; // numero progressivo della registrazione (1, 2, 3…): i primi OG_LIMIT sono gli "OG"
         bytes32 nostr; // chiave pubblica Nostr dichiarata (x-only, 32 byte)
         string display; // il nome come scritto (maiuscole comprese)
     }
@@ -36,7 +37,6 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     struct Card {
         bytes3 color; // #rrggbb
         uint8 pattern; // 0 rays, 1 grid, 2 waves, 3 hexagons, 4 stars, 5 plain
-        uint32 serial; // numero della card
         string bio; // ASCII stampabile senza < > & " \ , al massimo 48 caratteri
     }
 
@@ -47,8 +47,11 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     bytes32 private constant REGISTER_TYPEHASH = keccak256("Register(string name,bytes32 nostr,uint256 nonce,uint256 deadline)");
     bytes32 private constant MINT_TYPEHASH = keccak256("Mint(bytes3 color,uint8 pattern,string bio,uint256 nonce,uint256 deadline)");
 
+    /// @notice I primi OG_LIMIT nomi registrati sono gli OG (la card lo mostra). Il numero non si riassegna mai.
+    uint32 public constant OG_LIMIT = 100;
+
     uint256 public totalSupply;
-    uint32 private _serials;
+    uint32 public namesRegistered; // contatore dei numeri (anche dei nomi poi liberati)
 
     mapping(bytes32 key => Name) private _names; // key = keccak256(nome in minuscolo)
     mapping(address owner => bytes32) public keyOfOwner;
@@ -137,7 +140,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         if (nostr == bytes32(0) || owner == address(0)) revert BadNostrKey();
         if (_names[key].owner != address(0)) revert NameTaken();
         if (keyOfOwner[owner] != bytes32(0)) revert AlreadyRegistered();
-        _names[key] = Name(owner, uint64(block.number), nostr, name);
+        _names[key] = Name(owner, uint64(block.number), ++namesRegistered, nostr, name);
         keyOfOwner[owner] = key;
         emit Registered(key, name, owner, nostr);
     }
@@ -158,15 +161,15 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     }
 
     /// @notice Registrazione di un nome (owner zero se è libero).
-    function lookup(string calldata name) external view returns (address owner, bytes32 nostr, uint64 atBlock, string memory display) {
+    function lookup(string calldata name) external view returns (address owner, bytes32 nostr, uint64 atBlock, uint32 number, string memory display) {
         Name storage n = _names[keyOf(name)];
-        return (n.owner, n.nostr, n.block_, n.display);
+        return (n.owner, n.nostr, n.block_, n.number, n.display);
     }
 
     /// @notice Nome registrato da un wallet ("" se nessuno), con la chiave Nostr dichiarata.
-    function nameOfOwner(address owner) external view returns (string memory display, bytes32 nostr) {
+    function nameOfOwner(address owner) external view returns (string memory display, bytes32 nostr, uint32 number) {
         Name storage n = _names[keyOfOwner[owner]];
-        return (n.display, n.nostr);
+        return (n.display, n.nostr, n.number);
     }
 
     // ------------------------------------------------------------------ player card (NFT soulbound)
@@ -190,7 +193,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         uint256 id = uint256(key);
         if (_ownerOf(id) != address(0)) revert CardExists();
         _checkStyle(pattern, bio);
-        _cards[id] = Card(color, pattern, ++_serials, bio);
+        _cards[id] = Card(color, pattern, bio);
         ++totalSupply;
         _mint(owner, id);
         emit Locked(id);
@@ -225,11 +228,11 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         }
     }
 
-    function cardOf(address owner) external view returns (uint256 tokenId, bytes3 color, uint8 pattern, uint32 serial, string memory bio) {
+    function cardOf(address owner) external view returns (uint256 tokenId, bytes3 color, uint8 pattern, uint32 number, string memory bio) {
         tokenId = uint256(keyOfOwner[owner]);
         if (tokenId == 0 || _ownerOf(tokenId) == address(0)) return (0, 0, 0, 0, "");
         Card storage c = _cards[tokenId];
-        return (tokenId, c.color, c.pattern, c.serial, c.bio);
+        return (tokenId, c.color, c.pattern, _names[bytes32(tokenId)].number, c.bio);
     }
 
     /// @notice EIP-5192: la card è sempre legata al wallet.
@@ -263,21 +266,28 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         address o = _requireOwned(tokenId);
         Card storage c = _cards[tokenId];
         Name storage n = _names[bytes32(tokenId)];
-        string memory json = string.concat(
-            '{"name":"', n.display, ' - Helios Player Card","description":"Helios username and player card.',
-            bytes(c.bio).length > 0 ? string.concat(" ", c.bio) : "",
-            '","attributes":[{"trait_type":"Card","display_type":"number","value":', uint256(c.serial).toString(),
-            '},{"trait_type":"Pattern","value":"', _patternName(c.pattern),
-            '"}],"image":"data:image/svg+xml;base64,', Base64.encode(bytes(_svg(n, c, o))), '"}'
+        string memory image = string.concat('"image":"data:image/svg+xml;base64,', Base64.encode(bytes(_svg(n, c, o))), '"}');
+        return string.concat("data:application/json;base64,", Base64.encode(bytes(string.concat(_meta(n, c), image))));
+    }
+
+    /// @dev Nome, descrizione e attributi (numero, OG, motivo) del JSON dei metadati, fino a "image".
+    function _meta(Name storage n, Card storage c) private view returns (string memory) {
+        string memory num = uint256(n.number).toString();
+        bool og = n.number <= OG_LIMIT;
+        return string.concat(
+            '{"name":"#', num, " ", n.display, ' - Helios Player Card","description":"Helios username #', num,
+            og ? " (OG)." : ".", bytes(c.bio).length > 0 ? string.concat(" ", c.bio) : "",
+            '","attributes":[{"trait_type":"Number","display_type":"number","value":', num,
+            '},{"trait_type":"OG","value":"', og ? "Yes" : "No",
+            '"},{"trait_type":"Pattern","value":"', _patternName(c.pattern), '"}],'
         );
-        return string.concat("data:application/json;base64,", Base64.encode(bytes(json)));
     }
 
     // ------------------------------------------------------------------ SVG (solo nomi [A-Za-z0-9_] e frasi già filtrate)
 
     function _svg(Name storage n, Card storage c, address o) private view returns (string memory) {
         string memory col = string.concat("#", _hex3(c.color));
-        return string.concat(_frame(c.pattern, col), _top(n.display, col), _body(n, c, col, o), "</svg>");
+        return string.concat(_frame(c.pattern, col), _top(n.display, col), _badge(n.number, col), _body(n, c, col, o), "</svg>");
     }
 
     function _frame(uint8 pattern, string memory col) private pure returns (string memory) {
@@ -294,6 +304,19 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         );
     }
 
+    /// @dev Numero della registrazione in alto a destra; i primi OG_LIMIT con la scritta OG dorata.
+    function _badge(uint32 number, string memory col) private pure returns (string memory) {
+        string memory num = string.concat("#", uint256(number).toString());
+        string memory b = string.concat(
+            '<rect x="268" y="22" width="110" height="34" rx="17" fill="#0b0c12" fill-opacity=".75" stroke="', col, '"/>',
+            '<text x="323" y="45" fill="#fff" font-size="18" font-weight="700" text-anchor="middle">', num, "</text>"
+        );
+        if (number > OG_LIMIT) return b;
+        return string.concat(b,
+            '<rect x="296" y="62" width="54" height="22" rx="4" fill="#ffcf3b"/>',
+            '<text x="323" y="78" fill="#0b0c12" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">OG</text>');
+    }
+
     function _top(string memory display, string memory col) private pure returns (string memory) {
         return string.concat(
             '<text x="28" y="44" fill="#fff" font-size="20" font-weight="700" letter-spacing="4">HELI<tspan fill="', col, '">OS</tspan></text>',
@@ -308,7 +331,7 @@ contract HeliosNames is ERC721, EIP712, Nonces {
             '<text x="200" y="356" fill="#c9cfdc" font-size="13" text-anchor="middle" font-style="italic">', c.bio, "</text>",
             '<line x1="40" y1="392" x2="360" y2="392" stroke="', col, '" stroke-opacity=".5"/>',
             _rows(n, o),
-            '<text x="40" y="530" fill="', col, '" font-size="14" font-weight="700">PLAYER CARD #', uint256(c.serial).toString(), "</text>",
+            '<text x="40" y="530" fill="', col, '" font-size="14" font-weight="700">USERNAME #', uint256(n.number).toString(), n.number <= OG_LIMIT ? " - OG" : "", "</text>",
             '<text x="360" y="530" fill="#8b93a7" font-size="12" text-anchor="end">ygoweb.eu</text>'
         );
     }

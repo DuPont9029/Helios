@@ -50,7 +50,7 @@ await reverts(as(alice).register("Alice", nostr(1), secret()), "BadCommitment", 
 for (const bad of ["Duelist", "duelist", "DUELIST", "ab", "a-b-c", "x".repeat(21), "àbcd", "bad name", ""]) await reverts(c.keyOf(bad), "BadName", `nome non valido ${JSON.stringify(bad)}`);
 await reverts(registerAs(bob, "ALICE", nostr(2)), "NameTaken", "Bob prova ALICE (stesso nome con maiuscole diverse)");
 await registerAs(bob, "Bob_99", nostr(2));
-ok((await c.lookup("BOB_99")).display === "Bob_99", "Bob_99 registrato, nome mostrato come scritto");
+ok((await c.lookup("BOB_99")).display === "Bob_99" && Number((await c.lookup("bob_99")).number) === 2, "Bob_99 registrato (numero 2), nome mostrato come scritto");
 await reverts(registerAs(bob, "Bobby", nostr(2)), "AlreadyRegistered", "secondo nome sullo stesso wallet");
 // la chiave Nostr non si può occupare: Eve usa la chiave di Carol, Carol registra lo stesso
 await registerAs(eve, "EveName", nostr(4));
@@ -115,7 +115,9 @@ const uri = await c.tokenURI(id);
 const meta = JSON.parse(Buffer.from(uri.split(",")[1], "base64").toString());
 const svg = Buffer.from(meta.image.split(",")[1], "base64").toString();
 fs.writeFileSync(new URL("card-test.svg", import.meta.url), svg);
-ok(meta.name === "Alice - Helios Player Card" && svg.includes(">Alice<") && svg.includes("#ff7ad9") && svg.startsWith("<svg"), "tokenURI: JSON valido e SVG con nome e colore");
+ok(meta.name === "#1 Alice - Helios Player Card" && svg.includes(">Alice<") && svg.includes("#ff7ad9") && svg.startsWith("<svg"), "tokenURI: JSON valido e SVG con numero, nome e colore");
+ok(meta.attributes.some((a) => a.trait_type === "Number" && a.value === 1) && meta.attributes.some((a) => a.trait_type === "OG" && a.value === "Yes") && svg.includes(">#1<") && svg.includes(">OG<"), "card #1: numero e badge OG nei metadati e nell'immagine");
+ok(Number((await c.cardOf(await alice.getAddress())).number) === 1, "cardOf restituisce il numero della registrazione");
 for (const [f, args] of [["transferFrom", [await alice.getAddress(), await bob.getAddress(), id]], ["approve", [await bob.getAddress(), id]], ["setApprovalForAll", [await bob.getAddress(), true]]])
   await reverts(as(alice)[f](...args), "Soulbound", `soulbound: ${f}`);
 await reverts(as(alice)["safeTransferFrom(address,address,uint256)"](await alice.getAddress(), await bob.getAddress(), id), "Soulbound", "soulbound: safeTransferFrom");
@@ -131,5 +133,6 @@ await reverts(c.tokenURI(id), "ERC721NonexistentToken", "tokenURI di una card br
 await reverts(registerAs(eve, "Alice", nostr(5)), "AlreadyRegistered", "Eve (che ha già un nome) non prende Alice liberato");
 await registerAs(friend, "Alice", nostr(8));
 ok((await c.lookup("alice")).owner === await friend.getAddress(), "dopo il release Alice si può registrare da un altro wallet");
+ok(Number((await c.lookup("alice")).number) === Number(await c.namesRegistered()) && Number((await c.lookup("alice")).number) > 1, "il nome ripreso ha un numero nuovo (il #1 non si riassegna)");
 console.log(`\n${pass} passed, ${fail} failed · gas: commit ${gas.commit}, register ${gas.register}, registerFor ${gas.registerFor}, mint ${gas.mint}`);
 process.exit(fail ? 1 : 0);

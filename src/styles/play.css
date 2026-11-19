@@ -817,3 +817,22 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .title-table { border-collapse: collapse; margin-top: 6px; font-size: 13px; }
 .title-table td { padding: 3px 8px 3px 0; }
 .title-table tr.me td:nth-child(2) { color: var(--accent); font-weight: 700; }
+
+/* Username on-chain (src/ui/username.js) */
+.username-modal { width: min(560px, 100%); }
+.payer-box { display: grid; gap: 8px; margin: 10px 0; }
+.payer-opt { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; }
+.payer-opt.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.payer-opt.off { opacity: .5; cursor: default; }
+.payer-opt input { margin-top: 3px; accent-color: var(--accent); }
+.payer-opt .muted { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.name-status.ok, .name-progress.ok { color: #7dffb0; }
+.name-status.bad, .name-progress.error { color: var(--danger); }
+.username-box { display: grid; gap: 8px; margin: 6px 0 10px; }
+.username-now { font: 700 18px var(--display); }
+.verified-tag, .pc-tag.chain { display: inline-flex; align-items: center; gap: 3px; color: #7dffb0; border-color: #7dffb0; font-size: 11px; }
+.verified-tag .icon, .pc-tag.chain .icon { font-size: 14px; }
+.nft-card-preview img { width: 180px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); }
+.deploy-page { gap: 12px; max-width: 760px; }
+.deploy-out .ok { color: #7dffb0; } .deploy-out .error { color: var(--danger); }
+.pc-tag.og, .og-tag { background: #ffcf3b; color: #0b0c12; border-color: #ffcf3b; font: 800 11px var(--mono); letter-spacing: .12em; padding: 3px 8px; }

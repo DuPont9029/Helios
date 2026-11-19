@@ -352,7 +352,14 @@ async function boot() {
       return true;
     };
     window.addEventListener("hashchange", openCardLink);
-    if (!openCardLink()) home();
+    // username on-chain (net/names.js): valido o da scegliere; richieste degli amici di pagarlo
+    import("./net/names.js").then(async (n) => {
+      if (!n.namesActive()) return;
+      const mine = await n.checkMyUsername();
+      (await import("./ui/username.js")).initUsernames({ prompt: !mine && location.hash !== "#deploy-names" });
+    });
+    if (location.hash === "#deploy-names") import("./ui/username.js").then((u) => u.showDeployPage(app));
+    else if (!openCardLink()) home();
   } catch (e) {
     console.error(e);
     status.classList.add("error");
