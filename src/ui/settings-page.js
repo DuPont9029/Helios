@@ -79,7 +79,7 @@ async function exportWithPassword() {
 }
 
 /** Import del profilo: parole, nsec, backup con password o chiave esadecimale. */
-async function importProfile(onDone) {
+export async function importProfile(onDone) {
   const input = h("textarea.code-area.mono", { placeholder: "12 seed words, nsec1…, ncryptsec1… or 64 hexadecimal characters" });
   const pass = h("input.input", { type: "password", placeholder: "Backup password", hidden: true });
   const err = h("p.muted.small");
@@ -87,7 +87,7 @@ async function importProfile(onDone) {
   const v = await openModal({
     title: "Import profile",
     body: [
-      h("p.muted.small", "It replaces the profile of this browser (player key, rating, friends): export the current one first if you want to keep it."),
+      h("p.muted.small", "Your seed words are your account: you get its username, player card, rating, friends, decks and custom cards. It replaces the profile of this browser: export the current one first if you want to keep it."),
       input,
       h("div.row", h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag instead of typing the words", onclick: async () => {
         const words = await openKeyTag({ title: "Words from your OneKey KeyTag" });
@@ -944,6 +944,10 @@ function askPendulumSide(icons) {
   return m.result.then((v) => v ?? null);
 }
 
+// cambio di account (parole, KeyTag, import): la pagina si ridisegna con i dati del nuovo account
+let accountRedraw = null;
+window.addEventListener("helios-account", () => accountRedraw?.());
+
 export function showSettings(app) {
   const root = clear(app.root);
   const field = (label, input, hint) => h("label.field", h("span", label), input, hint && h("small.muted", hint));
@@ -951,6 +955,9 @@ export function showSettings(app) {
   const area = (k) => h("textarea.input", { rows: 3, value: settings[k] ?? "", oninput: (e) => (settings[k] = e.target.value) });
   const check = (k, label) => h("label.check", h("input", { type: "checkbox", checked: !!settings[k], onchange: (e) => (settings[k] = e.target.checked) }), label);
   const iceOut = h("pre.ice-out", "");
+  accountRedraw = () => {
+    if (root.querySelector(".page.settings")) showSettings(app);
+  };
 
   root.append(
     h(

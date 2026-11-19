@@ -120,6 +120,33 @@ export async function showWallets({ onProfile } = {}) {
     web.status.textContent = w.missing ? `${w.name} is not available now (extension missing or locked): the balance still shows.` : "";
     web.amount.textContent = "…";
     ethBalance(w.address).then((wei) => (web.amount.textContent = fmt(wei, 18))).catch((e) => { web.amount.textContent = "—"; web.status.textContent = e.message; });
+    if (!w.missing) otherAccount(w);
+  }
+
+  // Il wallet ha uno username registrato con un altro account Helios: l'account sono le sue parole, si entra con quelle
+  // (lo username lega wallet e chiave del profilo, e un profilo diverso non lo può usare).
+  async function otherAccount(w) {
+    try {
+      const names = await import("../net/names.js");
+      if (!names.namesActive()) return null;
+      const r = await names.nameOfWallet(w.address);
+      if (!r.name || r.nostr.toLowerCase() === `0x${identity().pk}`) return null;
+      web.status.replaceChildren(
+        h("p", `This wallet is ${r.name}${r.number ? ` #${r.number}` : ""} on another Helios account. Your account is its seed words: log in with them to get the name, friends, rating, decks and card.`),
+        h("button.btn.small.primary", { onclick: () => accountLogin() }, icon("key"), " Log in with the seed words"));
+      return r.name;
+    } catch {
+      return null; // rete: niente avviso
+    }
+  }
+
+  async function accountLogin() {
+    const { importProfile } = await import("./settings-page.js");
+    await importProfile(() => {
+      onProfile?.();
+      derive();
+      restoreWallet().then((w) => w && showWeb(w));
+    });
   }
 
   async function connectWeb() {
@@ -140,8 +167,19 @@ export async function showWallets({ onProfile } = {}) {
     })).result;
     if (!pick) return;
     try {
-      showWeb(await connectWallet(pick));
+      const w = await connectWallet(pick);
+      showWeb(w);
       toast(`${pick.info.name} connected`, { kind: "ok" });
+      // il wallet ha già uno username su questo account (es. profilo senza nome): lo si prende subito
+      const names = await import("../net/names.js");
+      if (names.namesActive() && !settings.username) {
+        const mine = await names.checkMyUsername().catch(() => null);
+        if (mine) {
+          toast(`You are ${mine} on Helios`, { kind: "ok" });
+          onProfile?.();
+          window.dispatchEvent(new CustomEvent("helios-account"));
+        }
+      }
     } catch (e) {
       toast(e.message, { kind: "error" });
     }
