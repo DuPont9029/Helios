@@ -7,6 +7,7 @@ import { identity } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { socialState, sendDirect, onNameMessage } from "../net/social.js";
 import * as names from "../net/names.js";
+import { CHAINS } from "../data/names-config.js";
 
 const fmtEth = (wei) => {
   const s = (Number(wei) / 1e18).toFixed(6).replace(/0+$/, "").replace(/\.$/, "");
@@ -309,7 +310,9 @@ export async function showDeployPage(app) {
       const address = await c.getAddress();
       out.append(h("p.ok", "Deployed at ", h("code", address)), h("button.btn", { onclick: () => copyText(address).then((ok) => toast(ok ? "Address copied" : "Copy failed")) }, icon("content_copy"), " Copy the address"),
         h("p.muted.small", `Put it in src/data/names-config.js (chainId ${net.chainId}) and publish Helios: usernames switch on.`));
-      if (import.meta.env?.DEV) out.append(h("button.btn", { onclick: () => { localStorage.setItem("ygoweb.namesDev", JSON.stringify({ chainId: Number(net.chainId), address, rpc: ["http://127.0.0.1:8545"] })); location.hash = ""; location.reload(); } }, "Use it in this browser (development)"));
+      // sviluppo: Helios in questo browser usa il registro appena deployato (es. su Sepolia), senza pubblicare niente
+      const chain = CHAINS[Number(net.chainId)];
+      if (import.meta.env?.DEV && chain) out.append(h("button.btn", { onclick: () => { localStorage.setItem("ygoweb.namesDev", JSON.stringify({ chainId: Number(net.chainId), address, rpc: chain.rpc, explorer: chain.explorer, opensea: chain.opensea })); location.hash = ""; location.reload(); } }, `Use it in this browser on ${chain.name} (development)`));
     } catch (e) {
       out.append(h("p.error", e.shortMessage ?? e.message));
     }

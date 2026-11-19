@@ -10,7 +10,7 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
-import { NAMES_CONFIG } from "../data/names-config.js";
+import { NAMES_CONFIG, CHAINS } from "../data/names-config.js";
 import { openProfileCard, avatarEl, profileLink, CARD_COLORS, CARD_PATTERNS } from "./profile-card.js";
 import { titleOf, TITLES, UNRATED, KEEP_FROM } from "../data/titles.js";
 import { cachedLeaderboard } from "../net/elo.js";
@@ -147,7 +147,15 @@ function usernameBox(redraw) {
       h("p.muted.small", "Unique on Helios and bound to your wallet (registered on Ethereum): two players can never have the same name."),
       has ? h("div.row", h("button.btn.small", { onclick: () => ui.openMintDialog({ onDone: redraw }) }, icon("token"), " Mint my on-chain card")) : null,
       card].filter(Boolean)); // append() scriverebbe "null"
-    if (has) names.cardOfWallet(settings.usernameWallet).then((c) => c && card.append(h("img", { src: c.image, alt: "On-chain player card", title: `Username #${c.number} on Ethereum` }))).catch(() => {});
+    if (has) names.cardOfWallet(settings.usernameWallet).then((c) => {
+      if (!c) return;
+      const cfg = names.namesConfig();
+      const chain = { ...(CHAINS[cfg.chainId] ?? {}), ...cfg };
+      card.append(h("img", { src: c.image, alt: "On-chain player card", title: `Username #${c.number} on Ethereum` }),
+        h("div.row",
+          chain.explorer ? h("a.btn.small", { href: `${chain.explorer}/nft/${cfg.address}/${c.tokenId}`, target: "_blank", rel: "noopener" }, icon("open_in_new"), " Etherscan") : null,
+          chain.opensea ? h("a.btn.small", { href: `${chain.opensea}/${cfg.address}/${c.tokenId}`, target: "_blank", rel: "noopener" }, icon("open_in_new"), " OpenSea") : null));
+    }).catch(() => {});
   });
   return box;
 }
