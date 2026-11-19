@@ -63,9 +63,14 @@ const DEFAULTS = {
   comboStrict: false, // Combo Trainer: modalità strict (le azioni diverse dalla combo vengono bloccate)
   trainerVideoLeft: "combo", // video del Trainer in auto-play: a sinistra "combo" (i passi), "log" o "none"
   replayLeft: "log", // replay: a sinistra "log" (il registro) o "none" (solo il campo)
+  username: "", // username registrato sul registro on-chain (src/net/names.js); vuoto = "Duelist-xxxxxx"
+  usernameWallet: "", // wallet a cui è intestato lo username
+  usernameNumber: 0, // numero della registrazione (i primi 100 sono OG)
+  usernameAsked: null, // nome chiesto a un amico: { name, owner, at } finché non lo paga
   avatar: "", // immagine del profilo pubblico (data URL WebP 160 px, src/net/public-profile.js)
   bio: "", // frase della scheda del giocatore
-  profileShowDecks: true, // scheda: mostra i mazzi giocati online
+  profileShowDecks: true, // scheda: mostra i mazzi (scelti o giocati online)
+  cardDecks: [], // scheda e card NFT: i mazzi scelti dal giocatore (al massimo 3; vuoto = i giocati online)
   profileShowWallets: false, // scheda: mostra l'indirizzo XMR (per ricevere Monero)
   cardColor: "#38c6ff", // scheda: colore scelto dal giocatore
   cardPattern: "rays", // scheda: motivo del fascione (CARD_PATTERNS in src/ui/profile-card.js)

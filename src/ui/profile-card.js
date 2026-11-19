@@ -13,6 +13,7 @@ import { fetchProfile, cachedProfile, findProfileByCode, profileCode } from "../
 import { socialState, addFriend, acceptRequest, declineRequest, presenceOf, onSocialChange } from "../net/social.js";
 import { cachedLeaderboard, START_RATING } from "../net/elo.js";
 import { titleOf, MASTER_TITLES } from "../data/titles.js";
+import { namesActive, displayName, verifiedName, isVerified, usernameNumber, OG_LIMIT } from "../net/names.js";
 export { titleOf };
 
 const SITE = "https://ygoweb.eu/";
@@ -69,7 +70,8 @@ function cardView(pk, { name = "", page = false, onOpenOther } = {}) {
   const decks = h("div.pc-decks", h("p.muted.small", "Loading the profile…"));
   const shareMsg = h("span.pc-share-msg.muted.small");
 
-  const shownName = () => profile?.name || name || "Duelist";
+  // con gli username on-chain: il nome verificato sul registro, altrimenti Duelist-xxxxxx
+  const shownName = () => (namesActive() ? displayName(pk, profile?.name || name) : profile?.name || name || "Duelist");
   const title = () => titleOf(rank?.p?.rating ?? START_RATING, rank?.p?.games ?? 0, rank?.p?.peak);
   // colore e motivo li sceglie il giocatore; senza (schede vecchie) un colore dalla chiave
   const paintColor = () => {
@@ -87,7 +89,9 @@ function cardView(pk, { name = "", page = false, onOpenOther } = {}) {
       h("div.pc-who",
         h("div.pc-badges",
           h("span.pc-tier", { title: t.name, style: { "--tc": t.color } }, MASTER_TITLES.has(t.abbr) ? h("b", t.abbr) : null, ` ${t.name}${rank?.p ? ` · ${rank.p.rating}` : ""}`),
-          me ? h("span.pc-tag", "You") : f?.status === "friend" ? h("span.pc-tag.friend", "Friend") : null),
+          me ? h("span.pc-tag", "You") : f?.status === "friend" ? h("span.pc-tag.friend", "Friend") : null,
+          namesActive() && isVerified(pk) ? h("span.pc-tag.chain", { title: "Username registered on Ethereum to this player's wallet" }, icon("verified"), ` #${usernameNumber(pk)}`) : null,
+          namesActive() && isVerified(pk) && usernameNumber(pk) && usernameNumber(pk) <= OG_LIMIT ? h("span.pc-tag.og", { title: `One of the first ${OG_LIMIT} Helios usernames` }, "OG") : null),
         h("h2.pc-name", shownName()),
         profile?.bio ? h("p.pc-bio", profile.bio) : null,
         h("div.pc-key", { title: npubOf(pk) }, icon("key"), shortKey(npubOf(pk)),
@@ -182,6 +186,7 @@ function cardView(pk, { name = "", page = false, onOpenOther } = {}) {
   fetchProfile(pk, { fresh: true }).then((p) => {
     profile = p;
     paintColor(); paintHead(); paintActions(); paintDecks();
+    if (namesActive()) verifiedName(pk, { fresh: true }).then(() => root.isConnected && paintHead());
   });
   // richieste e amicizie cambiano mentre la scheda è aperta
   const off = onSocialChange(() => (root.isConnected ? (paintHead(), paintActions()) : off()));

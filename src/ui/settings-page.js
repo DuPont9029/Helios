@@ -10,10 +10,13 @@ import { aiKeyFields } from "./ai-card.js";
 import { openKeyTag } from "./keytag.js";
 import { newRandomProfile } from "./random-seed.js";
 import { showWallets } from "./wallets.js";
+import { NAMES_CONFIG, CHAINS } from "../data/names-config.js";
 import { openProfileCard, avatarEl, profileLink, CARD_COLORS, CARD_PATTERNS } from "./profile-card.js";
 import { titleOf, TITLES, UNRATED, KEEP_FROM } from "../data/titles.js";
 import { cachedLeaderboard } from "../net/elo.js";
-import { schedulePublish, forgetPlayedDecks, MAX_AVATAR } from "../net/public-profile.js";
+import { schedulePublish, forgetPlayedDecks, MAX_AVATAR, MAX_DECKS, cardDecks, playedDecks } from "../net/public-profile.js";
+import { loadDecks } from "../deck/deck.js";
+import { cardFace } from "./card.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
@@ -128,6 +131,44 @@ async function avatarFromFile(file) {
   throw new Error("This image is too detailed: try another one");
 }
 
+/** Username on-chain (src/net/names.js, src/ui/username.js) e la card NFT. Solo con il registro deployato. */
+function usernameBox(redraw) {
+  const box = h("div.username-box");
+  import("../net/names.js").then(async (names) => {
+    if (!names.namesActive()) return;
+    const ui = await import("./username.js");
+    const card = h("div.nft-card-preview");
+    const has = !!settings.username;
+    // conio, o aggiornamento quando la card c'è già (con l'avviso se non è più uguale alla scheda)
+    const cardActions = h("div.row", h("span.muted.small", "Checking your on-chain card…"));
+    box.append(...[
+      h("h4", "Username"),
+      h("div.row",
+        h("b.username-now", has ? settings.username : names.provisionalName(identity().pk)),
+        has ? h("span.verified-tag", { title: `Registered on Ethereum to ${settings.usernameWallet}` }, icon("verified"), ` #${settings.usernameNumber || "?"}`) : h("span.muted.small", "(provisional: choose your username)"),
+        has && settings.usernameNumber && settings.usernameNumber <= names.OG_LIMIT ? h("span.og-tag", { title: `One of the first ${names.OG_LIMIT} Helios usernames` }, "OG") : null,
+        h("button.btn.small.primary", { onclick: () => ui.openUsernameDialog({ onDone: redraw }) }, icon("badge"), has ? " Change" : " Choose username")),
+      h("p.muted.small", "Unique on Helios and bound to your wallet (registered on Ethereum): two players can never have the same name."),
+      has ? cardActions : null,
+      card].filter(Boolean)); // append() scriverebbe "null"
+    if (has) names.cardOfWallet(settings.usernameWallet).then(async (c) => {
+      if (!c) return clear(cardActions).append(h("button.btn.small", { onclick: () => ui.openMintDialog({ onDone: redraw }) }, icon("token"), " Mint my on-chain card"));
+      const current = await ui.cardIsCurrent().catch(() => null);
+      clear(cardActions).append(...[
+        h("button.btn.small", { onclick: () => ui.openMintDialog({ update: true, onDone: redraw }) }, icon("sync"), " Update my on-chain card"),
+        current === false ? h("span.small.warn-text", "Your player card changed (or your ranking): update the NFT to show it") : current ? h("span.muted.small", "Up to date with your player card") : null,
+      ].filter(Boolean));
+      const cfg = names.namesConfig();
+      const chain = { ...(CHAINS[cfg.chainId] ?? {}), ...cfg };
+      card.append(h("img", { src: c.image, alt: "On-chain player card", title: `Username #${c.number} on Ethereum` }),
+        h("div.row",
+          chain.explorer ? h("a.btn.small", { href: `${chain.explorer}/nft/${cfg.address}/${c.tokenId}`, target: "_blank", rel: "noopener" }, icon("open_in_new"), " Etherscan") : null,
+          chain.opensea ? h("a.btn.small", { href: `${chain.opensea}/${cfg.address}/${c.tokenId}`, target: "_blank", rel: "noopener" }, icon("open_in_new"), " OpenSea") : null));
+    }).catch(() => {});
+  });
+  return box;
+}
+
 /** Titolo degli scacchi dal proprio rating ELO (src/ui/profile-card.js: TITLES), con le soglie e quanto manca. */
 function titleBox() {
   const box = h("div.title-box", h("span.muted.small", "Loading your rating…"));
@@ -145,6 +186,44 @@ function titleBox() {
           h("td.muted.small", x.min == null ? "no ranked Duels" : x.min === -Infinity ? "below 1450" : `${x.min}+`))))));
   }, () => clear(box).append(h("span.muted.small", "Ranking unavailable: your title shows when the relays answer.")));
   return h("label.field", h("span", "Title"), box);
+}
+
+/**
+ * Mazzi della scheda (e della card NFT): fino a 3 tra quelli salvati nel deck builder e quelli giocati online, con la
+ * copertina. Senza scelta valgono i 3 giocati online più di recente.
+ */
+function deckPicker(redraw) {
+  const box = h("label.field", h("span", `Decks on my card (up to ${MAX_DECKS})`));
+  const list = h("div.card-deck-pick");
+  const candidates = [];
+  const seen = new Set();
+  // prima quelli già sulla scheda (anche se il mazzo nel deck builder è stato rinominato o cancellato: si possono togliere)
+  for (const d of [...cardDecks(), ...playedDecks(), ...loadDecks()]) {
+    const key = `${d.name}|${d.main.length}|${(d.extra ?? []).length}`;
+    if (!d.main?.length || seen.has(key)) continue;
+    seen.add(key);
+    candidates.push({ name: String(d.name).slice(0, 40), main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])], cover: d.cover ?? null, online: !!d.games });
+  }
+  const current = cardDecks();
+  const isOn = (d) => current.some((c) => c.name === d.name && c.main.length === d.main.length);
+  const paint = () => clear(list).append(...(candidates.length ? candidates.map((d) => {
+    const on = isOn(d);
+    const cover = d.cover && [...d.main, ...d.extra].includes(d.cover) ? d.cover : d.main[0];
+    return h(`button.mint-pick-deck${on ? ".on" : ""}`, {
+      type: "button",
+      disabled: !on && current.length >= MAX_DECKS,
+      title: d.online ? "Played online" : "Saved deck",
+      onclick: () => {
+        const next = on ? current.filter((c) => !(c.name === d.name && c.main.length === d.main.length)) : [...current, d];
+        settings.cardDecks = next.map(({ name, main, extra, side, cover: cv }) => ({ name, main, extra, side, cover: cv, at: Date.now() }));
+        schedulePublish(300);
+        redraw();
+      },
+    }, cardFace(cover), h("b", d.name), h("span.muted.small", `${d.main.length}+${d.extra.length}${d.online ? " · online" : ""}`));
+  }) : [h("span.muted.small", "No decks yet: build one in the Deck editor.")]));
+  paint();
+  box.append(list);
+  return box;
 }
 
 /** Scheda pubblica: immagine, frase e cosa mostrano gli altri (net/public-profile.js). */
@@ -181,7 +260,8 @@ function publicCard() {
         h("div.card-patterns", Object.entries(CARD_PATTERNS).map(([k, l]) =>
           h(`button.card-pattern${(settings.cardPattern || "rays") === k ? ".on" : ""}`, { dataset: { pattern: k }, style: { "--pc": settings.cardColor || "#38c6ff" }, onclick: () => { settings.cardPattern = k; schedulePublish(300); draw(); } }, h("span.pc-banner"), h("span.card-pattern-l", l))))),
       titleBox(),
-      h("label.check", h("input", { type: "checkbox", checked: settings.profileShowDecks !== false, onchange: (e) => { settings.profileShowDecks = e.target.checked; schedulePublish(300); } }), "Show the decks I play online (the last 5)"),
+      deckPicker(draw),
+      h("label.check", h("input", { type: "checkbox", checked: settings.profileShowDecks !== false, onchange: (e) => { settings.profileShowDecks = e.target.checked; schedulePublish(300); } }), "Show these decks on my card"),
       identity().seed
         ? h("label.check", h("input", { type: "checkbox", checked: !!settings.profileShowWallets, onchange: async (e) => {
             if (e.target.checked && !(await confirmModal("Show your Monero address?", "Anyone who opens your card sees your Monero address and can send you XMR (Monero keeps balances private). You can hide it again later, but who saw it keeps it.", "Show", "Cancel"))) return (e.target.checked = false);
@@ -189,7 +269,7 @@ function publicCard() {
             schedulePublish(300);
           } }), "Show my Monero address, so players can send me XMR")
         : null,
-      h("button.btn.small.ghost", { onclick: () => { forgetPlayedDecks(); toast("Decks removed from your card"); } }, "Clear my played decks"));
+      h("button.btn.small.ghost", { onclick: () => { forgetPlayedDecks(); settings.cardDecks = []; schedulePublish(300); draw(); toast("Decks removed from your card"); } }, "Clear my decks"));
   };
   draw();
   return box;
@@ -225,6 +305,7 @@ function profileSection(field, area) {
             showSeed();
           },
         }, "New profile")),
+      usernameBox(draw),
       publicCard(),
       h("h4", "Friends"),
       h("label.check", h("input", { type: "checkbox", checked: settings.showOnline !== false, onchange: (e) => { settings.showOnline = e.target.checked; statusChanged(); } }), "Show my friends when I am online"),
@@ -880,7 +961,7 @@ export function showSettings(app) {
         h(
           "section.card-box",
           h("h3", "General"),
-          field("Duelist name", text("name", { maxLength: 24, onchange: () => schedulePublish() })),
+          field("Duelist name", text("name", { maxLength: 24, onchange: () => schedulePublish(), readOnly: NAMES_CONFIG.address !== "", title: NAMES_CONFIG.address ? "Your name is your username: change it in Profile → Username" : "" })),
           field("Card image URL", text("imageUrl"), "{code} = card code. If an image is unavailable, a CSS frame is drawn instead."),
           field("Animation speed", h("input", { type: "range", min: 0, max: 2, step: 0.25, value: settings.animSpeed, oninput: (e) => (settings.animSpeed = +e.target.value) }), "0 = off"),
           check("autoPlace", "Auto-pick the zone when summoning/setting"),

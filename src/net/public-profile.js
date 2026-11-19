@@ -20,7 +20,7 @@ export const profileCode = (pk) => String(pk).slice(0, 10);
 const PLAYED = "ygoweb.playedDecks"; // mazzi giocati online: [{ key, name, main, extra, side, cover, games, at }]
 const PUBLISHED = "ygoweb.publicProfileHash"; // impronta dell'ultimo profilo pubblicato (per non ripubblicarlo uguale)
 export const MAX_AVATAR = 60000; // caratteri del data URL (l'evento resta sotto i 64 KB dei relay)
-const MAX_DECKS = 5;
+export const MAX_DECKS = 3; // mazzi sulla scheda (e sulla card NFT, contracts/HeliosNames.sol)
 const HEX64 = /^[0-9a-f]{64}$/;
 const AVATAR_RE = /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/]+=*$/;
 const XMR_RE = /^[48][1-9A-HJ-NP-Za-km-z]{94}$/;
@@ -42,6 +42,9 @@ export function cleanProfile(v) {
   const theme = /^#[0-9a-f]{6}$/i.test(v.theme?.color ?? "") ? { color: v.theme.color.toLowerCase(), pattern } : { color: "", pattern };
   return {
     name: str(v.name, 24) || "Duelist",
+    // username on-chain dichiarato da chi firma il profilo (net/names.js lo confronta con il registro)
+    username: /^[A-Za-z0-9_]{3,20}$/.test(v.username ?? "") ? v.username : "",
+    wallet: /^0x[0-9a-fA-F]{40}$/.test(v.wallet ?? "") ? v.wallet : "",
     avatar: typeof v.avatar === "string" && v.avatar.length <= MAX_AVATAR && AVATAR_RE.test(v.avatar) ? v.avatar : "",
     bio: str(v.bio, 160),
     wallets,
@@ -50,7 +53,7 @@ export function cleanProfile(v) {
       name: str(d?.name, 40) || "Deck",
       main: codes(d?.main, 60), extra: codes(d?.extra, 15), side: codes(d?.side, 15),
       cover: Number.isInteger(d?.cover) ? d.cover : null,
-      games: Number.isInteger(d?.games) && d.games > 0 ? Math.min(d.games, 1e6) : 1,
+      games: Number.isInteger(d?.games) && d.games >= 0 ? Math.min(d.games, 1e6) : 0,
       at: Number.isFinite(d?.at) ? d.at : 0,
     })).filter((d) => d.main.length || d.extra.length),
     updated: Number.isFinite(v.updated) ? v.updated : 0,
@@ -84,9 +87,23 @@ export async function recordPlayedDeck(deck) {
   schedulePublish();
 }
 
-/** I mazzi della scheda: i più recenti, poi i più giocati. */
+/** I mazzi giocati online, dal più recente. */
 export function playedDecks() {
-  return readPlayed().sort((a, b) => b.at - a.at).slice(0, MAX_DECKS);
+  return readPlayed().sort((a, b) => b.at - a.at).slice(0, 20);
+}
+
+/**
+ * I mazzi della scheda (e della card NFT): quelli scelti dal giocatore (settings.cardDecks), altrimenti i 3 giocati
+ * online più di recente.
+ */
+export function cardDecks() {
+  const chosen = Array.isArray(settings.cardDecks) ? settings.cardDecks.filter((d) => d?.main?.length) : [];
+  if (chosen.length) {
+    // le partite giocate con lo stesso mazzo restano contate
+    const played = readPlayed();
+    return chosen.slice(0, MAX_DECKS).map((d) => ({ ...d, games: played.find((p) => p.name === d.name && p.main.length === d.main.length)?.games ?? 0 }));
+  }
+  return playedDecks().slice(0, MAX_DECKS);
 }
 
 export function forgetPlayedDecks() {
@@ -102,8 +119,8 @@ export function forgetPlayedDecks() {
 
 /** Il proprio profilo come lo vedono gli altri. */
 export async function myProfile() {
-  const p = { name: settings.name, avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
-  if (settings.profileShowDecks !== false) p.decks = playedDecks();
+  const p = { name: settings.name, username: settings.username || "", wallet: settings.usernameWallet || "", avatar: settings.avatar || "", bio: settings.bio || "", wallets: {}, theme: { color: settings.cardColor || "#38c6ff", pattern: settings.cardPattern || "rays" }, decks: [], updated: Date.now() };
+  if (settings.profileShowDecks !== false) p.decks = cardDecks();
   if (settings.profileShowWallets && identity().seed) {
     const { bip39Seed, moneroWallet } = await import("./wallets.js");
     p.wallets = { xmr: moneroWallet(bip39Seed(identity().seed)).address };
@@ -212,5 +229,48 @@ export async function fetchProfiles(pks) {
 /** Profilo già scaricato (senza rete), per disegnare subito gli elenchi. */
 export const cachedProfile = (pk) => cache.get(pk)?.profile ?? null;
 
-// Cambio di profilo (KeyTag, import): il nuovo si pubblica con i suoi dati.
-window.addEventListener("helios-identity", () => schedulePublish(3000));
+const DEFAULT_COLOR = "#38c6ff";
+const DEFAULT_PATTERN = "rays";
+const sameContent = (a, b) => {
+  const pick = (p) => p && { name: p.name, username: p.username, wallet: p.wallet, avatar: p.avatar, bio: p.bio, wallets: p.wallets, theme: p.theme, decks: p.decks.map(({ at, ...d }) => d) };
+  return canonical(pick(a)) === canonical(pick(b));
+};
+
+/**
+ * All'avvio: la scheda pubblicata è la fonte quando il browser non ha i dati (immagine, frase, colori e mazzi stanno solo
+ * nel browser dove si sono scelti): un altro browser con lo stesso profilo li prende invece di pubblicare una scheda
+ * vuota sopra quella vera. Poi, se la scheda pubblicata non è quella del browser (es. svuotata da un altro browser), la
+ * si ripubblica completa.
+ */
+export async function syncOwnProfile() {
+  const me = identity().pk;
+  let remote = null;
+  try {
+    remote = await fetchProfile(me, { fresh: true });
+  } catch {
+    return; // relay irraggiungibili: niente da confrontare, si riprova al prossimo avvio
+  }
+  if (remote) {
+    if (!settings.avatar && remote.avatar) settings.avatar = remote.avatar;
+    if (!settings.bio && remote.bio) settings.bio = remote.bio;
+    const localTheme = (settings.cardColor || DEFAULT_COLOR) === DEFAULT_COLOR && (settings.cardPattern || DEFAULT_PATTERN) === DEFAULT_PATTERN;
+    if (localTheme && remote.theme?.color && (remote.theme.color !== DEFAULT_COLOR || remote.theme.pattern !== DEFAULT_PATTERN)) {
+      settings.cardColor = remote.theme.color;
+      settings.cardPattern = remote.theme.pattern;
+    }
+    if (!readPlayed().length && remote.decks.length) {
+      const list = [];
+      for (const d of remote.decks) list.push({ key: await sha256Hex(canonical({ main: [...d.main].sort(), extra: [...d.extra].sort() })), ...d, at: d.at || Date.now() });
+      try {
+        localStorage.setItem(PLAYED, JSON.stringify(list));
+      } catch {
+        /* storage pieno */
+      }
+    }
+  }
+  const mine = await myProfile();
+  if (!remote || !sameContent(remote, mine)) await publishProfile({ force: true }).catch(() => {});
+}
+
+// Cambio di profilo (KeyTag, import): il nuovo prende i suoi dati pubblicati e si pubblica.
+window.addEventListener("helios-identity", () => setTimeout(() => syncOwnProfile().catch(() => {}), 3000));

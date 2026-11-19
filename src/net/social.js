@@ -169,7 +169,7 @@ function seen(id) {
   return false;
 }
 
-const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set(), direct: new Set(), watch: new Set() };
+const handlers = { invite: new Set(), reply: new Set(), cancel: new Set(), request: new Set(), direct: new Set(), watch: new Set(), names: new Set() };
 /** Inviti ricevuti da un amico: fn({ id, from, name, room, rules, expires }). */
 export const onInvite = (fn) => (handlers.invite.add(fn), () => handlers.invite.delete(fn));
 /** Risposte ai nostri inviti: fn({ id, from, accept, reason }). */
@@ -270,11 +270,20 @@ function receive(wrap) {
     case "watch-note":
       if (isFriend(from) && typeof m.id === "string" && m.id.length <= 40) emit(handlers.watch, { ...m, from, name, at });
       return;
+    case "name-pay":
+    case "name-paid":
+      // un amico chiede di pagargli username o card on-chain (net/names.js), o dice di averlo fatto: solo amici e messaggi
+      // recenti (le autorizzazioni firmate scadono comunque)
+      if (isFriend(from) && at > now() - 3 * 24 * 3600) emit(handlers.names, { ...m, from, name, at });
+      return;
     default:
       // Matchmaking con sconosciuti (matchmaking.js): solo messaggi recenti, il resto lo controlla lui.
       if (typeof m.t === "string" && m.t.startsWith("mm-") && at > now() - 120) emit(handlers.direct, { ...m, from, name, at, relay: seenOn(wrap.id)[0] ?? null });
   }
 }
+
+/** Richieste degli amici di pagare il loro username o la loro card (net/names.js): fn({ t, from, name, ... }). */
+export const onNameMessage = (fn) => (handlers.names.add(fn), () => handlers.names.delete(fn));
 
 /** Messaggi degli amici che guardano i nostri duelli: fn({ t: "watch-hello"|"watch-bye"|"watch-note", id, from, name, ... }). */
 export const onWatchMessage = (fn) => (handlers.watch.add(fn), () => handlers.watch.delete(fn));

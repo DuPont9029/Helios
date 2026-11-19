@@ -32,6 +32,11 @@ function eip55(addrHex) {
   return "0x" + [...addrHex].map((c, i) => (parseInt(h[i], 16) >= 8 ? c.toUpperCase() : c)).join("");
 }
 
+/** Chiave privata Ethereum (hex 0x…) dell'indirizzo i (m/44'/60'/0'/0/i): serve a firmare con il wallet del profilo. */
+export function ethPrivateKey(seed, i = 0) {
+  return "0x" + hex(HDKey.fromMasterSeed(seed).derive(`m/44'/60'/0'/0/${i}`).privateKey);
+}
+
 /** I primi `count` indirizzi Ethereum (m/44'/60'/0'/0/i). */
 export function ethAddresses(seed, count = 3) {
   const acc = HDKey.fromMasterSeed(seed).derive("m/44'/60'/0'/0");

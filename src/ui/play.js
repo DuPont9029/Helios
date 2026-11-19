@@ -20,6 +20,8 @@ import { LinkMux, negotiate } from "../net/match.js";
 import { findMatch, watchSeeks, queueOf, MM_PROTO } from "../net/matchmaking.js";
 import { leaderboard, republishOutbox, START_RATING, cachedLeaderboard } from "../net/elo.js";
 import { titleOf, MASTER_TITLES } from "../data/titles.js";
+import { namesActive, displayName, resolveNames, verifiedName } from "../net/names.js";
+import { nameRequests, payRequest, declineRequest as declineNameRequest, onNameRequests } from "./username.js";
 import { openProfileCard, avatarEl } from "./profile-card.js";
 import { fetchProfiles, cachedProfile, recordPlayedDeck, schedulePublish } from "../net/public-profile.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
@@ -573,7 +575,7 @@ async function playMatch(app, match, old = null) {
 function showPlayerInfo(session, opponentPk) {
   const pks = [identity().pk, opponentPk];
   if (!session?.view || !opponentPk) return;
-  Promise.all([cachedLeaderboard().catch(() => null), fetchProfiles(pks).catch(() => new Map())]).then(([board, profiles]) => {
+  Promise.all([cachedLeaderboard().catch(() => null), fetchProfiles(pks).catch(() => new Map()), resolveNames(pks).catch(() => {})]).then(([board, profiles]) => {
     pks.forEach((pk, side) => {
       const p = board?.players.find((x) => x.pk === pk);
       const t = board ? titleOf(p?.rating ?? START_RATING, p?.games ?? 0, p?.peak) : null;
@@ -581,6 +583,8 @@ function showPlayerInfo(session, opponentPk) {
         title: t ? { ...t, master: MASTER_TITLES.has(t.abbr) } : null,
         rating: board ? p?.rating ?? START_RATING : null,
         avatar: profiles.get(pk)?.avatar ?? "",
+        // username on-chain verificato (o Duelist-xxxxxx): con il registro attivo nessuno ha il nome di un altro
+        name: namesActive() ? displayName(pk) : null,
       });
     });
   });
@@ -648,7 +652,8 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const decks = loadDecks();
   if (!decks.length) return alertModal("No Decks", "Create a Deck in the Deck Editor.");
   const root = clear(app.root);
-  const name = h("input.input", { value: settings.name, maxLength: 24, oninput: (e) => (settings.name = e.target.value.trim() || "Duelist"), onchange: () => schedulePublish() });
+  // con gli username on-chain il nome è lo username (si cambia in Settings → Profile → Username)
+  const name = h("input.input", { value: settings.name, maxLength: 24, readOnly: namesActive(), title: namesActive() ? "Your name is your username: change it in Settings → Profile" : "", oninput: (e) => (settings.name = e.target.value.trim() || "Duelist"), onchange: () => schedulePublish() });
   const deck = deckSelect(decks, settings.lastDeck);
   deck.addEventListener("change", () => (settings.lastDeck = deck.value));
   const opts = optionsForm();
@@ -889,10 +894,13 @@ export function showOnline(app, { join = null, tab = null } = {}) {
       const me = identity().pk;
       const mine = players.find((p) => p.pk === me);
       // immagini dei primi 100: arrivano dopo e vanno al loro posto
-      fetchProfiles(players.slice(0, 100).map((p) => p.pk)).then(() => {
+      fetchProfiles(players.slice(0, 100).map((p) => p.pk)).then(async () => {
+        await resolveNames(players.slice(0, 100).map((p) => p.pk)); // username verificati (registro on-chain)
         for (const b of rankBody.querySelectorAll("button.player-link")) {
           const pr = cachedProfile(b.dataset.pk);
           if (pr?.avatar) b.firstChild.replaceWith(avatarEl(b.dataset.pk, pr, pr.name, 22));
+          const nm = b.querySelector(".pl-name");
+          if (nm) nm.textContent = displayName(b.dataset.pk, nm.textContent);
         }
       }).catch(() => {});
       clear(rankBody).append(
@@ -901,7 +909,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         players.length
           ? h("table.rank-table",
               h("tr", h("th", "#"), h("th", "Player"), h("th", "Rating"), h("th", "Duels"), h("th", "W / L / D"), h("th", { title: "Duels lost by leaving" }, "Left")),
-              players.slice(0, 100).map((p, i) => h(`tr${p.pk === me ? ".me" : ""}`, h("td", i + 1), h("td", h("button.player-link", { dataset: { pk: p.pk }, title: `Open ${p.name}'s card`, onclick: () => openProfileCard(p.pk, { name: p.name }) }, avatarEl(p.pk, cachedProfile(p.pk), p.name, 22), p.name, h("span.muted.small", ` ${shortKey(p.pk)}`))), h("td", h("b", p.rating)), h("td", p.games), h("td", `${p.wins} / ${p.losses} / ${p.draws}`), h("td", p.abandons))))
+              players.slice(0, 100).map((p, i) => h(`tr${p.pk === me ? ".me" : ""}`, h("td", i + 1), h("td", h("button.player-link", { dataset: { pk: p.pk }, title: `Open ${p.name}'s card`, onclick: () => openProfileCard(p.pk, { name: p.name }) }, avatarEl(p.pk, cachedProfile(p.pk), p.name, 22), h("span.pl-name", displayName(p.pk, p.name)), h("span.muted.small", ` ${shortKey(p.pk)}`))), h("td", h("b", p.rating)), h("td", p.games), h("td", `${p.wins} / ${p.losses} / ${p.draws}`), h("td", p.abandons))))
           : h("p.muted", "No ranked Duels yet."),
         h("p.muted.small", `${games.length} ranked Duels counted.`),
         h("button.btn", { onclick: loadRanking }, icon("refresh"), " Reload")
@@ -1133,7 +1141,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     return h("li.friend-row",
       h(`span.presence-dot.${dot}`, { title: label }),
       cardLink(f.pk, f.name),
-      h("div.friend-info.clickable", { title: `Open ${f.name}'s card`, onclick: () => openProfileCard(f.pk, { name: f.name }) }, h("b", f.name), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
+      h("div.friend-info.clickable", { title: `Open ${f.name}'s card`, onclick: () => openProfileCard(f.pk, { name: f.name }) }, h("b", nameOf(f)), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
       watch ? h("button.btn.small", { title: COACHING ? `Watch ${f.name}'s Duel and report their mistakes` : `Watch ${f.name}'s Duel`, onclick: () => watchFriend(app, f, watch) }, icon("visibility"), " Watch") : null,
       f.status === "friend" ? h("button.btn.small.primary", { disabled: !canInvite, title: canInvite ? "Invite to a Duel with the rules on the left" : "You can invite a friend when they are online", onclick: () => inviteFriend(f) }, icon("swords"), " Invite") : null,
       h("button.btn.small.ghost", { title: "Rename", onclick: async () => { const n = await promptModal("Rename friend", "Name", f.name); if (n?.trim()) renameFriend(f.pk, n); } }, icon("edit")),
@@ -1143,12 +1151,17 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   // immagine del giocatore che apre la sua scheda
   const cardLink = (pk, nm) => h("button.avatar-btn", { title: `Open ${nm}'s card`, onclick: () => openProfileCard(pk, { name: nm }) }, avatarEl(pk, cachedProfile(pk), nm, 32));
   let pics = false;
+  // con gli username on-chain si mostra il nome verificato (o Duelist-xxxxxx), altrimenti quello salvato
+  const nameOf = (x) => (namesActive() ? displayName(x.pk, x.name) : x.name);
   const drawFriends = () => {
     const { friends, requests, recent } = socialState();
     // le immagini dei profili arrivano dopo: una richiesta sola, poi la lista si ridisegna
     if (!pics) {
       pics = true;
-      fetchProfiles([...friends, ...requests, ...recent].map((x) => x.pk)).then(() => friendsBody.isConnected && drawFriends()).catch(() => {});
+      fetchProfiles([...friends, ...requests, ...recent].map((x) => x.pk))
+        .then(() => resolveNames([...friends, ...requests, ...recent].map((x) => x.pk)))
+        .then(() => friendsBody.isConnected && drawFriends())
+        .catch(() => {});
     }
     const order = { online: 0, duel: 1, offline: 2, pending: 3 };
     const sorted = [...friends].sort((a, b) => order[presenceLabel(a)[1]] - order[presenceLabel(b)[1]] || a.name.localeCompare(b.name));
@@ -1164,24 +1177,33 @@ export function showOnline(app, { join = null, tab = null } = {}) {
             h("ul.friend-list", requests.map((r) => h("li.friend-row",
               h("span.presence-dot.pending"),
               cardLink(r.pk, r.name),
-              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
+              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", nameOf(r)), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
               h("button.btn.small.primary", { onclick: () => acceptRequest(r.pk) }, icon("check"), " Accept"),
               h("button.btn.small.ghost", { onclick: () => declineRequest(r.pk) }, icon("close"), " Decline")))))
         : null,
       h("div.card-box", h("h3", `Friends (${friends.filter((f) => f.status === "friend").length})`),
         sorted.length ? h("ul.friend-list", sorted.map(friendRow)) : h("p.muted.small", "No friends yet: send your friend code to someone, or add a recent opponent below.")),
       COACHING ? reportsBox() : null,
+      nameRequests().length
+        ? h("div.card-box", h("h3", `Asked to pay (${nameRequests().length})`),
+            h("ul.friend-list", nameRequests().map((x) => h("li.friend-row",
+              cardLink(x.from, x.name),
+              h("div.friend-info", h("b", x.name), h("span.muted.small", x.req.kind === "register" ? ` · username "${x.req.name}"` : " · on-chain card")),
+              h("button.btn.small.primary", { onclick: () => payRequest(x, drawFriends) }, icon("payments"), " Pay"),
+              h("button.btn.small.ghost", { onclick: () => { declineNameRequest(x); drawFriends(); } }, icon("close"), " Decline")))))
+        : null,
       recent.length
         ? h("div.card-box", h("h3", "Recent opponents"),
             h("ul.friend-list", recent.map((r) => h("li.friend-row",
               h("span.presence-dot.offline"),
               cardLink(r.pk, r.name),
-              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
+              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", nameOf(r)), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
               h("button.btn.small", { onclick: () => addFriend(r.pk, r.name).then(() => toast("Friend request sent"), (e) => toast(e.message, { kind: "error" })) }, icon("person_add"), " Add friend")))))
         : null,
     ].filter(Boolean));
   };
   // La lista si ridisegna quando cambia (richieste, presenza), ma non mentre si scrive il codice di un amico.
+  const offNames = onNameRequests(() => friendsBody.isConnected && drawFriends());
   const offSocial = onSocialChange(() => {
     if (friendsBody.isConnected && document.activeElement !== addInput) drawFriends();
   });
@@ -1279,6 +1301,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     withdrawInvite();
     offReply();
     offSocial();
+    offNames();
     cancel();
     stopWatch();
   };

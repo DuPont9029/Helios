@@ -1,6 +1,6 @@
 {
   "name": "helios",
-  "version": "1.0.60",
+  "version": "1.0.65",
   "private": true,
   "type": "module",
   "description": "Client web di Yu-Gi-Oh! con motore EDOPro (WASM) e duelli P2P via WebRTC",
@@ -14,15 +14,21 @@
     "signal": "node server/signal.mjs",
     "test:core": "node scripts/smoke-test.mjs",
     "feature": "node scripts/feature.mjs",
-    "vscode-ext": "node scripts/install-vscode-ext.mjs"
+    "vscode-ext": "node scripts/install-vscode-ext.mjs",
+    "contracts": "node scripts/build-contracts.mjs",
+    "contracts:flat": "node scripts/flatten-contracts.mjs"
   },
   "devDependencies": {
+    "@openzeppelin/contracts": "5.1.0",
+    "solady": "0.1.26",
+    "solc": "0.8.28",
     "vite": "^7.1.0",
     "ws": "^8.18.0"
   },
   "dependencies": {
     "@noble/secp256k1": "3.2.0",
     "@scure/bip39": "^2.0.1",
+    "ethers": "6.13.4",
     "monaco-editor": "0.52.2",
     "nostr-tools": "2.25.2",
     "three": "0.170.0",

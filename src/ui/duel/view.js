@@ -636,10 +636,10 @@ export class DuelView {
    * Titolo, ELO e immagine di un giocatore (side 0 = io, 1 = avversario), come su chess.com:
    * { title: { abbr, name, color, master } | null, rating: numero | null, avatar: data URL | "" }.
    */
-  setPlayerInfo(side, { title = null, rating = null, avatar = "" } = {}) {
+  setPlayerInfo(side, { title = null, rating = null, avatar = "", name: shown = null } = {}) {
     const lp = this.lpEls?.[side];
     if (!lp) return;
-    const name = this.names[side === 0 ? this.me : 1 - this.me] ?? "";
+    const name = shown ?? this.names[side === 0 ? this.me : 1 - this.me] ?? "";
     lp.name.replaceChildren(...[title?.master ? h("span.lp-title", { title: title.name, style: { "--tc": title.color } }, title.abbr) : null, name].filter((x) => x != null));
     lp.info.hidden = rating == null;
     lp.info.textContent = rating == null ? "" : `(${rating})`;
