@@ -25,6 +25,10 @@ const wait = async (s) => { await g.request({ method: "evm_increaseTime", params
 const nostr = (n) => ethers.zeroPadValue(ethers.toBeHex(n), 32);
 const secret = () => ethers.hexlify(ethers.randomBytes(32));
 const gas = {};
+const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8DwnwEIGBmgAOQSAKoLA/0J1Ja9AAAAAElFTkSuQmCC";
+const XMR = "43SMrTtLZsyZL81653f6b3BWpU5u6XZ2SRdAaM1MxLCGDcTq6mKi9D11ZgN2hbmCdS9j66xu8Wz3J9wgiwkYssLnEK44756";
+const PNGB = ethers.toUtf8Bytes(PNG);
+const card = (o = {}) => ({ color: "0xff7ad9", pattern: 3, bio: "Melorbius is love, Helios is Life", xmr: XMR, avatar: PNGB, decks: [{ name: "Labrynth", main: 40, extra: 15, cover: PNGB }, { name: "Blue-Eyes", main: 40, extra: 15, cover: "0x" }], ...o });
 async function registerAs(s, name, nk, { skipWait = false } = {}) {
   const sec = secret();
   const cm = await c.makeCommitment(name, await s.getAddress(), nk, sec, await s.getAddress());
@@ -60,7 +64,7 @@ ok((await c.lookup("carol")).owner === await carol.getAddress(), "Carol registra
 // un amico paga: Dave firma (EIP-712), Friend manda commit e register
 const domain = { name: "HeliosNames", version: "1", chainId: (await provider.getNetwork()).chainId, verifyingContract: await c.getAddress() };
 const REG = { Register: [{ name: "name", type: "string" }, { name: "nostr", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
-const MINT = { Mint: [{ name: "color", type: "bytes3" }, { name: "pattern", type: "uint8" }, { name: "bio", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
+const MINT = { Mint: [{ name: "card", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] };
 const now = async () => (await provider.getBlock("latest")).timestamp;
 async function friendPays(payer, owner, signer, name, nk, { deadline, nonce } = {}) {
   deadline ??= (await now()) + 3600;
@@ -93,38 +97,53 @@ await (await as(dave).release()).wait();
   await (await as(friend).registerFor("DaveTwo", await dave.getAddress(), nostr(9), sec, dl, sig, { gasLimit: 500000 })).wait();
   ok((await c.lookup("davetwo")).owner === await dave.getAddress(), "il reveal dell'amico va a buon fine"); }
 // card
-await reverts(as(friend).mint("0x38c6ff", 0, "hi"), "NotRegistered", "mint senza nome");
-await reverts(as(alice).mint.staticCall("0x38c6ff", 0, "hi", { value: 1n }), "0x", "mint con ETH: rifiutato (la funzione non accetta pagamenti, revert senza dati)");
-await reverts(as(alice).mint("0x38c6ff", 6, "hi"), "BadPattern", "mint con motivo inesistente");
-await reverts(as(alice).mint("0x38c6ff", 0, "<script>"), "BadBio", "frase con < (iniezione SVG)");
-await reverts(as(alice).mint("0x38c6ff", 0, 'a"b'), "BadBio", "frase con \" (iniezione JSON)");
-await reverts(as(alice).mint("0x38c6ff", 0, "x".repeat(49)), "BadBio", "frase di 49 caratteri");
-const mr = await (await as(alice).mint("0xff7ad9", 3, "Melorbius is love, Helios is Life")).wait();
+await reverts(as(friend).mint(card()), "NotRegistered", "mint senza nome");
+await reverts(as(alice).mint.staticCall(card(), { value: 1n }), "0x", "mint con ETH: rifiutato (la funzione non accetta pagamenti, revert senza dati)");
+await reverts(as(alice).mint(card({ pattern: 6 })), "BadPattern", "mint con motivo inesistente");
+await reverts(as(alice).mint(card({ bio: "<script>" })), "BadBio", "frase con < (iniezione SVG)");
+await reverts(as(alice).mint(card({ bio: 'a"b' })), "BadBio", "frase con \" (iniezione JSON)");
+await reverts(as(alice).mint(card({ bio: "x".repeat(49) })), "BadBio", "frase di 49 caratteri");
+await reverts(as(alice).mint(card({ avatar: ethers.toUtf8Bytes('data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=') })), "BadImage", "immagine SVG (potrebbe contenere script)");
+await reverts(as(alice).mint(card({ avatar: ethers.toUtf8Bytes('data:image/png;base64,AAAA"/><script>') })), "BadImage", "immagine con caratteri fuori dal base64 (iniezione)");
+await reverts(as(alice).mint(card({ avatar: ethers.toUtf8Bytes("data:image/png;base64," + "A".repeat(12000)) })), "BadImage", "immagine oltre 12.000 byte");
+await reverts(as(alice).mint(card({ avatar: ethers.toUtf8Bytes("data:image/png;base64,") })), "BadImage", "immagine vuota dopo il prefisso");
+await reverts(as(alice).mint(card({ xmr: XMR.slice(0, 94) })), "BadMonero", "indirizzo XMR corto");
+await reverts(as(alice).mint(card({ xmr: "1" + XMR.slice(1) })), "BadMonero", "indirizzo XMR che non inizia con 4 o 8");
+await reverts(as(alice).mint(card({ xmr: XMR.slice(0, 94) + "0" })), "BadMonero", "indirizzo XMR con un carattere non base58 (0)");
+const four = card().decks.concat(card().decks);
+await reverts(as(alice).mint(card({ decks: four })), "BadDecks", "4 mazzi");
+await reverts(as(alice).mint(card({ decks: [{ name: "<b>", main: 40, extra: 15, cover: "0x" }] })), "BadBio", "nome di mazzo con <");
+await reverts(as(alice).mint(card({ decks: [{ name: "Big", main: 61, extra: 15, cover: "0x" }] })), "BadDecks", "mazzo da 61 carte");
+const mr = await (await as(alice).mint(card())).wait();
 // card pagata da un amico con la firma di Dave
 { const dl = (await now()) + 3600; const nonce = await c.nonces(await dave.getAddress());
-  const sig = await signTyped(dave, domain, MINT, { color: "0x7dffb0", pattern: 1, bio: "paid by a friend", nonce, deadline: dl });
-  await reverts(as(friend).mintFor(await dave.getAddress(), "0x7dffb0", 1, "changed bio", dl, sig), "BadSignature", "mintFor con una frase diversa da quella firmata");
-  const r = await (await as(friend).mintFor(await dave.getAddress(), "0x7dffb0", 1, "paid by a friend", dl, sig)).wait();
-  ok((await c.cardOf(await dave.getAddress())).bio === "paid by a friend", `l'amico paga la card di Dave (gas ${r.gasUsed})`);
-  await reverts(as(friend).mintFor(await dave.getAddress(), "0x7dffb0", 1, "paid by a friend", dl, sig), "BadSignature", "riuso della firma del mint"); }
+  const daveCard = card({ color: "0x7dffb0", pattern: 1, bio: "paid by a friend" });
+  const sig = await signTyped(dave, domain, MINT, { card: await c.cardHash(daveCard), nonce, deadline: dl });
+  await reverts(as(friend).mintFor(await dave.getAddress(), card({ color: "0x7dffb0", pattern: 1, bio: "changed bio" }), dl, sig), "BadSignature", "mintFor con una frase diversa da quella firmata");
+  await reverts(as(friend).mintFor(await dave.getAddress(), { ...daveCard, avatar: ethers.toUtf8Bytes("data:image/png;base64,AAAA") }, dl, sig), "BadSignature", "mintFor con un'immagine diversa da quella firmata");
+  await reverts(as(friend).mintFor(await dave.getAddress(), { ...daveCard, decks: [] }, dl, sig), "BadSignature", "mintFor senza i mazzi firmati");
+  const r = await (await as(friend).mintFor(await dave.getAddress(), daveCard, dl, sig)).wait();
+  ok((await c.cardOf(await dave.getAddress())).card.bio === "paid by a friend", `l'amico paga la card di Dave (gas ${r.gasUsed})`);
+  await reverts(as(friend).mintFor.staticCall(await dave.getAddress(), daveCard, dl, sig, { blockTag: "latest" }), "BadSignature", "riuso della firma del mint"); }
 gas.mint = mr.gasUsed;
 const id = BigInt((await c.keyOfOwner(await alice.getAddress())));
 ok((await c.ownerOf(id)) === await alice.getAddress() && (await c.totalSupply()) === 2n, "card coniata sul wallet di Alice (2 in tutto, con quella di Dave)");
-await reverts(as(alice).mint("0xff7ad9", 3, "x"), "CardExists", "seconda card");
+await reverts(as(alice).mint(card()), "CardExists", "seconda card");
 const uri = await c.tokenURI(id);
 const meta = JSON.parse(Buffer.from(uri.split(",")[1], "base64").toString());
 const svg = Buffer.from(meta.image.split(",")[1], "base64").toString();
 fs.writeFileSync(new URL("card-test.svg", import.meta.url), svg);
 ok(meta.name === "#1 Alice - Helios Player Card" && svg.includes(">Alice<") && svg.includes("#ff7ad9") && svg.startsWith("<svg"), "tokenURI: JSON valido e SVG con numero, nome e colore");
+ok(svg.includes(`href="${PNG}"`) && svg.includes(">Labrynth<") && svg.includes(">Blue-Eyes<") && svg.includes(">40+15<") && svg.includes(XMR.slice(0, 8)) && svg.includes(XMR.slice(-6)), "SVG con immagine profilo, mazzi con copertina e indirizzo XMR");
 ok(meta.attributes.some((a) => a.trait_type === "Number" && a.value === 1) && meta.attributes.some((a) => a.trait_type === "OG" && a.value === "Yes") && svg.includes(">#1<") && svg.includes(">OG<"), "card #1: numero e badge OG nei metadati e nell'immagine");
-ok(Number((await c.cardOf(await alice.getAddress())).number) === 1, "cardOf restituisce il numero della registrazione");
+ok(Number((await c.cardOf(await alice.getAddress())).card.number) === 1 && (await c.cardOf(await alice.getAddress())).card.decks.length === 2, "cardOf restituisce numero, mazzi e immagini");
 for (const [f, args] of [["transferFrom", [await alice.getAddress(), await bob.getAddress(), id]], ["approve", [await bob.getAddress(), id]], ["setApprovalForAll", [await bob.getAddress(), true]]])
   await reverts(as(alice)[f](...args), "Soulbound", `soulbound: ${f}`);
 await reverts(as(alice)["safeTransferFrom(address,address,uint256)"](await alice.getAddress(), await bob.getAddress(), id), "Soulbound", "soulbound: safeTransferFrom");
 ok((await c.locked(id)) === true && (await c.supportsInterface("0xb45a3c0e")) && (await c.supportsInterface("0x80ac58cd")) && (await c.supportsInterface("0x5b5e139f")), "EIP-5192 locked e interfacce ERC-721");
-await reverts(as(bob).setStyle("0x000000", 0, "x"), "ERC721NonexistentToken", "setStyle senza card");
-await (await as(alice).setStyle("0x7dffb0", 4, "new line")).wait();
-ok((await c.cardOf(await alice.getAddress())).bio === "new line", "setStyle della propria card");
+await reverts(as(bob).setStyle(card()), "ERC721NonexistentToken", "setStyle senza card");
+await (await as(alice).setStyle(card({ color: "0x7dffb0", pattern: 4, bio: "new line", decks: [] }))).wait();
+ok((await c.cardOf(await alice.getAddress())).card.bio === "new line" && (await c.cardOf(await alice.getAddress())).card.decks.length === 0, "setStyle della propria card (anche togliere i mazzi)");
 ok(!art.abi.some((x) => ["withdraw", "owner", "setPrice", "transferOwnership"].includes(x.name)), "nessuna funzione di admin (withdraw, owner)");
 // release
 await (await as(alice).release()).wait();

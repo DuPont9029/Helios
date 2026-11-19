@@ -836,3 +836,12 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .deploy-page { gap: 12px; max-width: 760px; }
 .deploy-out .ok { color: #7dffb0; } .deploy-out .error { color: var(--danger); }
 .pc-tag.og, .og-tag { background: #ffcf3b; color: #0b0c12; border-color: #ffcf3b; font: 800 11px var(--mono); letter-spacing: .12em; padding: 3px 8px; }
+.mint-preview { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); background: var(--panel-2); margin-bottom: 8px; }
+.mint-head { display: flex; gap: 12px; align-items: center; }
+.mint-avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; border: 2px solid var(--accent); display: grid; place-items: center; }
+.mint-color { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); }
+.mint-color span { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+.mint-decks { display: flex; gap: 10px; }
+.mint-deck { display: grid; justify-items: center; gap: 2px; width: 74px; text-align: center; font-size: 11px; }
+.mint-deck img, .mint-nocover { width: 60px; height: 88px; object-fit: cover; border-radius: 4px; background: var(--panel-3); display: block; }
+.nft-card-preview img { width: 220px; }

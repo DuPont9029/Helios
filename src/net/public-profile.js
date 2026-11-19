@@ -215,5 +215,48 @@ export async function fetchProfiles(pks) {
 /** Profilo già scaricato (senza rete), per disegnare subito gli elenchi. */
 export const cachedProfile = (pk) => cache.get(pk)?.profile ?? null;
 
-// Cambio di profilo (KeyTag, import): il nuovo si pubblica con i suoi dati.
-window.addEventListener("helios-identity", () => schedulePublish(3000));
+const DEFAULT_COLOR = "#38c6ff";
+const DEFAULT_PATTERN = "rays";
+const sameContent = (a, b) => {
+  const pick = (p) => p && { name: p.name, username: p.username, wallet: p.wallet, avatar: p.avatar, bio: p.bio, wallets: p.wallets, theme: p.theme, decks: p.decks.map(({ at, ...d }) => d) };
+  return canonical(pick(a)) === canonical(pick(b));
+};
+
+/**
+ * All'avvio: la scheda pubblicata è la fonte quando il browser non ha i dati (immagine, frase, colori e mazzi stanno solo
+ * nel browser dove si sono scelti): un altro browser con lo stesso profilo li prende invece di pubblicare una scheda
+ * vuota sopra quella vera. Poi, se la scheda pubblicata non è quella del browser (es. svuotata da un altro browser), la
+ * si ripubblica completa.
+ */
+export async function syncOwnProfile() {
+  const me = identity().pk;
+  let remote = null;
+  try {
+    remote = await fetchProfile(me, { fresh: true });
+  } catch {
+    return; // relay irraggiungibili: niente da confrontare, si riprova al prossimo avvio
+  }
+  if (remote) {
+    if (!settings.avatar && remote.avatar) settings.avatar = remote.avatar;
+    if (!settings.bio && remote.bio) settings.bio = remote.bio;
+    const localTheme = (settings.cardColor || DEFAULT_COLOR) === DEFAULT_COLOR && (settings.cardPattern || DEFAULT_PATTERN) === DEFAULT_PATTERN;
+    if (localTheme && remote.theme?.color && (remote.theme.color !== DEFAULT_COLOR || remote.theme.pattern !== DEFAULT_PATTERN)) {
+      settings.cardColor = remote.theme.color;
+      settings.cardPattern = remote.theme.pattern;
+    }
+    if (!readPlayed().length && remote.decks.length) {
+      const list = [];
+      for (const d of remote.decks) list.push({ key: await sha256Hex(canonical({ main: [...d.main].sort(), extra: [...d.extra].sort() })), ...d, at: d.at || Date.now() });
+      try {
+        localStorage.setItem(PLAYED, JSON.stringify(list));
+      } catch {
+        /* storage pieno */
+      }
+    }
+  }
+  const mine = await myProfile();
+  if (!remote || !sameContent(remote, mine)) await publishProfile({ force: true }).catch(() => {});
+}
+
+// Cambio di profilo (KeyTag, import): il nuovo prende i suoi dati pubblicati e si pubblica.
+window.addEventListener("helios-identity", () => setTimeout(() => syncOwnProfile().catch(() => {}), 3000));

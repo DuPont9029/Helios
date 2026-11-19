@@ -99,13 +99,13 @@ export async function nameOfWallet(address) {
   return { name: r.display, nostr: r.nostr, number: Number(r.number) };
 }
 
-/** La card del wallet (null se non l'ha), con l'immagine SVG (data URL). */
+/** La card del wallet (null se non l'ha), con l'immagine SVG (data URL) e i metadati. */
 export async function cardOfWallet(address) {
   const c = await contract();
   const r = await c.cardOf(address);
   if (r.tokenId === 0n) return null;
-  const meta = JSON.parse(atob((await c.tokenURI(r.tokenId)).split(",")[1]));
-  return { tokenId: r.tokenId, color: r.color, pattern: Number(r.pattern), bio: r.bio, number: Number(r.number), image: meta.image };
+  const meta = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob((await c.tokenURI(r.tokenId)).split(",")[1]), (ch) => ch.charCodeAt(0))));
+  return { tokenId: r.tokenId, number: Number(r.card.number), og: r.card.og, decks: r.card.decks.length, image: meta.image, name: meta.name };
 }
 
 // ---------------------------------------------------------------- nomi verificati (cache)
@@ -218,8 +218,17 @@ const writePending = (list) => {
 };
 export const pendingRegistrations = () => readPending().filter((p) => Date.now() / 1000 - p.at < 86400);
 
-// limiti di gas fissi (misurati: register ~122k, registerFor ~153k, mint ~224k): il gas non usato non si paga
-const GAS = { commit: 80000n, register: 300000n, registerFor: 350000n, mint: 400000n };
+// Limite di gas: la stima della rete più il 30% (le regole del gas cambiano: su Sepolia, con i prezzi nuovi della
+// creazione di dati, commit costa ~128k invece di ~45k). Se la stima non riesce (es. blockchain locale che stima con
+// un tempo vecchio), un limite largo: il gas non usato non si paga.
+const GAS_FALLBACK = { commit: 400000n, register: 1500000n, registerFor: 1800000n, mint: 2500000n };
+async function gasLimit(c, fn, args) {
+  try {
+    return ((await c[fn].estimateGas(...args)) * 13n) / 10n + 10000n;
+  } catch {
+    return GAS_FALLBACK[fn];
+  }
+}
 
 /** Aspetta che la blockchain arrivi a `ts` (secondi): steps(text) per il conto alla rovescia. */
 async function waitUntil(ts, steps) {
@@ -259,7 +268,7 @@ export async function registerName(signer, name, { auth = null, steps } = {}) {
     const secret = ethers.hexlify(ethers.randomBytes(32));
     const cm = await c.makeCommitment(name, owner, nostr, secret, payer);
     steps?.("Step 1 of 2: confirm in the wallet");
-    const r = await sendAndWait(c.commit(cm, { gasLimit: GAS.commit }), steps, "Step 1");
+    const r = await sendAndWait(c.commit(cm, { gasLimit: await gasLimit(c, "commit", [cm]) }), steps, "Step 1");
     const at = Number((await r.getBlock()).timestamp);
     pend = { name, owner, nostr, secret, payer, at };
     writePending([...readPending(), pend]);
@@ -269,7 +278,7 @@ export async function registerName(signer, name, { auth = null, steps } = {}) {
   const args = auth ? [name, owner, nostr, pend.secret, auth.deadline, auth.sig] : [name, nostr, pend.secret];
   const fn = auth ? "registerFor" : "register";
   await c[fn].staticCall(...args, { blockTag: "latest" }); // errore vero del contratto prima di spendere gas
-  await sendAndWait(c[fn](...args, { gasLimit: GAS[fn] }), steps, "Step 2");
+  await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Step 2");
   writePending(readPending().filter((p) => p !== pend && !(p.name === pend.name && p.owner === pend.owner && p.payer === pend.payer)));
   return { name, owner };
 }
@@ -285,28 +294,35 @@ export async function signNameRequest(signer, name, days = 3) {
   return { kind: "register", name, owner, nostr, deadline, sig };
 }
 
-/** Il giocatore firma il permesso a un amico di pagargli la card: { owner, color, pattern, bio, deadline, sig }. */
-export async function signCardRequest(signer, { color, pattern, bio }, days = 3) {
+/**
+ * Il giocatore firma il permesso a un amico di pagargli la card: { kind, owner, card, deadline, sig }. La firma copre
+ * l'impronta di tutti i dati (cardHash del contratto: immagini e mazzi compresi).
+ */
+export async function signCardRequest(signer, card, days = 3) {
   const c = await contract();
   const owner = await signer.getAddress();
   const deadline = Math.floor(Date.now() / 1000) + days * 86400;
   const nonce = await c.nonces(owner);
-  const sig = await signer.signTypedData(await domain(), { Mint: [{ name: "color", type: "bytes3" }, { name: "pattern", type: "uint8" }, { name: "bio", type: "string" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, { color, pattern, bio, nonce, deadline });
-  return { kind: "card", owner, color, pattern, bio, deadline, sig };
+  const hash = await c.cardHash(card);
+  const sig = await signer.signTypedData(await domain(), { Mint: [{ name: "card", type: "bytes32" }, { name: "nonce", type: "uint256" }, { name: "deadline", type: "uint256" }] }, { card: hash, nonce, deadline });
+  return { kind: "card", owner, card, deadline, sig };
 }
 
 async function domain() {
   return { name: "HeliosNames", version: "1", chainId: config().chainId, verifyingContract: config().address };
 }
 
-/** Conia la card: per sé (senza auth) o per l'amico che l'ha firmata. */
-export async function mintCard(signer, { color, pattern, bio }, { auth = null, steps } = {}) {
+/**
+ * Conia la card: per sé (card = cardInput) o per l'amico che l'ha firmata (auth). card: { color, pattern, bio, xmr,
+ * avatar, decks: [{ name, main, extra, cover }] } con le immagini come byte esadecimali (hex di un data URL).
+ */
+export async function mintCard(signer, card, { auth = null, steps } = {}) {
   const c = await contract(signer);
   steps?.("Confirm in the wallet");
-  const args = auth ? [auth.owner, auth.color, auth.pattern, auth.bio, auth.deadline, auth.sig] : [color, pattern, bio];
+  const args = auth ? [auth.owner, auth.card, auth.deadline, auth.sig] : [card];
   const fn = auth ? "mintFor" : "mint";
   await c[fn].staticCall(...args, { blockTag: "latest" });
-  await sendAndWait(c[fn](...args, { gasLimit: GAS.mint }), steps, "Card");
+  await sendAndWait(c[fn](...args, { gasLimit: await gasLimit(c, fn, args) }), steps, "Card");
 }
 
 /** Il proprio username è registrato: si salva, si pubblica nel profilo e diventa il nome. */

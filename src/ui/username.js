@@ -146,24 +146,109 @@ export function openUsernameDialog({ first = false, onDone } = {}) {
 // ---------------------------------------------------------------- card NFT
 
 const PATTERNS = ["rays", "grid", "waves", "hex", "stars", "plain"];
-/** La frase della card on-chain: solo caratteri semplici, al massimo 48. */
-export const cardBio = (s) => String(s ?? "").replace(/[^\x20-\x7e]|[<>&"\\]/g, "").slice(0, 48);
+/** Testo per la card on-chain: solo caratteri semplici (il contratto rifiuta < > & " \ e i non ASCII). */
+export const cardBio = (s, max = 48) => String(s ?? "").replace(/[^\x20-\x7e]|[<>&"\\]/g, "").slice(0, max);
+const MAX_AVATAR = 12000; // come nel contratto (byte del data URL)
+const MAX_COVER = 8000;
 
-/** Conio della card (o richiesta a un amico): colore, motivo e frase sono quelli della scheda. */
+/** Immagine ridotta a w × h (ritagliata al centro) come data URL WebP/JPEG sotto `max` caratteri; "" se non si carica. */
+function shrinkImage(src, w, h, max) {
+  return new Promise((resolve) => {
+    if (!src) return resolve("");
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onerror = () => resolve("");
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = w;
+      c.height = h;
+      const x = c.getContext("2d");
+      const k = Math.max(w / img.width, h / img.height);
+      x.drawImage(img, (w - img.width * k) / 2, (h - img.height * k) / 2, img.width * k, img.height * k);
+      for (const q of [0.82, 0.7, 0.58, 0.46, 0.34]) {
+        for (const type of ["image/webp", "image/jpeg"]) {
+          const url = c.toDataURL(type, q);
+          if (url.startsWith(`data:${type};base64,`) && url.length <= max) return resolve(url);
+        }
+      }
+      resolve("");
+    };
+    img.src = src;
+  });
+}
+
+/** Copertina di un mazzo: l'immagine della carta passa dal proxy wsrv.nl (le immagini delle carte non hanno CORS). */
+async function coverOf(code) {
+  if (!code) return "";
+  const { imageUrl } = await import("../data/settings.js");
+  const url = imageUrl(code);
+  return shrinkImage(url.startsWith("data:") ? url : `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=240&output=jpg`, 120, 176, MAX_COVER);
+}
+
+const toHex = (dataUrl) => "0x" + [...new TextEncoder().encode(dataUrl)].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+/**
+ * Dati della card on-chain dalla scheda del giocatore: colore, motivo, frase, immagine del profilo, indirizzo XMR del
+ * wallet di Helios (se showXmr) e i 3 mazzi giocati online più recenti con la copertina. Restituisce { input, preview }.
+ */
+export async function buildCardInput({ showXmr = true } = {}) {
+  const { playedDecks } = await import("../net/public-profile.js");
+  const avatar = await shrinkImage(settings.avatar, 96, 96, MAX_AVATAR);
+  let xmr = "";
+  if (showXmr && identity().seed) {
+    const { bip39Seed, moneroWallet } = await import("../net/wallets.js");
+    xmr = moneroWallet(bip39Seed(identity().seed)).address;
+  }
+  const decks = [];
+  for (const d of playedDecks().slice(0, 3)) {
+    const name = cardBio(d.name, 24).trim() || "Deck";
+    const cover = await coverOf(d.cover && [...d.main, ...d.extra].includes(d.cover) ? d.cover : d.main[0]);
+    decks.push({ name, main: Math.min(60, d.main.length), extra: Math.min(15, d.extra.length), cover });
+  }
+  const color = (settings.cardColor || "#38c6ff").toLowerCase();
+  const input = {
+    color: color.replace("#", "0x"),
+    pattern: Math.max(0, PATTERNS.indexOf(settings.cardPattern || "rays")),
+    bio: cardBio(settings.bio),
+    xmr,
+    avatar: avatar ? toHex(avatar) : "0x",
+    decks: decks.map((d) => ({ name: d.name, main: d.main, extra: d.extra, cover: d.cover ? toHex(d.cover) : "0x" })),
+  };
+  return { input, preview: { color, avatar, bio: input.bio, xmr, decks } };
+}
+
+/** Conio della card (o richiesta a un amico): i dati vengono dalla scheda del giocatore. */
 export function openMintDialog({ onDone } = {}) {
-  const style = { color: (settings.cardColor || "#38c6ff").toLowerCase(), pattern: Math.max(0, PATTERNS.indexOf(settings.cardPattern || "rays")), bio: cardBio(settings.bio) };
   const progress = h("p.small.name-progress");
   const owner = settings.usernameWallet;
+  const preview = h("div.mint-preview", h("p.muted.small", "Preparing your card…"));
+  const xmrBox = h("input", { type: "checkbox", checked: true });
+  let built = null;
+  const paintPreview = async () => {
+    built = null;
+    clear(preview).append(h("p.muted.small", "Preparing your card…"));
+    built = await buildCardInput({ showXmr: xmrBox.checked });
+    const p = built.preview;
+    clear(preview).append(
+      h("div.mint-head", p.avatar ? h("img.mint-avatar", { src: p.avatar, alt: "" }) : h("span.mint-avatar.blank", "?"),
+        h("div", h("b", settings.username), h("div.muted.small", p.bio || "(no line)"), h("div.mint-color", h("span", { style: { background: p.color } }), ` ${p.color} · ${settings.cardPattern || "rays"}`))),
+      h("div.muted.small", `ETH ${owner.slice(0, 8)}…${owner.slice(-4)}${p.xmr ? ` · XMR ${p.xmr.slice(0, 8)}…${p.xmr.slice(-6)}` : ""}`),
+      p.decks.length
+        ? h("div.mint-decks", p.decks.map((d) => h("div.mint-deck", d.cover ? h("img", { src: d.cover, alt: "" }) : h("span.mint-nocover"), h("b", d.name), h("span.muted.small", `${d.main}+${d.extra}`))))
+        : h("p.muted.small", "No decks yet: the 3 decks you played online most recently go on the card."));
+  };
   const ownWallet = async () => {
     // la card la conia il wallet a cui è intestato il nome
     const helios = identity().seed ? await (await names.heliosSigner()).getAddress() : "";
     return owner.toLowerCase() === helios.toLowerCase() ? "helios" : "browser";
   };
-  const payer = payerPicker({ note: `Your card is an NFT on Ethereum, bound to ${owner.slice(0, 8)}…: it shows your username with the color, pattern and line of your player card ("${style.bio || "no line"}"). Only gas, no price.` });
+  const payer = payerPicker({ note: `Your card is an NFT on Ethereum, bound to ${owner.slice(0, 8)}…. It shows your username, picture, colors, wallets and decks, with everything stored on-chain. Only gas, no price.` });
+  xmrBox.addEventListener("change", paintPreview);
+  paintPreview();
   const m = openModal({
     title: "Mint your on-chain card",
     className: "username-modal",
-    body: [payer.el, progress],
+    body: [preview, h("label.check", xmrBox, "Show my Monero address (from my Helios wallet)"), payer.el, progress],
     actions: [
       { label: "Close", value: null },
       {
@@ -174,17 +259,18 @@ export function openMintDialog({ onDone } = {}) {
           const steps = (s) => (progress.textContent = s);
           progress.className = "small name-progress muted";
           try {
+            if (!built) throw new Error("The card is still being prepared: wait a moment");
             const mine = await ownWallet();
             const ownerSigner = await signerFor(mine);
             if (via === "friend") {
               if (!friendPk) throw new Error("Choose a friend");
-              const req = await names.signCardRequest(ownerSigner, { color: style.color.replace("#", "0x"), pattern: style.pattern, bio: style.bio });
+              const req = await names.signCardRequest(ownerSigner, built.input);
               if (!(await sendDirect(friendPk, { t: "name-pay", req }))) throw new Error("The Nostr relays did not answer: try again");
               toast("Request sent to your friend", { kind: "ok" });
               return close(true);
             }
             if (via !== mine) throw new Error(`The card is minted by the wallet that owns the name: choose "${mine === "helios" ? "My Helios wallet" : "My browser wallet"}", or ask a friend`);
-            await names.mintCard(ownerSigner, { color: style.color.replace("#", "0x"), pattern: style.pattern, bio: style.bio }, { steps });
+            await names.mintCard(ownerSigner, built.input, { steps });
             toast("Your on-chain card is minted", { kind: "ok" });
             close(true);
             onDone?.();
@@ -207,7 +293,11 @@ function cleanRequest(r) {
   const hex = (v, n) => typeof v === "string" && new RegExp(`^0x[0-9a-fA-F]{${n}}$`).test(v);
   if (!r || !hex(r.owner, 40) || !Number.isInteger(r.deadline) || typeof r.sig !== "string" || r.deadline < Date.now() / 1000) return null;
   if (r.kind === "register" && typeof r.name === "string" && !names.nameProblem(r.name) && hex(r.nostr, 64)) return r;
-  if (r.kind === "card" && hex(r.color, 6) && Number.isInteger(r.pattern) && r.pattern >= 0 && r.pattern <= 5 && typeof r.bio === "string" && r.bio === cardBio(r.bio)) return r;
+  const c = r.card;
+  const isHex = (v) => typeof v === "string" && /^0x([0-9a-fA-F]{2})*$/.test(v) && v.length <= 2 + 2 * MAX_AVATAR;
+  if (r.kind === "card" && c && hex(c.color, 6) && Number.isInteger(c.pattern) && c.pattern >= 0 && c.pattern <= 5 && typeof c.bio === "string" && c.bio === cardBio(c.bio)
+    && typeof c.xmr === "string" && isHex(c.avatar) && Array.isArray(c.decks) && c.decks.length <= 3
+    && c.decks.every((d) => typeof d?.name === "string" && d.name === cardBio(d.name, 24) && Number.isInteger(d.main) && Number.isInteger(d.extra) && isHex(d.cover))) return r;
   return null;
 }
 
@@ -233,7 +323,7 @@ export function payRequest(x, onDone) {
           try {
             const signer = await signerFor(payer.get().via);
             if (x.req.kind === "register") await names.registerName(signer, x.req.name, { auth: x.req, steps });
-            else await names.mintCard(signer, {}, { auth: x.req, steps });
+            else await names.mintCard(signer, null, { auth: x.req, steps });
             await sendDirect(x.from, { t: "name-paid", kind: x.req.kind, name: x.req.name ?? "" });
             requests.splice(requests.indexOf(x), 1);
             toast(`Paid for ${x.name}`, { kind: "ok" });
@@ -285,42 +375,67 @@ export async function initUsernames({ prompt }) {
 
 // ---------------------------------------------------------------- deploy del registro (una volta, chi lo fa paga il gas)
 
-/** Pagina #deploy-names: deploy del contratto con il wallet del browser. */
+/** Pagina #deploy-names: deploy del contratto con il wallet del browser, sulla rete scelta (Sepolia di default). */
 export async function showDeployPage(app) {
   const root = clear(app.root);
   const out = h("div.deploy-out");
   const art = (await import("../data/names-contract.json")).default;
   const { discoverWallets, connectWallet } = await import("../net/web-wallet.js");
   const { ethers } = await import("ethers");
+  const wallets = await discoverWallets();
+  // la rete si sceglie esplicitamente: prima del deploy il wallet passa a quella (niente deploy per sbaglio su mainnet)
+  const netSel = h("select.select", Object.entries(CHAINS).filter(([id]) => id !== "1337" || import.meta.env?.DEV).map(([id, c]) => h("option", { value: id, selected: id === "11155111" }, `${c.name} (chain ${id})`)));
+  const walletSel = h("select.select", wallets.map((w, i) => h("option", { value: i }, w.info.name)));
   const run = async () => {
+    clear(out);
     try {
-      const list = await discoverWallets();
-      if (!list.length) throw new Error("No browser wallet found: install OneKey, MetaMask or Rabby");
-      await connectWallet(list[0]);
-      const bp = new ethers.BrowserProvider(list[0].provider);
+      const w = wallets[+walletSel.value];
+      if (!w) throw new Error("No browser wallet found: install OneKey, MetaMask or Rabby");
+      const chainId = Number(netSel.value);
+      const want = "0x" + chainId.toString(16);
+      out.append(h("p.muted.small", `Asking ${w.info.name} to switch to ${CHAINS[chainId].name}…`));
+      if ((await w.provider.request({ method: "eth_chainId" })) !== want) {
+        try {
+          await w.provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: want }] });
+        } catch (e) {
+          // rete sconosciuta al wallet (4902) o nascosta: si chiede di aggiungerla con i suoi dati
+          if (e?.code !== 4902 && e?.data?.originalError?.code !== 4902 && !/unrecognized|not been added|unknown chain/i.test(e?.message ?? "")) throw e;
+          const c = CHAINS[chainId];
+          await w.provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: want, chainName: c.name.replace(/ \(.*\)$/, ""), rpcUrls: c.rpc, blockExplorerUrls: c.explorer ? [c.explorer] : [], nativeCurrency: { name: chainId === 1 ? "Ether" : "Sepolia Ether", symbol: chainId === 1 ? "ETH" : "SepoliaETH", decimals: 18 } }] });
+        }
+      }
+      await connectWallet(w);
+      const bp = new ethers.BrowserProvider(w.provider);
       const net = await bp.getNetwork();
+      if (Number(net.chainId) !== chainId) throw new Error(`The wallet is on chain ${net.chainId}, not ${chainId}: switch it and try again`);
       const signer = await bp.getSigner();
+      const from = await signer.getAddress();
       const f = new ethers.ContractFactory(art.abi, art.bytecode, signer);
       const gas = await bp.estimateGas(await f.getDeployTransaction());
       const fee = await bp.getFeeData();
-      clear(out).append(h("p", `Network: chain ${net.chainId} · from ${await signer.getAddress()} · gas ≈ ${gas} (≈ ${fmtEth(gas * (fee.maxFeePerGas ?? fee.gasPrice ?? 0n))} at most)`), h("p.muted.small", "Confirm in the wallet…"));
+      const bal = await bp.getBalance(from);
+      out.append(h("p", `${CHAINS[chainId].name} · from ${from} (${fmtEth(bal)}) · gas ≈ ${gas} (≈ ${fmtEth(gas * (fee.maxFeePerGas ?? fee.gasPrice ?? 0n))} at most)`), h("p.muted.small", "Confirm in the wallet…"));
       const c = await f.deploy();
       out.append(h("p.muted.small", `Transaction ${c.deploymentTransaction().hash}: waiting for the block…`));
       await c.waitForDeployment();
       const address = await c.getAddress();
-      out.append(h("p.ok", "Deployed at ", h("code", address)), h("button.btn", { onclick: () => copyText(address).then((ok) => toast(ok ? "Address copied" : "Copy failed")) }, icon("content_copy"), " Copy the address"),
-        h("p.muted.small", `Put it in src/data/names-config.js (chainId ${net.chainId}) and publish Helios: usernames switch on.`));
+      const chain = CHAINS[chainId];
+      out.append(h("p.ok", "Deployed at ", h("code", address)),
+        h("div.row",
+          h("button.btn", { onclick: () => copyText(address).then((ok) => toast(ok ? "Address copied" : "Copy failed")) }, icon("content_copy"), " Copy the address"),
+          chain.explorer ? h("a.btn", { href: `${chain.explorer}/address/${address}`, target: "_blank", rel: "noopener" }, icon("open_in_new"), " Explorer") : null),
+        h("p.muted.small", `Put it in src/data/names-config.js (chainId ${chainId}) and publish Helios: usernames switch on.`));
       // sviluppo: Helios in questo browser usa il registro appena deployato (es. su Sepolia), senza pubblicare niente
-      const chain = CHAINS[Number(net.chainId)];
-      if (import.meta.env?.DEV && chain) out.append(h("button.btn", { onclick: () => { localStorage.setItem("ygoweb.namesDev", JSON.stringify({ chainId: Number(net.chainId), address, rpc: chain.rpc, explorer: chain.explorer, opensea: chain.opensea })); location.hash = ""; location.reload(); } }, `Use it in this browser on ${chain.name} (development)`));
+      if (import.meta.env?.DEV) out.append(h("button.btn.primary", { onclick: () => { localStorage.setItem("ygoweb.namesDev", JSON.stringify({ chainId, address, rpc: chain.rpc, explorer: chain.explorer, opensea: chain.opensea })); location.hash = ""; location.reload(); } }, `Use it in this browser on ${chain.name} (development)`));
     } catch (e) {
       out.append(h("p.error", e.shortMessage ?? e.message));
     }
   };
   root.append(h("div.page.deploy-page",
     h("div.page-head", h("button.btn.ghost.round.page-back", { onclick: () => { location.hash = ""; app.home(); } }, icon("chevron_left")), h("h1", "Deploy the username registry")),
-    h("p", "Deploys contracts/HeliosNames.sol (no owner, no fees) with the browser wallet. Do it once: then write the address in src/data/names-config.js."),
+    h("p", "Deploys contracts/HeliosNames.sol (no owner, no fees) with the browser wallet. Do it once per network: then write the address in src/data/names-config.js."),
     h("p.muted.small", `Compiler ${art.compiler} · EVM ${art.evmVersion} · ${(art.bytecode.length - 2) / 2} bytes of init code`),
+    h("div.grid2", h("label.field", h("span", "Network"), netSel), h("label.field", h("span", "Wallet"), wallets.length ? walletSel : h("span.muted.small", "No browser wallet found"))),
     h("button.btn.primary", { onclick: run }, icon("rocket_launch"), " Deploy with my browser wallet"),
     out));
 }

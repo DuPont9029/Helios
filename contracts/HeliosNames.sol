@@ -5,8 +5,8 @@ import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
 import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
-import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
-import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
+import { SSTORE2 } from "solady/src/utils/SSTORE2.sol";
+import { HeliosCardRenderer, CardView, DeckView } from "./HeliosCard.sol";
 
 /// @title Helios usernames and player cards
 /// @notice Registro degli username di Helios (unici, senza distinzione tra maiuscole e minuscole) collegati al wallet
@@ -21,11 +21,12 @@ import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
 ///           nome di un giocatore solo se anche il suo profilo Nostr firmato dichiara lo stesso nome e lo stesso
 ///           wallet. Per questo una chiave Nostr non è unica qui: nessuno può "occupare" la chiave di un altro.
 ///         Il contratto non è aggiornabile e non ha owner: le regole non cambiano dopo il deploy.
-/// @dev Basato su OpenZeppelin Contracts 5.1.0 (ERC721, EIP712, Nonces, SignatureChecker, Base64, Strings).
-///      Compilato per EVM "paris". ABI e bytecode: src/data/names-contract.json (npm run contracts).
+///         La card mostra immagine del profilo, colori, wallet ETH e XMR e fino a 3 mazzi con la copertina: le immagini
+///         (piccole, data URL PNG/JPEG/WebP controllati qui) stanno on-chain come codice di contratti dati (SSTORE2).
+/// @dev Basato su OpenZeppelin Contracts 5.1.0 (ERC721, EIP712, Nonces, SignatureChecker) e Solady 0.1.26 (SSTORE2).
+///      Il disegno (SVG e JSON) è in HeliosCardRenderer, creato dal constructor. Compilato per EVM "paris".
+///      ABI e bytecode: src/data/names-contract.json (npm run contracts).
 contract HeliosNames is ERC721, EIP712, Nonces {
-    using Strings for uint256;
-
     struct Name {
         address owner; // wallet del giocatore
         uint64 block_; // blocco della registrazione
@@ -37,15 +38,50 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     struct Card {
         bytes3 color; // #rrggbb
         uint8 pattern; // 0 rays, 1 grid, 2 waves, 3 hexagons, 4 stars, 5 plain
+        address avatar; // immagine del profilo (puntatore SSTORE2, zero se non c'è)
         string bio; // ASCII stampabile senza < > & " \ , al massimo 48 caratteri
+        string xmr; // indirizzo Monero (o vuoto)
+        Deck[] decks; // al massimo 3
     }
+
+    struct Deck {
+        string name;
+        uint8 main;
+        uint8 extra;
+        address cover; // copertina (puntatore SSTORE2, zero se non c'è)
+    }
+
+    /// @notice Dati della card da coniare o aggiornare (immagini come data URL "data:image/…;base64,…").
+    struct CardInput {
+        bytes3 color;
+        uint8 pattern;
+        string bio;
+        string xmr;
+        bytes avatar;
+        DeckInput[] decks;
+    }
+
+    struct DeckInput {
+        string name;
+        uint8 main;
+        uint8 extra;
+        bytes cover;
+    }
+
+    uint256 public constant MAX_AVATAR = 12000; // byte del data URL
+    uint256 public constant MAX_COVER = 8000;
+    uint256 public constant MAX_DECKS = 3;
+
+    /// @notice Disegna la card (SVG e metadati): contratto senza stato creato nel constructor.
+    HeliosCardRenderer public immutable renderer;
 
     uint256 public constant MIN_COMMIT_AGE = 60;
     uint256 public constant MAX_COMMIT_AGE = 1 days;
 
     // autorizzazioni firmate dal giocatore (EIP-712) quando paga un amico
     bytes32 private constant REGISTER_TYPEHASH = keccak256("Register(string name,bytes32 nostr,uint256 nonce,uint256 deadline)");
-    bytes32 private constant MINT_TYPEHASH = keccak256("Mint(bytes3 color,uint8 pattern,string bio,uint256 nonce,uint256 deadline)");
+    // card = cardHash(input): impronta di tutti i dati della card (immagini comprese), che Helios mostra prima della firma
+    bytes32 private constant MINT_TYPEHASH = keccak256("Mint(bytes32 card,uint256 nonce,uint256 deadline)");
 
     /// @notice I primi OG_LIMIT nomi registrati sono gli OG (la card lo mostra). Il numero non si riassegna mai.
     uint32 public constant OG_LIMIT = 100;
@@ -72,12 +108,17 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     error BadCommitment();
     error BadBio();
     error BadPattern();
+    error BadImage();
+    error BadMonero();
+    error BadDecks();
     error CardExists();
     error BadSignature();
     error Expired();
     error Soulbound();
 
-    constructor() ERC721("Helios Player Card", "HELIOS") EIP712("HeliosNames", "1") {}
+    constructor() ERC721("Helios Player Card", "HELIOS") EIP712("HeliosNames", "1") {
+        renderer = new HeliosCardRenderer();
+    }
 
     // ------------------------------------------------------------------ nomi
 
@@ -175,42 +216,44 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     // ------------------------------------------------------------------ player card (NFT soulbound)
 
     /// @notice Conia la card del proprio nome sul proprio wallet (si paga solo il gas).
-    function mint(bytes3 color, uint8 pattern, string calldata bio) external {
-        _mintCard(msg.sender, color, pattern, bio);
+    function mint(CardInput calldata card) external {
+        _mintCard(msg.sender, card);
     }
 
-    /// @notice Un amico paga il conio della card di `owner`, che ha firmato (EIP-712) colore, motivo e frase.
-    function mintFor(address owner, bytes3 color, uint8 pattern, string calldata bio, uint256 deadline, bytes calldata signature) external {
+    /// @notice Un amico paga il conio della card di `owner`, che ha firmato (EIP-712) l'impronta dei dati della card.
+    function mintFor(address owner, CardInput calldata card, uint256 deadline, bytes calldata signature) external {
         if (block.timestamp > deadline) revert Expired();
-        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, color, pattern, keccak256(bytes(bio)), _useNonce(owner), deadline)));
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, cardHash(card), _useNonce(owner), deadline)));
         if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) revert BadSignature();
-        _mintCard(owner, color, pattern, bio);
+        _mintCard(owner, card);
     }
 
-    function _mintCard(address owner, bytes3 color, uint8 pattern, string calldata bio) private {
+    /// @notice Impronta dei dati di una card (quella che il giocatore firma per farla pagare a un amico).
+    function cardHash(CardInput calldata c) public pure returns (bytes32) {
+        bytes32[] memory decks = new bytes32[](c.decks.length);
+        for (uint256 i; i < c.decks.length; ++i) {
+            DeckInput calldata d = c.decks[i];
+            decks[i] = keccak256(abi.encode(keccak256(bytes(d.name)), d.main, d.extra, keccak256(d.cover)));
+        }
+        return keccak256(abi.encode(c.color, c.pattern, keccak256(bytes(c.bio)), keccak256(bytes(c.xmr)), keccak256(c.avatar), keccak256(abi.encodePacked(decks))));
+    }
+
+    function _mintCard(address owner, CardInput calldata input) private {
         bytes32 key = keyOfOwner[owner];
         if (key == bytes32(0)) revert NotRegistered();
         uint256 id = uint256(key);
         if (_ownerOf(id) != address(0)) revert CardExists();
-        _checkStyle(pattern, bio);
-        _cards[id] = Card(color, pattern, bio);
+        _store(id, input);
         ++totalSupply;
         _mint(owner, id);
         emit Locked(id);
     }
 
-    /// @notice Dominio EIP-712 per le firme (comodo per i client).
-    function domainSeparator() external view returns (bytes32) {
-        return _domainSeparatorV4();
-    }
-
-    /// @notice Cambia colore, motivo e frase della propria card.
-    function setStyle(bytes3 color, uint8 pattern, string calldata bio) external {
+    /// @notice Cambia i dati della propria card (immagini comprese).
+    function setStyle(CardInput calldata input) external {
         uint256 id = uint256(keyOfOwner[msg.sender]);
         if (id == 0 || _ownerOf(id) != msg.sender) revert ERC721NonexistentToken(id);
-        _checkStyle(pattern, bio);
-        Card storage c = _cards[id];
-        (c.color, c.pattern, c.bio) = (color, pattern, bio);
+        _store(id, input);
         emit CardStyled(id);
         emit MetadataUpdate(id);
     }
@@ -218,21 +261,104 @@ contract HeliosNames is ERC721, EIP712, Nonces {
     /// EIP-4906: i marketplace ricaricano l'immagine quando cambia lo stile
     event MetadataUpdate(uint256 tokenId);
 
-    function _checkStyle(uint8 pattern, string calldata bio) private pure {
-        if (pattern > 5) revert BadPattern();
-        bytes calldata b = bytes(bio);
-        if (b.length > 48) revert BadBio();
+    /// @notice Dominio EIP-712 per le firme (comodo per i client).
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
+    }
+
+    /// @dev Controlla e salva i dati: testi sicuri per SVG e JSON, immagini come data URL validi (SSTORE2).
+    function _store(uint256 id, CardInput calldata c) private {
+        if (c.pattern > 5) revert BadPattern();
+        _checkText(c.bio, 48);
+        _checkMonero(c.xmr);
+        if (c.decks.length > MAX_DECKS) revert BadDecks();
+        Card storage card = _cards[id];
+        card.color = c.color;
+        card.pattern = c.pattern;
+        card.bio = c.bio;
+        card.xmr = c.xmr;
+        card.avatar = _image(c.avatar, MAX_AVATAR);
+        delete card.decks;
+        for (uint256 i; i < c.decks.length; ++i) {
+            DeckInput calldata d = c.decks[i];
+            if (bytes(d.name).length == 0 || d.main > 60 || d.extra > 15) revert BadDecks();
+            _checkText(d.name, 24);
+            card.decks.push(Deck(d.name, d.main, d.extra, _image(d.cover, MAX_COVER)));
+        }
+    }
+
+    /// @dev ASCII stampabile senza < > & " \ : resta valido dentro SVG e JSON senza escape.
+    function _checkText(string calldata s, uint256 max) private pure {
+        bytes calldata b = bytes(s);
+        if (b.length > max) revert BadBio();
         for (uint256 i; i < b.length; ++i) {
             bytes1 c = b[i];
             if (c < 0x20 || c > 0x7E || c == 0x3C || c == 0x3E || c == 0x26 || c == 0x22 || c == 0x5C) revert BadBio();
         }
     }
 
-    function cardOf(address owner) external view returns (uint256 tokenId, bytes3 color, uint8 pattern, uint32 number, string memory bio) {
+    /// @dev Vuoto, oppure 95 caratteri base58 che iniziano con 4 o 8 (indirizzo Monero standard o subaddress).
+    function _checkMonero(string calldata s) private pure {
+        bytes calldata b = bytes(s);
+        if (b.length == 0) return;
+        if (b.length != 95 || (b[0] != "4" && b[0] != "8")) revert BadMonero();
+        for (uint256 i; i < 95; ++i) {
+            bytes1 c = b[i];
+            bool ok = (c >= "1" && c <= "9") || (c >= "A" && c <= "Z" && c != "I" && c != "O") || (c >= "a" && c <= "z" && c != "l");
+            if (!ok) revert BadMonero();
+        }
+    }
+
+    /// @dev Salva un'immagine (data URL PNG/JPEG/WebP in base64, al massimo `max` byte) con SSTORE2; zero se vuota.
+    function _image(bytes calldata data, uint256 max) private returns (address) {
+        if (data.length == 0) return address(0);
+        if (data.length > max) revert BadImage();
+        uint256 start = 0;
+        if (_startsWith(data, "data:image/png;base64,")) start = 22;
+        else if (_startsWith(data, "data:image/jpeg;base64,")) start = 23;
+        else if (_startsWith(data, "data:image/webp;base64,")) start = 23;
+        else revert BadImage();
+        if (data.length == start) revert BadImage();
+        for (uint256 i = start; i < data.length; ++i) {
+            bytes1 c = data[i];
+            bool ok = (c >= "A" && c <= "Z") || (c >= "a" && c <= "z") || (c >= "0" && c <= "9") || c == "+" || c == "/" || c == "=";
+            if (!ok) revert BadImage();
+        }
+        return SSTORE2.write(data);
+    }
+
+    function _startsWith(bytes calldata data, bytes memory prefix) private pure returns (bool) {
+        if (data.length < prefix.length) return false;
+        for (uint256 i; i < prefix.length; ++i) if (data[i] != prefix[i]) return false;
+        return true;
+    }
+
+    /// @notice Dati della card di un wallet (tokenId 0 se non l'ha), immagini comprese.
+    function cardOf(address owner) external view returns (uint256 tokenId, CardView memory card) {
         tokenId = uint256(keyOfOwner[owner]);
-        if (tokenId == 0 || _ownerOf(tokenId) == address(0)) return (0, 0, 0, 0, "");
-        Card storage c = _cards[tokenId];
-        return (tokenId, c.color, c.pattern, _names[bytes32(tokenId)].number, c.bio);
+        if (tokenId == 0 || _ownerOf(tokenId) == address(0)) return (0, card);
+        card = _view(tokenId);
+    }
+
+    function _view(uint256 id) private view returns (CardView memory v) {
+        Name storage n = _names[bytes32(id)];
+        Card storage c = _cards[id];
+        v.name = n.display;
+        v.number = n.number;
+        v.og = n.number <= OG_LIMIT;
+        v.nostr = n.nostr;
+        v.owner = n.owner;
+        v.since = n.block_;
+        v.color = c.color;
+        v.pattern = c.pattern;
+        v.bio = c.bio;
+        v.xmr = c.xmr;
+        if (c.avatar != address(0)) v.avatar = SSTORE2.read(c.avatar);
+        v.decks = new DeckView[](c.decks.length);
+        for (uint256 i; i < c.decks.length; ++i) {
+            Deck storage d = c.decks[i];
+            v.decks[i] = DeckView(d.name, d.main, d.extra, d.cover != address(0) ? SSTORE2.read(d.cover) : bytes(""));
+        }
     }
 
     /// @notice EIP-5192: la card è sempre legata al wallet.
@@ -261,123 +387,9 @@ contract HeliosNames is ERC721, EIP712, Nonces {
         return id == 0xb45a3c0e || id == 0x49064906 || super.supportsInterface(id); // EIP-5192, EIP-4906
     }
 
-    /// @notice Metadati e immagine della card, generati qui (JSON e SVG in base64).
+    /// @notice Metadati e immagine della card (JSON e SVG in base64), disegnati da HeliosCardRenderer.
     function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        address o = _requireOwned(tokenId);
-        Card storage c = _cards[tokenId];
-        Name storage n = _names[bytes32(tokenId)];
-        string memory image = string.concat('"image":"data:image/svg+xml;base64,', Base64.encode(bytes(_svg(n, c, o))), '"}');
-        return string.concat("data:application/json;base64,", Base64.encode(bytes(string.concat(_meta(n, c), image))));
-    }
-
-    /// @dev Nome, descrizione e attributi (numero, OG, motivo) del JSON dei metadati, fino a "image".
-    function _meta(Name storage n, Card storage c) private view returns (string memory) {
-        string memory num = uint256(n.number).toString();
-        bool og = n.number <= OG_LIMIT;
-        return string.concat(
-            '{"name":"#', num, " ", n.display, ' - Helios Player Card","description":"Helios username #', num,
-            og ? " (OG)." : ".", bytes(c.bio).length > 0 ? string.concat(" ", c.bio) : "",
-            '","attributes":[{"trait_type":"Number","display_type":"number","value":', num,
-            '},{"trait_type":"OG","value":"', og ? "Yes" : "No",
-            '"},{"trait_type":"Pattern","value":"', _patternName(c.pattern), '"}],'
-        );
-    }
-
-    // ------------------------------------------------------------------ SVG (solo nomi [A-Za-z0-9_] e frasi già filtrate)
-
-    function _svg(Name storage n, Card storage c, address o) private view returns (string memory) {
-        string memory col = string.concat("#", _hex3(c.color));
-        return string.concat(_frame(c.pattern, col), _top(n.display, col), _badge(n.number, col), _body(n, c, col, o), "</svg>");
-    }
-
-    function _frame(uint8 pattern, string memory col) private pure returns (string memory) {
-        string memory defs = string.concat(
-            '<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="', col,
-            '"/><stop offset="1" stop-color="#0b0c12"/></linearGradient>', _pattern(pattern),
-            '<clipPath id="c"><rect x="1.5" y="1.5" width="397" height="557" rx="22"/></clipPath></defs>'
-        );
-        return string.concat(
-            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 560" font-family="monospace">', defs,
-            '<rect x="1.5" y="1.5" width="397" height="557" rx="22" fill="#11131c"/>',
-            '<g clip-path="url(#c)"><rect width="400" height="190" fill="url(#g)"/><rect width="400" height="190" fill="url(#p)"/></g>',
-            '<rect x="1.5" y="1.5" width="397" height="557" rx="22" fill="none" stroke="', col, '" stroke-width="3"/>'
-        );
-    }
-
-    /// @dev Numero della registrazione in alto a destra; i primi OG_LIMIT con la scritta OG dorata.
-    function _badge(uint32 number, string memory col) private pure returns (string memory) {
-        string memory num = string.concat("#", uint256(number).toString());
-        string memory b = string.concat(
-            '<rect x="268" y="22" width="110" height="34" rx="17" fill="#0b0c12" fill-opacity=".75" stroke="', col, '"/>',
-            '<text x="323" y="45" fill="#fff" font-size="18" font-weight="700" text-anchor="middle">', num, "</text>"
-        );
-        if (number > OG_LIMIT) return b;
-        return string.concat(b,
-            '<rect x="296" y="62" width="54" height="22" rx="4" fill="#ffcf3b"/>',
-            '<text x="323" y="78" fill="#0b0c12" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="2">OG</text>');
-    }
-
-    function _top(string memory display, string memory col) private pure returns (string memory) {
-        return string.concat(
-            '<text x="28" y="44" fill="#fff" font-size="20" font-weight="700" letter-spacing="4">HELI<tspan fill="', col, '">OS</tspan></text>',
-            '<circle cx="200" cy="200" r="66" fill="#11131c" stroke="', col, '" stroke-width="5"/>',
-            '<text x="200" y="224" fill="', col, '" font-size="64" font-weight="700" text-anchor="middle">', _initial(display), "</text>"
-        );
-    }
-
-    function _body(Name storage n, Card storage c, string memory col, address o) private view returns (string memory) {
-        return string.concat(
-            '<text x="200" y="320" fill="#fff" font-size="30" font-weight="700" text-anchor="middle">', n.display, "</text>",
-            '<text x="200" y="356" fill="#c9cfdc" font-size="13" text-anchor="middle" font-style="italic">', c.bio, "</text>",
-            '<line x1="40" y1="392" x2="360" y2="392" stroke="', col, '" stroke-opacity=".5"/>',
-            _rows(n, o),
-            '<text x="40" y="530" fill="', col, '" font-size="14" font-weight="700">USERNAME #', uint256(n.number).toString(), n.number <= OG_LIMIT ? " - OG" : "", "</text>",
-            '<text x="360" y="530" fill="#8b93a7" font-size="12" text-anchor="end">ygoweb.eu</text>'
-        );
-    }
-
-    function _rows(Name storage n, address o) private view returns (string memory) {
-        return string.concat(
-            _row(424, "NOSTR", string.concat(Strings.toHexString(uint256(uint48(bytes6(n.nostr))), 6), "...")),
-            _row(452, "WALLET", string.concat(Strings.toHexString(uint256(uint48(bytes6(bytes20(o)))), 6), "...")),
-            _row(480, "SINCE", string.concat("block ", uint256(n.block_).toString()))
-        );
-    }
-
-    function _row(uint256 y, string memory label, string memory value) private pure returns (string memory) {
-        string memory ys = y.toString();
-        return string.concat(
-            '<text x="40" y="', ys, '" fill="#8b93a7" font-size="12">', label, '</text><text x="360" y="', ys,
-            '" fill="#e6ecf5" font-size="12" text-anchor="end">', value, "</text>"
-        );
-    }
-
-    function _pattern(uint8 p) private pure returns (string memory) {
-        string memory inner = ""; // 5 = plain: nessun motivo
-        if (p == 0) inner = '<path d="M0 0L24 24" stroke="#fff" stroke-opacity=".12" stroke-width="2"/>';
-        else if (p == 1) inner = '<path d="M24 0V24M0 24H24" stroke="#fff" stroke-opacity=".12"/>';
-        else if (p == 2) inner = '<path d="M0 12Q6 4 12 12T24 12" fill="none" stroke="#fff" stroke-opacity=".15"/>';
-        else if (p == 3) inner = '<circle cx="6" cy="6" r="2" fill="#fff" fill-opacity=".18"/><circle cx="18" cy="18" r="2" fill="#fff" fill-opacity=".18"/>';
-        else if (p == 4) inner = '<circle cx="5" cy="7" r=".8" fill="#fff"/><circle cx="17" cy="15" r="1.2" fill="#fff"/><circle cx="20" cy="4" r=".6" fill="#fff"/>';
-        return string.concat('<pattern id="p" width="24" height="24" patternUnits="userSpaceOnUse">', inner, "</pattern>");
-    }
-
-    function _patternName(uint8 p) private pure returns (string memory) {
-        return p == 0 ? "Rays" : p == 1 ? "Grid" : p == 2 ? "Waves" : p == 3 ? "Hexagons" : p == 4 ? "Stars" : "Plain";
-    }
-
-    function _initial(string memory s) private pure returns (string memory) {
-        bytes memory b = new bytes(1);
-        b[0] = bytes(s)[0];
-        if (b[0] >= 0x61 && b[0] <= 0x7A) b[0] = bytes1(uint8(b[0]) - 32);
-        return string(b);
-    }
-
-    /// @dev "rrggbb" da bytes3 (Strings.toHexString aggiungerebbe "0x").
-    function _hex3(bytes3 v) private pure returns (string memory) {
-        bytes memory s = bytes(Strings.toHexString(uint256(uint24(v)), 3)); // "0xrrggbb"
-        bytes memory out = new bytes(6);
-        for (uint256 i; i < 6; ++i) out[i] = s[i + 2];
-        return string(out);
+        _requireOwned(tokenId);
+        return renderer.tokenURI(_view(tokenId));
     }
 }

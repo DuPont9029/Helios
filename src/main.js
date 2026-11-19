@@ -340,8 +340,9 @@ async function boot() {
     if (location.hash === "#ai-vs-ai") return aiVsAi();
     // In duello la presenza porta le chiavi per guardarlo (solo gli amici la leggono, vedi net/spectate.js).
     startSocial({ status: () => (inDuel() ? "duel" : "online"), watch: () => app.current?.broadcast?.info() ?? null });
-    // scheda del giocatore: si ripubblica solo se è cambiata (net/public-profile.js)
-    import("./net/public-profile.js").then((m) => m.schedulePublish(8000));
+    // scheda del giocatore: i dati mancanti si prendono da quella pubblicata, poi la si ripubblica se è diversa
+    // (net/public-profile.js: un altro browser con lo stesso profilo non la svuota più)
+    import("./net/public-profile.js").then((m) => setTimeout(() => m.syncOwnProfile().catch(() => {}), 4000));
     // Report del coaching: dal duello rigiocato si torna alla pagina dei report.
     initCoaching(app, () => showOnline(app, { tab: "social" }));
     // link breve a una scheda giocatore (#p/<codice> o #p/npub1…): si apre solo la scheda
