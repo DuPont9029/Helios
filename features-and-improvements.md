@@ -81,6 +81,7 @@ Tre sezioni:
 - [ ] **Profilo salvato su Nostr**: deck, combo, spreadsheet, cube, draft giocati contro i bot (pool, deck, risultati), sleeve, gemme Pendulum e Moai sono salvati cifrati con il profilo e tornano importandolo su un altro browser; le cancellazioni si propagano; gli elementi grandi si spezzano in parti e si riuniscono.
 - [ ] **Seed veramente casuale**: "New profile" crea le 12 parole dal rumore fisico (webcam, microfono, movimenti del mouse), con la logica di Noise TRNG e la finestra in stile Helios.
 - [ ] **Wallets**: Settings → Profile → Wallets mostra un indirizzo Ethereum e uno Monero derivati dalle parole del profilo come Cake Wallet, con i saldi (ETH da RPC pubblico, XMR scansionando i blocchi nel browser). In Advanced: passphrase, seed Monero a 25 parole, rescan.
+- [ ] **Accesso con OneKey KeyTag e wallet del browser**: in Wallets (e in Import profile) si rifanno i buchi del proprio KeyTag su una piastra (12 buchi per riga, da 2048 a 1; 12 o 24 parole, controllo del checksum) e le parole diventano il profilo; "Connect browser wallet" collega un'estensione (OneKey, MetaMask, Rabby… con EIP-6963) e ne mostra indirizzo e saldo ETH, ripreso alla riapertura e scollegabile.
 
 ---
 
