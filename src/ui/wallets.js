@@ -84,7 +84,7 @@ export async function showWallets({ onProfile } = {}) {
   web.el.querySelector(".wallet-coin").remove();
   const webName = web.el.querySelector(".wallet-name");
   web.el.querySelector(".wallet-head").append(h("button.btn.small.ghost.wallet-off", { title: "Disconnect this wallet from Helios", onclick: async () => { await forgetWallet(); web.el.hidden = true; webOn = false; eth.el.hidden = !identity().seed; toast("Browser wallet disconnected"); } }, "Disconnect"));
-  const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with a KeyTag, or connect a browser wallet.");
+  const noSeed = h("p.muted.small", { hidden: true }, "This profile has no seed words (it was created before they existed): log in with your seed words or a KeyTag.");
 
   // ---- accesso: KeyTag o wallet del browser
   async function keyTagLogin() {
@@ -325,13 +325,17 @@ export async function showWallets({ onProfile } = {}) {
   let advancedBtn = null;
   derive();
   restoreWallet().then((w) => w && showWeb(w));
+  // all'account si accede solo con le parole o con il KeyTag; il wallet del browser serve solo a pagare (gas)
   const access = h("div.wallet-access",
-    h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag: its words become your profile", onclick: keyTagLogin }, icon("grid_on"), " Log in with OneKey KeyTag"),
-    h("button.btn.small", { title: "OneKey, MetaMask, Rabby… as a browser extension: Helios reads its address and ETH balance", onclick: connectWeb }, icon("link"), " Connect browser wallet"));
+    h("button.btn.small", { title: "Type your 12 seed words: they are your account", onclick: () => accountLogin() }, icon("key"), " Log in with seed words"),
+    h("button.btn.small", { title: "Punch the holes of your OneKey KeyTag: its words become your profile", onclick: keyTagLogin }, icon("grid_on"), " Log in with OneKey KeyTag"));
+  const connect = h("div.row.wallet-connect",
+    h("button.btn.small", { title: "OneKey, MetaMask, Rabby… as a browser extension: Helios reads its address and ETH balance, to pay gas with it", onclick: connectWeb }, icon("link"), " Connect browser wallet"),
+    h("span.muted.small", "To pay gas only: it does not log you in."));
   const modal = openModal({
     title: "Wallets",
     className: "wallets-modal",
-    body: [access, noSeed, h("div.wallet-cards", eth.el, xmr.el, web.el), advanced],
+    body: [access, noSeed, h("div.wallet-cards", eth.el, xmr.el, web.el), connect, advanced],
     onClose: () => ctrl?.abort(),
     actions: [
       { label: "Advanced", onClick: () => (advanced.hidden = !advanced.hidden) },
