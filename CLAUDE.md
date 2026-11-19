@@ -10,6 +10,8 @@ inglese, commenti nel codice in italiano.
   spostano solo gli utenti, mai Claude. Per spostarle: `npm run feature -- [--bugs|--reminders] test "nome"`
   (CLI interattiva con `npm run feature`; estensione di VS Code in `tools/vscode-features`, `npm run vscode-ext`).
 - Le voci con `*` sono grandi o difficili: si fanno solo se richiesto esplicitamente.
+- Ogni funzione nuova (anche chiesta in chat, non dalle liste) va in `features-and-improvements.md`, sezione 2
+  (da testare), se non c'è già; lo stesso per ogni bug corretto in `bug-reports.md`.
 - Se una voce è ambigua, chiedere prima di implementarla.
 
 ## Regole di interfaccia

@@ -83,3 +83,34 @@ export async function forgetWallet() {
   const w = (await discoverWallets(150)).find((x) => idOf(x) === s.id);
   await w?.provider.request({ method: "wallet_revokePermissions", params: [{ eth_accounts: {} }] }).catch(() => {});
 }
+
+/** "0.05" → wei (BigInt); errore se non è un importo valido. */
+export function toWei(text) {
+  const t = String(text ?? "").trim().replace(",", ".");
+  const m = t.match(/^(\d+)(?:\.(\d{1,18}))?$/);
+  if (!m) throw new Error("Write an amount like 0.01");
+  const wei = BigInt(m[1]) * 10n ** 18n + BigInt((m[2] ?? "").padEnd(18, "0"));
+  if (wei <= 0n) throw new Error("The amount must be more than 0");
+  return wei;
+}
+
+/**
+ * Manda ETH dal wallet del browser collegato: la transazione la mostra e la conferma l'estensione (Helios non firma
+ * niente). Sempre sulla rete principale di Ethereum. Restituisce l'hash della transazione.
+ */
+export async function sendEth(to, amount) {
+  const wei = toWei(amount);
+  const s = savedWallet();
+  if (!s) throw new Error("Connect a browser wallet first");
+  const w = (await discoverWallets()).find((x) => idOf(x) === s.id);
+  if (!w) throw new Error(`${s.name} is not available: unlock it, or reload the page`);
+  const ask = (method, params) => w.provider.request(params ? { method, params } : { method });
+  try {
+    const [from] = await ask("eth_requestAccounts");
+    if ((await ask("eth_chainId")) !== "0x1") await ask("wallet_switchEthereumChain", [{ chainId: "0x1" }]);
+    return await ask("eth_sendTransaction", [{ from, to, value: "0x" + wei.toString(16) }]);
+  } catch (e) {
+    if (e?.code === 4001) throw new Error("Transaction cancelled in the wallet");
+    throw new Error(e?.message ?? String(e));
+  }
+}

@@ -19,6 +19,8 @@ import { connectViaNostr, isNostrCode } from "../net/nostr-room.js";
 import { LinkMux, negotiate } from "../net/match.js";
 import { findMatch, watchSeeks, queueOf, MM_PROTO } from "../net/matchmaking.js";
 import { leaderboard, republishOutbox, START_RATING } from "../net/elo.js";
+import { openProfileCard, avatarEl } from "./profile-card.js";
+import { fetchProfiles, cachedProfile, recordPlayedDeck, schedulePublish } from "../net/public-profile.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
 import { relayStatus, socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
 import { unpackSignal } from "../net/peer.js";
@@ -529,6 +531,8 @@ async function playMatch(app, match, old = null) {
   } else if (iFirst != null) toast(iFirst ? "Rematch: you lost the last Duel, so you go first" : "Rematch: your opponent lost the last Duel, so they go first");
   else toast(result.me === 0 ? "You go first!" : "Your opponent goes first");
   if (result.opponent) rememberOpponent(result.opponent.pk, result.opponent.name);
+  // il mazzo va nella scheda del giocatore (una volta per partita, non nei tornei Limited)
+  if (!old && !match.limited) recordPlayedDeck(match.savedDeck).catch(() => {});
   if (settings.ranked) toast(result.ranked ? "Ranked Duel: the result counts for the ELO ranking" : "This Duel is not ranked (your opponent did not enable Ranked)", { kind: result.ranked ? "ok" : "info", ms: 4000 });
   if (!result.sameData) {
     toast("Warning: you and your opponent have different database/script versions. Desyncs may occur.", { kind: "error", ms: 9000 });
@@ -622,7 +626,7 @@ export function showOnline(app, { join = null, tab = null } = {}) {
   const decks = loadDecks();
   if (!decks.length) return alertModal("No Decks", "Create a Deck in the Deck Editor.");
   const root = clear(app.root);
-  const name = h("input.input", { value: settings.name, maxLength: 24, oninput: (e) => (settings.name = e.target.value.trim() || "Duelist") });
+  const name = h("input.input", { value: settings.name, maxLength: 24, oninput: (e) => (settings.name = e.target.value.trim() || "Duelist"), onchange: () => schedulePublish() });
   const deck = deckSelect(decks, settings.lastDeck);
   deck.addEventListener("change", () => (settings.lastDeck = deck.value));
   const opts = optionsForm();
@@ -862,13 +866,20 @@ export function showOnline(app, { join = null, tab = null } = {}) {
       const { players, games } = await leaderboard();
       const me = identity().pk;
       const mine = players.find((p) => p.pk === me);
+      // immagini dei primi 100: arrivano dopo e vanno al loro posto
+      fetchProfiles(players.slice(0, 100).map((p) => p.pk)).then(() => {
+        for (const b of rankBody.querySelectorAll("button.player-link")) {
+          const pr = cachedProfile(b.dataset.pk);
+          if (pr?.avatar) b.firstChild.replaceWith(avatarEl(b.dataset.pk, pr, pr.name, 22));
+        }
+      }).catch(() => {});
       clear(rankBody).append(
         h("p.muted.small", "Ranked Duels are signed by both players and published on public Nostr relays; every client checks the signatures and computes the same ranking. Start: 1500, K = 32; at most 5 Duels a day against the same opponent count. Leaving a ranked Duel (Leave, Surrender, closing the tab or the connection) counts as a loss; if both players claim the other left, both lose."),
         h("div.rank-me", h("b", mine ? `Your rating: ${mine.rating}` : `Your rating: ${START_RATING} (no ranked Duels yet)`), mine ? h("span.muted", ` · ${mine.wins}W ${mine.losses}L ${mine.draws}D`) : null, h("span.muted.small", ` · key ${shortKey(me)}`)),
         players.length
           ? h("table.rank-table",
               h("tr", h("th", "#"), h("th", "Player"), h("th", "Rating"), h("th", "Duels"), h("th", "W / L / D"), h("th", { title: "Duels lost by leaving" }, "Left")),
-              players.slice(0, 100).map((p, i) => h(`tr${p.pk === me ? ".me" : ""}`, h("td", i + 1), h("td", { title: p.pk }, p.name, h("span.muted.small", ` ${shortKey(p.pk)}`)), h("td", h("b", p.rating)), h("td", p.games), h("td", `${p.wins} / ${p.losses} / ${p.draws}`), h("td", p.abandons))))
+              players.slice(0, 100).map((p, i) => h(`tr${p.pk === me ? ".me" : ""}`, h("td", i + 1), h("td", h("button.player-link", { dataset: { pk: p.pk }, title: `Open ${p.name}'s card`, onclick: () => openProfileCard(p.pk, { name: p.name }) }, avatarEl(p.pk, cachedProfile(p.pk), p.name, 22), p.name, h("span.muted.small", ` ${shortKey(p.pk)}`))), h("td", h("b", p.rating)), h("td", p.games), h("td", `${p.wins} / ${p.losses} / ${p.draws}`), h("td", p.abandons))))
           : h("p.muted", "No ranked Duels yet."),
         h("p.muted.small", `${games.length} ranked Duels counted.`),
         h("button.btn", { onclick: loadRanking }, icon("refresh"), " Reload")
@@ -1099,15 +1110,24 @@ export function showOnline(app, { join = null, tab = null } = {}) {
     const watch = dot === "duel" ? presenceOf(f).watch : null;
     return h("li.friend-row",
       h(`span.presence-dot.${dot}`, { title: label }),
-      h("div.friend-info", h("b", f.name), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
+      cardLink(f.pk, f.name),
+      h("div.friend-info.clickable", { title: `Open ${f.name}'s card`, onclick: () => openProfileCard(f.pk, { name: f.name }) }, h("b", f.name), h("span.muted.small", { title: f.pk }, ` ${shortKey(f.pk)} · ${label}`)),
       watch ? h("button.btn.small", { title: COACHING ? `Watch ${f.name}'s Duel and report their mistakes` : `Watch ${f.name}'s Duel`, onclick: () => watchFriend(app, f, watch) }, icon("visibility"), " Watch") : null,
       f.status === "friend" ? h("button.btn.small.primary", { disabled: !canInvite, title: canInvite ? "Invite to a Duel with the rules on the left" : "You can invite a friend when they are online", onclick: () => inviteFriend(f) }, icon("swords"), " Invite") : null,
       h("button.btn.small.ghost", { title: "Rename", onclick: async () => { const n = await promptModal("Rename friend", "Name", f.name); if (n?.trim()) renameFriend(f.pk, n); } }, icon("edit")),
       h("button.btn.small.ghost", { title: "Remove from friends", onclick: async () => { if (await confirmModal("Remove friend", `Remove ${f.name} from your friends? They will no longer see when you are online.`, "Remove", "Cancel", { danger: true })) removeFriend(f.pk); } }, icon("person_remove"))
     );
   };
+  // immagine del giocatore che apre la sua scheda
+  const cardLink = (pk, nm) => h("button.avatar-btn", { title: `Open ${nm}'s card`, onclick: () => openProfileCard(pk, { name: nm }) }, avatarEl(pk, cachedProfile(pk), nm, 32));
+  let pics = false;
   const drawFriends = () => {
     const { friends, requests, recent } = socialState();
+    // le immagini dei profili arrivano dopo: una richiesta sola, poi la lista si ridisegna
+    if (!pics) {
+      pics = true;
+      fetchProfiles([...friends, ...requests, ...recent].map((x) => x.pk)).then(() => friendsBody.isConnected && drawFriends()).catch(() => {});
+    }
     const order = { online: 0, duel: 1, offline: 2, pending: 3 };
     const sorted = [...friends].sort((a, b) => order[presenceLabel(a)[1]] - order[presenceLabel(b)[1]] || a.name.localeCompare(b.name));
     clear(friendsBody).append(...[
@@ -1121,7 +1141,8 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         ? h("div.card-box", h("h3", `Friend requests (${requests.length})`),
             h("ul.friend-list", requests.map((r) => h("li.friend-row",
               h("span.presence-dot.pending"),
-              h("div.friend-info", h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
+              cardLink(r.pk, r.name),
+              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
               h("button.btn.small.primary", { onclick: () => acceptRequest(r.pk) }, icon("check"), " Accept"),
               h("button.btn.small.ghost", { onclick: () => declineRequest(r.pk) }, icon("close"), " Decline")))))
         : null,
@@ -1132,7 +1153,8 @@ export function showOnline(app, { join = null, tab = null } = {}) {
         ? h("div.card-box", h("h3", "Recent opponents"),
             h("ul.friend-list", recent.map((r) => h("li.friend-row",
               h("span.presence-dot.offline"),
-              h("div.friend-info", h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
+              cardLink(r.pk, r.name),
+              h("div.friend-info.clickable", { title: `Open ${r.name}'s card`, onclick: () => openProfileCard(r.pk, { name: r.name }) }, h("b", r.name), h("span.muted.small", { title: r.pk }, ` ${shortKey(r.pk)}`)),
               h("button.btn.small", { onclick: () => addFriend(r.pk, r.name).then(() => toast("Friend request sent"), (e) => toast(e.message, { kind: "error" })) }, icon("person_add"), " Add friend")))))
         : null,
     ].filter(Boolean));

@@ -681,7 +681,13 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .kt-side { font: 600 11px var(--mono); opacity: .7; }
 .kt-row { display: grid; grid-template-columns: 26px auto minmax(70px, 1fr); align-items: center; gap: 10px; padding: 2px 0; }
 .kt-num { font: 700 11px var(--mono); opacity: .75; text-align: right; }
-.kt-holes { display: grid; grid-template-columns: repeat(12, var(--hole)); gap: 4px; }
+/* a gruppi di 4 come sulla piastra: 2048–256 | 128–16 | 8–1, con una colonna vuota (e una linea incisa) in mezzo */
+.kt-holes { --gap: 4px; display: grid; grid-template-columns: repeat(4, var(--hole)) calc(var(--hole) * 0.6) repeat(4, var(--hole)) calc(var(--hole) * 0.6) repeat(4, var(--hole)); gap: var(--gap); }
+.kt-holes > :nth-child(5) { grid-column: 6; }
+.kt-holes > :nth-child(9) { grid-column: 11; }
+.kt-row:not(.kt-cols) .kt-holes { background:
+  linear-gradient(rgba(40,45,60,.28), rgba(40,45,60,.28)) calc(4 * var(--hole) + 4 * var(--gap) + var(--hole) * 0.3 - 1px) 0 / 1px 100% no-repeat,
+  linear-gradient(rgba(40,45,60,.28), rgba(40,45,60,.28)) calc(8 * var(--hole) + 9 * var(--gap) + var(--hole) * 0.9 - 1px) 0 / 1px 100% no-repeat; }
 .kt-cols .kt-holes { align-items: end; }
 .kt-col { font: 600 8px/1 var(--mono); text-align: center; opacity: .7; letter-spacing: -.03em; }
 .kt-hole { width: var(--hole); height: var(--hole); padding: 0; border-radius: 50%; cursor: pointer; border: 1px solid rgba(40,45,60,.45);
@@ -694,4 +700,47 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .kt-status { margin: 4px 0 0; }
 .kt-status.ok { color: #7dffb0; }
 .kt-status.bad { color: var(--danger); }
-@media (max-width: 600px) { .kt-plate { --hole: 18px; padding: 10px 8px; } .kt-holes { gap: 2px; } .kt-row { grid-template-columns: 18px auto minmax(56px, 1fr); gap: 6px; } .kt-word { font-size: 11px; } }
+@media (max-width: 600px) { .kt-plate { --hole: 17px; padding: 10px 8px; } .kt-holes { --gap: 2px; } .kt-row { grid-template-columns: 18px auto minmax(56px, 1fr); gap: 6px; } .kt-word { font-size: 11px; } }
+
+/* Scheda del giocatore (src/ui/profile-card.js) e immagini del profilo */
+.avatar { display: inline-grid; place-items: center; flex: none; border-radius: 50%; object-fit: cover; background: var(--panel-3); border: 1px solid var(--line); color: #fff; font: 700 14px var(--display); }
+.avatar-btn, .player-link { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.avatar-btn:hover .avatar, .player-link:hover .avatar { border-color: var(--accent); }
+.player-link:hover { color: var(--accent); }
+.friend-info.clickable { cursor: pointer; }
+.friend-info.clickable:hover b { color: var(--accent); }
+.profile-card-modal { width: min(720px, 100%); }
+.pc-head { display: flex; gap: 16px; align-items: center; }
+.pc-head .avatar { border: 2px solid var(--accent); }
+.pc-who { min-width: 0; display: grid; gap: 4px; }
+.pc-name { margin: 0; font: 700 24px var(--display); text-transform: uppercase; letter-spacing: .03em; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; overflow-wrap: anywhere; }
+.pc-tag { font: 600 10px var(--mono); padding: 3px 7px; border: 1px solid var(--accent); color: var(--accent); letter-spacing: .08em; }
+.pc-tag.friend { border-color: #7dffb0; color: #7dffb0; }
+.pc-key { display: flex; align-items: center; gap: 6px; }
+.pc-bio { margin: 2px 0 0; color: var(--text); }
+.pc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0 4px; }
+.pc-pill { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 13px; }
+.pc-sec { margin: 18px 0 8px; font: 600 13px var(--display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 6px; }
+.pc-stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+.pc-stat { display: grid; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--line); }
+.pc-stat-v { font: 700 22px var(--display); color: var(--text); }
+.pc-stat-l { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pc-stat-h { font-size: 11px; color: var(--muted); }
+.pc-games { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 4px; }
+.pc-game { display: grid; grid-template-columns: 26px 1fr auto 48px; gap: 8px; align-items: center; padding: 5px 8px; background: var(--panel-2); border-left: 3px solid var(--line); font-size: 13px; }
+.pc-game.W { border-left-color: #7dffb0; } .pc-game.L { border-left-color: var(--danger); } .pc-game.D { border-left-color: var(--muted); }
+.pc-res { font: 700 12px var(--mono); }
+.pc-delta { font: 600 12px var(--mono); text-align: right; }
+.pc-decks { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; }
+.pc-deck { display: grid; gap: 4px; justify-items: center; padding: 8px; background: var(--panel-2); border: 1px solid var(--line); color: var(--text); cursor: pointer; text-align: center; }
+.pc-deck:hover { border-color: var(--accent); }
+.pc-deck-cover { width: 72px; }
+.pc-deck-cover .card { width: 100%; }
+.pc-deck-name { font-size: 12px; overflow-wrap: anywhere; }
+.public-card-box { display: grid; gap: 8px; margin: 6px 0 4px; }
+.public-card-row { align-items: center; gap: 14px; }
+.public-card-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.send-crypto { display: grid; gap: 10px; }
+.send-crypto .warn { color: #ffd23b; margin: 0; }
+.send-crypto .ok { color: #7dffb0; }
+.send-crypto .error { color: var(--danger); }
