@@ -2,24 +2,28 @@
 pragma solidity 0.8.28;
 
 import { ERC721 } from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import { Ownable, Ownable2Step } from "@openzeppelin/contracts/access/Ownable2Step.sol";
+import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
+import { SignatureChecker } from "@openzeppelin/contracts/utils/cryptography/SignatureChecker.sol";
+import { Nonces } from "@openzeppelin/contracts/utils/Nonces.sol";
 import { Base64 } from "@openzeppelin/contracts/utils/Base64.sol";
 import { Strings } from "@openzeppelin/contracts/utils/Strings.sol";
-import { Address } from "@openzeppelin/contracts/utils/Address.sol";
 
 /// @title Helios usernames and player cards
 /// @notice Registro degli username di Helios (unici, senza distinzione tra maiuscole e minuscole) collegati al wallet
 ///         del giocatore, più la "player card": un NFT soulbound (EIP-5192) con l'immagine SVG generata qui.
+///         Nessun amministratore e nessun pagamento al contratto: si paga solo il gas.
 ///         - Un wallet ha al massimo un nome. Il nome si registra in due passi (commit, poi register dopo almeno un
 ///           minuto), come ENS: chi guarda le transazioni in attesa non può rubarlo registrandolo prima.
-///         - L'admin (owner, Ownable2Step) può registrare nomi per i giocatori (registerFor) pagando lui il gas.
+///         - Un amico può pagare per te (registerFor, mintFor): tu firmi gratis un'autorizzazione EIP-712 (nome e
+///           chiave Nostr, o stile della card) con nonce e scadenza; senza la tua firma nessuno assegna niente al
+///           tuo wallet. Le firme di smart wallet (ERC-1271) valgono come quelle normali.
 ///         - La chiave Nostr salvata con il nome NON è verificata qui (servirebbe una firma Schnorr): Helios accetta il
 ///           nome di un giocatore solo se anche il suo profilo Nostr firmato dichiara lo stesso nome e lo stesso
 ///           wallet. Per questo una chiave Nostr non è unica qui: nessuno può "occupare" la chiave di un altro.
-///         Il contratto non è aggiornabile: le regole dei nomi non cambiano dopo il deploy.
-/// @dev Basato su OpenZeppelin Contracts 5.1.0. Compilato per EVM "paris". ABI e bytecode: src/data/names-contract.json
-///      (npm run contracts).
-contract HeliosNames is ERC721, Ownable2Step {
+///         Il contratto non è aggiornabile e non ha owner: le regole non cambiano dopo il deploy.
+/// @dev Basato su OpenZeppelin Contracts 5.1.0 (ERC721, EIP712, Nonces, SignatureChecker, Base64, Strings).
+///      Compilato per EVM "paris". ABI e bytecode: src/data/names-contract.json (npm run contracts).
+contract HeliosNames is ERC721, EIP712, Nonces {
     using Strings for uint256;
 
     struct Name {
@@ -39,7 +43,10 @@ contract HeliosNames is ERC721, Ownable2Step {
     uint256 public constant MIN_COMMIT_AGE = 60;
     uint256 public constant MAX_COMMIT_AGE = 1 days;
 
-    uint256 public mintPrice;
+    // autorizzazioni firmate dal giocatore (EIP-712) quando paga un amico
+    bytes32 private constant REGISTER_TYPEHASH = keccak256("Register(string name,bytes32 nostr,uint256 nonce,uint256 deadline)");
+    bytes32 private constant MINT_TYPEHASH = keccak256("Mint(bytes3 color,uint8 pattern,string bio,uint256 nonce,uint256 deadline)");
+
     uint256 public totalSupply;
     uint32 private _serials;
 
@@ -53,7 +60,6 @@ contract HeliosNames is ERC721, Ownable2Step {
     event Committed(bytes32 indexed commitment);
     event Locked(uint256 tokenId); // EIP-5192
     event CardStyled(uint256 indexed tokenId);
-    event PriceChanged(uint256 price);
 
     error BadName();
     error NameTaken();
@@ -64,13 +70,11 @@ contract HeliosNames is ERC721, Ownable2Step {
     error BadBio();
     error BadPattern();
     error CardExists();
-    error WrongPrice();
+    error BadSignature();
+    error Expired();
     error Soulbound();
-    error LengthMismatch();
 
-    constructor(uint256 price, address initialOwner) ERC721("Helios Player Card", "HELIOS") Ownable(initialOwner) {
-        mintPrice = price;
-    }
+    constructor() ERC721("Helios Player Card", "HELIOS") EIP712("HeliosNames", "1") {}
 
     // ------------------------------------------------------------------ nomi
 
@@ -91,9 +95,10 @@ contract HeliosNames is ERC721, Ownable2Step {
         return key;
     }
 
-    /// @notice Impronta da mandare con commit(): secret è un numero casuale che resta nel browser fino a register().
-    function makeCommitment(string calldata name, address owner, bytes32 nostr, bytes32 secret) public pure returns (bytes32) {
-        return keccak256(abi.encode(keyOf(name), owner, nostr, secret));
+    /// @notice Impronta da mandare con commit(): secret è un numero casuale che resta nel browser fino al register.
+    ///         payer è chi manderà il register (il giocatore stesso o l'amico che paga): copiarla non serve a nessun altro.
+    function makeCommitment(string calldata name, address owner, bytes32 nostr, bytes32 secret, address payer) public pure returns (bytes32) {
+        return keccak256(abi.encode(keyOf(name), owner, nostr, secret, payer));
     }
 
     /// @notice Primo passo: annuncia la registrazione senza rivelare il nome.
@@ -108,17 +113,23 @@ contract HeliosNames is ERC721, Ownable2Step {
 
     /// @notice Secondo passo (da 1 minuto a 1 giorno dopo il commit): registra `name` per il wallet che chiama.
     function register(string calldata name, bytes32 nostr, bytes32 secret) external {
-        bytes32 c = makeCommitment(name, msg.sender, nostr, secret);
-        uint256 at = commitments[c];
-        if (at == 0 || block.timestamp < at + MIN_COMMIT_AGE || block.timestamp > at + MAX_COMMIT_AGE) revert BadCommitment();
-        delete commitments[c];
+        _useCommitment(makeCommitment(name, msg.sender, nostr, secret, msg.sender));
         _register(name, msg.sender, nostr);
     }
 
-    /// @notice L'admin registra più nomi insieme (richieste dei giocatori arrivate su Nostr: il gas lo paga l'admin).
-    function registerFor(string[] calldata names, address[] calldata owners, bytes32[] calldata nostrs) external onlyOwner {
-        if (names.length != owners.length || names.length != nostrs.length) revert LengthMismatch();
-        for (uint256 i; i < names.length; ++i) _register(names[i], owners[i], nostrs[i]);
+    /// @notice Un amico paga la registrazione di `owner`, che ha firmato (EIP-712) nome e chiave Nostr.
+    function registerFor(string calldata name, address owner, bytes32 nostr, bytes32 secret, uint256 deadline, bytes calldata signature) external {
+        _useCommitment(makeCommitment(name, owner, nostr, secret, msg.sender));
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(REGISTER_TYPEHASH, keccak256(bytes(name)), nostr, _useNonce(owner), deadline)));
+        if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) revert BadSignature();
+        _register(name, owner, nostr);
+    }
+
+    function _useCommitment(bytes32 c) private {
+        uint256 at = commitments[c];
+        if (at == 0 || block.timestamp < at + MIN_COMMIT_AGE || block.timestamp > at + MAX_COMMIT_AGE) revert BadCommitment();
+        delete commitments[c];
     }
 
     function _register(string calldata name, address owner, bytes32 nostr) private {
@@ -160,18 +171,34 @@ contract HeliosNames is ERC721, Ownable2Step {
 
     // ------------------------------------------------------------------ player card (NFT soulbound)
 
-    /// @notice Conia la card del proprio nome sul proprio wallet, pagando esattamente mintPrice.
-    function mint(bytes3 color, uint8 pattern, string calldata bio) external payable {
-        bytes32 key = keyOfOwner[msg.sender];
+    /// @notice Conia la card del proprio nome sul proprio wallet (si paga solo il gas).
+    function mint(bytes3 color, uint8 pattern, string calldata bio) external {
+        _mintCard(msg.sender, color, pattern, bio);
+    }
+
+    /// @notice Un amico paga il conio della card di `owner`, che ha firmato (EIP-712) colore, motivo e frase.
+    function mintFor(address owner, bytes3 color, uint8 pattern, string calldata bio, uint256 deadline, bytes calldata signature) external {
+        if (block.timestamp > deadline) revert Expired();
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(MINT_TYPEHASH, color, pattern, keccak256(bytes(bio)), _useNonce(owner), deadline)));
+        if (!SignatureChecker.isValidSignatureNow(owner, digest, signature)) revert BadSignature();
+        _mintCard(owner, color, pattern, bio);
+    }
+
+    function _mintCard(address owner, bytes3 color, uint8 pattern, string calldata bio) private {
+        bytes32 key = keyOfOwner[owner];
         if (key == bytes32(0)) revert NotRegistered();
-        if (msg.value != mintPrice) revert WrongPrice();
         uint256 id = uint256(key);
         if (_ownerOf(id) != address(0)) revert CardExists();
         _checkStyle(pattern, bio);
         _cards[id] = Card(color, pattern, ++_serials, bio);
         ++totalSupply;
-        _mint(msg.sender, id);
+        _mint(owner, id);
         emit Locked(id);
+    }
+
+    /// @notice Dominio EIP-712 per le firme (comodo per i client).
+    function domainSeparator() external view returns (bytes32) {
+        return _domainSeparatorV4();
     }
 
     /// @notice Cambia colore, motivo e frase della propria card.
@@ -244,17 +271,6 @@ contract HeliosNames is ERC721, Ownable2Step {
             '"}],"image":"data:image/svg+xml;base64,', Base64.encode(bytes(_svg(n, c, o))), '"}'
         );
         return string.concat("data:application/json;base64,", Base64.encode(bytes(json)));
-    }
-
-    // ------------------------------------------------------------------ admin
-
-    function setPrice(uint256 price) external onlyOwner {
-        mintPrice = price;
-        emit PriceChanged(price);
-    }
-
-    function withdraw(address payable to) external onlyOwner {
-        Address.sendValue(to, address(this).balance);
     }
 
     // ------------------------------------------------------------------ SVG (solo nomi [A-Za-z0-9_] e frasi già filtrate)

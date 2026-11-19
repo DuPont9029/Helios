@@ -18,3 +18,4 @@ public/fields/
 
 # pacchetti dell'estensione di VS Code (si rifanno con vsce package)
 *.vsix
+contracts/card-test.svg
