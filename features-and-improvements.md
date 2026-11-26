@@ -28,7 +28,7 @@ Tre sezioni:
 ## 2. Implementate, da testare
 
 ### Interfaccia
-- [ ] **Profilo nella home**: nella schermata principale foto profilo, username (con il segno di verificato se registrato on-chain), tag OG, titolo e rating ELO.
+- [ ] **Profilo nella home**: in alto a destra nella home username (con il segno di verificato se registrato on-chain) e tag OG, sotto titolo, rating ELO e amici online (cliccando si apre la scheda Friends). Accanto la foto profilo con un anello nel colore del titolo, pieno quanto manca al titolo successivo (i punti mancanti al passaggio del mouse); cliccando sulla foto si apre la propria player card. Il bottone Friends separato non c'è più.
 - [ ] **Mazzi della card nel deck builder**: in Settings → Player card i mazzi della card si scelgono nella schermata del deck builder in sola lettura: a destra l'elenco dei mazzi (salvati e giocati online), un clic mostra la lista, la casella lo mette sulla card (massimo 3).
 
 ### Duello
