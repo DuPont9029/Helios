@@ -17,7 +17,7 @@ import { cachedLeaderboard } from "../net/elo.js";
 import { schedulePublish, forgetPlayedDecks, MAX_AVATAR, MAX_DECKS, cardDecks, playedDecks } from "../net/public-profile.js";
 import { loadDecks } from "../deck/deck.js";
 import { cardFace } from "./card.js";
-import { openDecksChooser } from "./editor.js";
+import { openDeckBoxChooser } from "./editor.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
@@ -191,7 +191,7 @@ function titleBox() {
 
 /**
  * Mazzi della scheda (e della card NFT): fino a 3 tra quelli salvati nel deck builder e quelli giocati online, scelti
- * nella schermata del deck builder (openDecksChooser). Senza scelta valgono i 3 giocati online più di recente.
+ * nella schermata delle deck box (openDeckBoxChooser). Senza scelta valgono i 3 giocati online più di recente.
  */
 function deckPicker(redraw) {
   const box = h("label.field", h("span", `Decks on my card (up to ${MAX_DECKS})`));
@@ -202,14 +202,14 @@ function deckPicker(redraw) {
     const key = `${d.name}|${d.main.length}|${(d.extra ?? []).length}`;
     if (!d.main?.length || seen.has(key)) continue;
     seen.add(key);
-    candidates.push({ name: String(d.name).slice(0, 40), main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])], cover: d.cover ?? null, online: !!d.games });
+    candidates.push({ id: d.id, name: String(d.name).slice(0, 40), main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])], cover: d.cover ?? null, boxColor: d.boxColor, online: !!d.games });
   }
   const current = cardDecks();
   const same = (a, b) => a.name === b.name && a.main.length === b.main.length;
   const coverOf = (d) => (d.cover && [...d.main, ...(d.extra ?? [])].includes(d.cover) ? d.cover : d.main[0]);
   const choose = async () => {
     const picked = current.map((c) => candidates.findIndex((d) => same(c, d))).filter((i) => i >= 0);
-    const r = await openDecksChooser({
+    const r = await openDeckBoxChooser({
       title: "Decks on my card",
       subtitle: "Saved decks and decks played online",
       decks: candidates.map((d) => ({ ...d, note: d.online ? "played online" : "saved" })),
