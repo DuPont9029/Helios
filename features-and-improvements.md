@@ -11,7 +11,6 @@ Tre sezioni:
 
 ## 1. Da implementare
 
-### Duello e motore
 - [ ] * **Motore ibrido TCG/OCG**: il motore ibrido TCG/OCG di Omega compilato in WebAssembly.
 - [ ] * **Carte anime e Rush**: modalità con carte anime e Rush come in YGO Omega (serve una nuova fonte per le immagini).
 
@@ -28,11 +27,18 @@ Tre sezioni:
 
 ## 2. Implementate, da testare
 
+### Interfaccia
+- [ ] **Profilo nella home**: nella schermata principale foto profilo, username (con il segno di verificato se registrato on-chain), tag OG, titolo e rating ELO.
+- [ ] **Mazzi della card nel deck builder**: in Settings → Player card i mazzi della card si scelgono nella schermata del deck builder in sola lettura: a destra l'elenco dei mazzi (salvati e giocati online), un clic mostra la lista, la casella lo mette sulla card (massimo 3).
+
 ### Duello
+- [ ] **Foto profilo nei duelli online**: nei duelli tra giocatori ognuno vede la foto dell'altro accanto al nome (e la propria). La foto viaggia nel messaggio iniziale della partita P2P, quindi si vede anche se la scheda dell'avversario non è pubblicata o i relay non rispondono; prima arrivava solo dai relay.
+- [ ] **Mano e board di partenza in Vs CPU e Test Duel**: nel setup "Starting hand and board" apre il deck builder con mano, campo, GY e carte bandite di entrambi i giocatori. Le carte della mano sono sempre in mano (il resto si pesca normalmente), quelle in gioco si tolgono dal mazzo se ci sono, altrimenti si aggiungono; mostri scoperti in Attacco, Magie Terreno scoperte, altre Magie/Trappole coperte. L'ultima scelta resta salvata, "Clear" torna alla partenza normale.
 - [ ] **Costi di scarto dalla mano**: per i costi che scartano non si apre una finestra, si sceglie direttamente dalla mano.
 - [ ] **Spessore di Deck ed Extra Deck**: mostrare lo spessore del Deck e dell'Extra Deck nella vista inclinata ("Tilted view in the Duel (like Master Duel) instead of from above").
 
 ### Trainer
+- [ ] **Salta alla endboard**: nel pannello del Trainer "Skip to end board" gioca il resto della combo da solo e senza animazioni, fino alla board finale.
 - [ ] **Controlli in auto mode**: bloccati in auto mode nel Trainer si può comunque cambiare la velocità delle animazioni e usare il bottone del fullscreen.
 
 ### Deck builder

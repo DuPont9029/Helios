@@ -417,6 +417,33 @@ export function openDeckViewer({ main = [], extra = [], side = [], title, subtit
 }
 
 /**
+ * Scelta di mazzi interi (es. i mazzi della scheda giocatore): la schermata del deck builder in sola lettura con, a
+ * destra, l'elenco dei mazzi con la copertina. Un clic su un mazzo ne mostra la lista, la casella lo sceglie (al
+ * massimo max). decks: [{ name, main, extra, side?, cover?, note? }]; picked: indici già scelti.
+ * Restituisce gli indici scelti (nell'ordine in cui sono stati scelti) o null (annullato).
+ */
+export function openDecksChooser({ decks, picked = [], max = 3, title, subtitle = "", label = "Chosen" }) {
+  return new Promise((resolve) => {
+    if (!decks.length) return resolve(null);
+    const layer = h("div.side-editor-layer");
+    document.body.append(layer);
+    const host = { root: layer, home() {}, onLeave: null };
+    let done = false;
+    const finish = (v) => {
+      if (done) return;
+      done = true;
+      host.onLeave?.();
+      layer.remove();
+      resolve(v ?? null);
+    };
+    const first = picked[0] ?? 0;
+    const d = decks[first];
+    const deck = { id: `dc-${first}`, name: d.name, main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])] };
+    showEditor(host, { embed: { deck, title, onDone: finish, view: { subtitle, decks: { list: decks, picked, max, label, shown: first } } } });
+  });
+}
+
+/**
  * Carte da cercare nell'intero database (es. lo stato di partenza di una combo, le hand trap): la schermata
  * del deck builder con la sua ricerca, ma con le parti indicate al posto di Main/Extra/Side.
  * parts: [{ key, label, cards, max?, filter?(card), hint? }]; active: la parte in cui vanno le carte cliccate
@@ -959,11 +986,56 @@ export function showEditor(app, { side = null, embed = null } = {}) {
     h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(cloneDeck(deck)); } }, icon("check"), " Done")
   );
 
+  // Scelta di mazzi interi (openDecksChooser): elenco dei mazzi a destra, il mazzo cliccato si vede nella schermata.
+  const dc = view?.decks ?? null;
+  const dcPicked = [...(dc?.picked ?? [])];
+  let dcShown = dc?.shown ?? 0;
+  const dcList = dc && h("div.dc-list");
+  const dcCount = dc && h("span.dc-count");
+  function paintDecksChooser() {
+    dcCount.textContent = `${dc.label}: ${dcPicked.length}/${dc.max}`;
+    clear(dcList).append(...dc.list.map((d, i) => {
+      const on = dcPicked.includes(i);
+      const all = [...d.main, ...(d.extra ?? [])];
+      const cover = d.cover && all.includes(d.cover) ? d.cover : d.main[0];
+      const box = h("input", {
+        type: "checkbox", checked: on, disabled: !on && dcPicked.length >= dc.max,
+        onclick: (e) => e.stopPropagation(),
+        onchange: (e) => {
+          if (e.target.checked) dcPicked.push(i);
+          else dcPicked.splice(dcPicked.indexOf(i), 1);
+          paintDecksChooser();
+        },
+      });
+      return h(`div.dc-deck${i === dcShown ? ".shown" : ""}${on ? ".on" : ""}`, { title: "Click to see the decklist", onclick: () => showChosenDeck(i) },
+        cardFace(cover),
+        h("div.dc-info",
+          h("b", d.name),
+          h("span.muted.small", `${d.main.length} Main · ${(d.extra ?? []).length} Extra${d.note ? ` · ${d.note}` : ""}`),
+          h("label.check.small", { onclick: (e) => e.stopPropagation() }, box, on ? `${dc.label} (${dcPicked.indexOf(i) + 1})` : "Choose")));
+    }));
+  }
+  function showChosenDeck(i) {
+    const d = dc.list[i];
+    dcShown = i;
+    openDeck({ id: `dc-${i}`, name: d.name, main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])] });
+    for (const p of PARTS) parts[p].el.hidden = !deck[p]?.length;
+    paintDecksChooser();
+  }
+  const decksPanel = dc && h("aside.search-panel.dc-panel",
+    h("div.dc-head", h("h3", "Decks"), dcCount),
+    dcList,
+    h("p.muted.small.hint", `Click a deck to see its list, tick it to choose it (up to ${dc.max}).`));
+  if (dc) paintDecksChooser();
+
   const viewToolbar = view && h(
     "div.editor-toolbar.side-toolbar",
     h("div.side-title", h("b", embed.title), view.subtitle ? h("span.muted", view.subtitle) : null, view.legend ? h("span.muted.small", view.legend) : null),
     h("div.spacer"),
-    view?.choose
+    dc
+      ? [h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel"),
+        h("button.btn.primary", { onclick: () => { unmount(); embed.onDone([...dcPicked]); } }, icon("check"), " Done")]
+      : view?.choose
       ? h("button.btn", { onclick: () => { unmount(); embed.onDone(null); } }, "Cancel")
       : h("button.btn.primary", { onclick: () => { unmount(); embed.onDone(); } }, "Close")
   );
@@ -1865,9 +1937,9 @@ export function showEditor(app, { side = null, embed = null } = {}) {
   // Sola lettura: le parti vuote non si mostrano.
   if (view) for (const p of PARTS) parts[p].el.hidden = !single.deck[p]?.length;
   const page = h(
-    `div.page.editor${side || pick || view ? ".side-mode" : ""}${view ? ".view-mode" : ""}${collect ? ".collect-mode" : ""}${pool ? ".pool-mode" : ""}`,
+    `div.page.editor${side || pick || view ? ".side-mode" : ""}${view ? ".view-mode" : ""}${dc ? ".decks-mode" : ""}${collect ? ".collect-mode" : ""}${pool ? ".pool-mode" : ""}`,
     side ? sideToolbar : view ? viewToolbar : collect ? collectToolbar : pick ? pickToolbar : pool ? poolToolbar : embed ? embedToolbar : toolbar,
-    h("div.editor-body", detail.el, dragAutoScroll(h("div.deck-area", area)), ...(view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
+    h("div.editor-body", detail.el, dragAutoScroll(h("div.deck-area", area)), ...(dc ? [decksPanel] : view ? [] : [side ? sideHelp : pick ? pickHelp : search]))
   );
   // Telefono: un pannello alla volta, Deck o ricerca (o le istruzioni del Side Deck e della scelta), con le schede in basso.
   if (!view) mobileTabs(page, [{ id: "deck", label: "Deck", icon: "style" }, side || pick ? { id: "help", label: "Help", icon: "help" } : { id: "search", label: "Search", icon: "search" }]);

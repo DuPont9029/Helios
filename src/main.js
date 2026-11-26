@@ -29,6 +29,11 @@ import { loadFormats } from "./draft/format.js";
 import { initCoaching } from "./ui/coaching.js";
 import { version } from "../package.json";
 import { initMobile, isMobile } from "./ui/mobile.js";
+import { avatarEl } from "./ui/profile-card.js";
+import { identity } from "./net/identity.js";
+import { cachedLeaderboard } from "./net/elo.js";
+import { titleOf } from "./data/titles.js";
+import { namesActive, provisionalName, OG_LIMIT } from "./net/names.js";
 // Ultimo: le regole del telefono vincono su quelle dei fogli importati dai moduli qui sopra (es. play.css).
 import "./styles/mobile.css";
 
@@ -112,6 +117,34 @@ function friendsBadge(go) {
   return b;
 }
 
+/**
+ * Profilo nella home: foto, username (verificato on-chain, se c'è), tag OG, titolo e rating ELO (dalla classifica
+ * su Nostr, arriva dopo).
+ */
+function homeProfile(go) {
+  const me = identity().pk;
+  const verified = namesActive() && !!settings.username;
+  const name = verified ? settings.username : namesActive() ? provisionalName(me) : settings.name;
+  const og = verified && settings.usernameNumber > 0 && settings.usernameNumber <= OG_LIMIT;
+  const rank = h("div.home-rank", h("span.muted", "Rating…"));
+  cachedLeaderboard().then(({ players }) => {
+    if (!rank.isConnected) return; // home già chiusa
+    const p = players.find((x) => x.pk === me);
+    const t = titleOf(p?.rating ?? 1500, p?.games ?? 0, p?.peak);
+    rank.replaceChildren(...(p ? [h("span.title-badge.small", { style: { "--tc": t.color }, title: t.name }, t.abbr), h("span", "Rating ", h("b", p.rating))] : [h("span.muted", "No ranked Duels yet")]));
+  }, () => rank.replaceChildren());
+  return h("div.home-user",
+    avatarEl(me, { avatar: settings.avatar, name }, name, 48),
+    h("div.home-user-info",
+      h("span", "Welcome,"),
+      h("div.home-user-name",
+        h("b", name),
+        verified ? h("span.verified-tag", { title: `Username registered on Ethereum${settings.usernameNumber ? ` (#${settings.usernameNumber})` : ""}` }, icon("verified")) : null,
+        og ? h("span.og-tag", { title: `One of the first ${OG_LIMIT} Helios usernames` }, "OG") : null),
+      rank),
+    friendsBadge(go));
+}
+
 /** Home; section "duel" o "training" = sottomenu (duelli online e Limited; modalità di allenamento). */
 function home(section = null) {
   leaveCurrent();
@@ -153,7 +186,7 @@ function home(section = null) {
       h(
         "header.home-head",
         h("div.logo", h("span.logo-mark", "◆"), h("span", "HELI"), h("b", "OS"), h("small", `v${version.replace(/\.0$/, "")}`), h("span.beta-badge", { title: "Beta: some features may still change or have bugs" }, "BETA")),
-        h("div.home-user", "Welcome,", h("b", settings.name), friendsBadge(go)),
+        homeProfile(go),
         installButton(),
         fullscreenButton(),
         h("button.btn.ghost.round", { title: "Settings", onclick: go(() => showSettings(app)) }, icon("settings"))

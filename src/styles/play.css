@@ -720,7 +720,9 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 
 /* Scheda del giocatore: una carta da collezione colorata dal grado (--pc), in finestra o da sola (#p/<codice>) */
 .profile-card-modal { width: min(640px, 100%); padding: 0; overflow: hidden; }
-.profile-card-modal .modal-body { padding: 0; }
+.profile-card-modal .modal-body { padding: 0; min-height: 0; flex: 1 1 auto; }
+/* la scheda non si schiaccia (overflow: hidden la tagliava): scorre la finestra */
+.profile-card-modal .pcard { flex-shrink: 0; }
 .profile-card-modal .modal-actions { padding: 0 20px 16px; }
 .pcard { --pc: #38c6ff; position: relative; display: grid; gap: 0; padding: 0 22px 18px; color: var(--text); overflow: hidden;
   background:
@@ -868,3 +870,9 @@ button.combo-start:hover { border-color: var(--accent); background: rgba(56, 198
 .username-modal:has(.mint-shots) { width: min(640px, 100%); }
 .cost-table { border-collapse: collapse; margin: 8px 0; font-size: 14px; }
 .cost-table td { padding: 4px 14px 4px 0; vertical-align: top; }
+
+/* Vs CPU / Test Duel: mano e board di partenza (ui/start-state.js) */
+.start-state-sum { display: grid; gap: 6px; }
+.start-state-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.start-state-row > b { min-width: 64px; }
+.start-state-part { display: inline-flex; align-items: center; gap: 6px; }

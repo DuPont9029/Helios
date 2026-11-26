@@ -347,7 +347,24 @@ export async function cardIsCurrent() {
 
 // ---------------------------------------------------------------- richieste degli amici
 
-const requests = []; // { from, name, req, at }
+// { from, name, req, at }. Si salvano in questo browser: i relay non rimandano i messaggi già letti, quindi dopo un
+// ricaricamento della pagina la richiesta di un amico andava persa e doveva essere rimandata.
+const REQ_KEY = () => `helios.nameRequests.${identity().pk}`;
+const requests = [];
+function loadRequests() {
+  requests.length = 0;
+  try {
+    for (const x of JSON.parse(localStorage.getItem(REQ_KEY()) ?? "[]")) {
+      const req = cleanRequest(x?.req);
+      if (req && typeof x.from === "string") requests.push({ from: x.from, name: String(x.name ?? ""), req, at: Number(x.at) || 0 });
+    }
+  } catch { /* niente salvato o rovinato */ }
+}
+function saveRequests() {
+  try {
+    localStorage.setItem(REQ_KEY(), JSON.stringify(requests.filter((x) => x.req.deadline > Date.now() / 1000)));
+  } catch { /* spazio pieno: restano in memoria */ }
+}
 
 function cleanRequest(r) {
   const hex = (v, n) => typeof v === "string" && new RegExp(`^0x[0-9a-fA-F]{${n}}$`).test(v);
@@ -386,6 +403,7 @@ export function payRequest(x, onDone) {
             else await names.mintCard(signer, null, { auth: x.req, steps });
             await sendDirect(x.from, { t: "name-paid", kind: x.req.kind, name: x.req.name ?? "" });
             requests.splice(requests.indexOf(x), 1);
+            saveRequests();
             toast(`Paid for ${x.name}`, { kind: "ok" });
             close(true);
             onDone?.();
@@ -400,7 +418,9 @@ export function payRequest(x, onDone) {
 }
 
 export function declineRequest(x) {
-  requests.splice(requests.indexOf(x), 1);
+  const i = requests.indexOf(x);
+  if (i >= 0) requests.splice(i, 1);
+  saveRequests();
 }
 
 const listeners = new Set();
@@ -408,6 +428,10 @@ export const onNameRequests = (fn) => (listeners.add(fn), () => listeners.delete
 
 /** All'avvio (registro attivo): proposta dello username, richieste degli amici, nome pagato da un amico. */
 export async function initUsernames({ prompt }) {
+  loadRequests();
+  if (requests.length) for (const fn of listeners) fn();
+  // cambio di account: le richieste sono di quell'account
+  window.addEventListener("helios-identity", () => { loadRequests(); for (const fn of listeners) fn(); });
   onNameMessage(async (m) => {
     if (m.t === "name-pay") {
       const req = cleanRequest(m.req);
@@ -416,6 +440,7 @@ export async function initUsernames({ prompt }) {
       const i = requests.findIndex((y) => y.from === x.from && y.req.kind === req.kind);
       if (i >= 0) requests.splice(i, 1);
       requests.push(x);
+      saveRequests();
       for (const fn of listeners) fn();
       toast(`${x.name} asks you to pay ${req.kind === "register" ? `their username "${req.name}"` : "their on-chain card"} (Online → Friends)`, { ms: 6000 });
     } else if (m.t === "name-paid") {
