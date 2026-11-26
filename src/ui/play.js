@@ -23,6 +23,7 @@ import { titleOf, MASTER_TITLES } from "../data/titles.js";
 import { namesActive, displayName, resolveNames, verifiedName } from "../net/names.js";
 import { nameRequests, payRequest, declineRequest as declineNameRequest, onNameRequests } from "./username.js";
 import { openProfileCard, avatarEl } from "./profile-card.js";
+import { startStateBox, startDuelConfig } from "./start-state.js";
 import { fetchProfiles, cachedProfile, recordPlayedDeck, schedulePublish } from "../net/public-profile.js";
 import { identity, shortKey, npubOf, pubkeyFrom } from "../net/identity.js";
 import { relayStatus, socialState, presenceOf, addFriend, acceptRequest, declineRequest, removeFriend, renameFriend, rememberOpponent, onSocialChange, sendInvite, cancelInvite, onInviteReply, syncProfile, INVITE_SECONDS } from "../net/social.js";
@@ -250,6 +251,8 @@ export function showLocalSetup(app, { vsCpu }) {
     h("option", { value: "none" }, "No Deck (always passes)"));
   opponent.value = settings.testOpponent === "none" ? "none" : "deck";
   const otherField = h("label.field", h("span", vsCpu ? "CPU Deck" : "Player 2 Deck"), other);
+  // Mano e board di partenza scelte nel deck builder (ui/start-state.js), per entrambi i giocatori.
+  const start = startStateBox({ labels: vsCpu ? { me: "You", opp: "CPU" } : { me: "Player 1", opp: "Player 2" } });
   const syncOpponent = () => (otherField.hidden = !vsCpu && opponent.value === "none");
   opponent.addEventListener("change", syncOpponent);
   syncOpponent();
@@ -265,6 +268,7 @@ export function showLocalSetup(app, { vsCpu }) {
         vsCpu && h("label.field", h("span", "Who goes first"), first),
         vsCpu && h("label.field", h("span", "Your draws"), draws),
         !vsCpu && h("label.field", h("span", "Draws (both players)"), testDraws)),
+      start.el,
       opts.el,
       vsCpu && h("p.muted.small", "The CPU is a simple AI: it plays legal moves but is not a real challenge. Useful for testing Decks."),
     ],
@@ -275,6 +279,7 @@ export function showLocalSetup(app, { vsCpu }) {
         primary: true,
         onClick: async (close) => {
           const options = opts.read();
+          const startState = start.read();
           let a = decks.find((d) => d.id === mine.value);
           const noDeck = !vsCpu && opponent.value === "none";
           let b = noDeck ? { name: "No Deck", main: [], extra: [], side: [] } : decks.find((d) => d.id === other.value);
@@ -322,6 +327,15 @@ export function showLocalSetup(app, { vsCpu }) {
             const moais = [null, null];
             moais[me] = moaiConfig();
             if (vsCpu) moais[1 - me] = MOAI_CPU;
+            // Stato di partenza: carte in mano per prime, carte già in gioco (tolte dal mazzo).
+            const custom = startState ? startDuelConfig(startState, { decks: decksByTurn, me, hand: options.hand }) : null;
+            // Giocatore 2 senza mazzo ma con una mano scelta: pesca solo quella, mai nei turni.
+            const noTurnDraw = [false, false];
+            if (custom && noDeck && custom.top[1 - me]?.length) {
+              noDraw[1 - me] = false;
+              noTurnDraw[1 - me] = true;
+              custom.handSize[1 - me] = custom.top[1 - me].length;
+            }
             startSession(app, {
               onExit: () => app.home("training"),
               // Tra i duelli della partita si apre il Side Deck (se c'è almeno un mazzo con carte nel Side).
@@ -360,6 +374,7 @@ export function showLocalSetup(app, { vsCpu }) {
               duel: {
                 flags: options.flags, seed: randSeed(), lp: options.lp, hand: options.hand, draw: options.draw,
                 decks: decksByTurn.map((d) => ({ main: d.main, extra: d.extra })), shuffle, noDraw,
+                ...(custom ? { decks: custom.decks, top: custom.top, handSize: custom.handSize, place: custom.place, noTurnDraw } : {}),
               },
             });
           };

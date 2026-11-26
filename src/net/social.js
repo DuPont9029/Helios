@@ -137,6 +137,8 @@ export async function syncProfile() {
     if (typeof best.name === "string" && best.name.trim()) settings.name = cleanName(best.name).slice(0, 24);
     persist();
     subscribePresence();
+    // messaggi di amici appena scaricati (es. richieste di pagamento) rimessi da parte da unsee(): si rileggono
+    openInbox();
     notify();
   } else if (state.updated && (!best || best.updated < state.updated)) await publishProfile();
 }
@@ -158,6 +160,15 @@ function setPresence(f, presence, at) {
   if (!presence || (f.presenceAt ?? 0) > at) return;
   f.presence = presence;
   f.presenceAt = at;
+}
+
+/** Richieste di pagamento arrivate prima che ui/username.js fosse pronto (vedi receive, "name-pay"). */
+const pendingNames = [];
+/** Messaggio da rileggere più avanti (es. dal mittente non ancora tra gli amici scaricati). */
+function unsee(id) {
+  const i = state.seen.indexOf(id);
+  if (i >= 0) state.seen.splice(i, 1);
+  persist();
 }
 
 /** Messaggi già letti (id dei gift wrap): i relay li rimandano a ogni connessione. */
@@ -274,7 +285,13 @@ function receive(wrap) {
     case "name-paid":
       // un amico chiede di pagargli username o card on-chain (net/names.js), o dice di averlo fatto: solo amici e messaggi
       // recenti (le autorizzazioni firmate scadono comunque)
-      if (isFriend(from) && at > now() - 3 * 24 * 3600) emit(handlers.names, { ...m, from, name, at });
+      if (at <= now() - 3 * 24 * 3600) return;
+      // Amici non ancora scaricati dal profilo (browser nuovo): il messaggio si rilegge alla prossima connessione.
+      if (!isFriend(from)) return unsee(wrap.id);
+      // Il gestore (ui/username.js) si registra solo dopo il controllo dello username su Ethereum, qualche secondo
+      // dopo l'avvio: i messaggi arrivati prima si tengono da parte invece di perderli (seen() non li rimanda).
+      if (handlers.names.size) emit(handlers.names, { ...m, from, name, at });
+      else pendingNames.push({ ...m, from, name, at });
       return;
     default:
       // Matchmaking con sconosciuti (matchmaking.js): solo messaggi recenti, il resto lo controlla lui.
@@ -283,7 +300,11 @@ function receive(wrap) {
 }
 
 /** Richieste degli amici di pagare il loro username o la loro card (net/names.js): fn({ t, from, name, ... }). */
-export const onNameMessage = (fn) => (handlers.names.add(fn), () => handlers.names.delete(fn));
+export function onNameMessage(fn) {
+  handlers.names.add(fn);
+  for (const m of pendingNames.splice(0)) fn(m);
+  return () => handlers.names.delete(fn);
+}
 
 /** Messaggi degli amici che guardano i nostri duelli: fn({ t: "watch-hello"|"watch-bye"|"watch-note", id, from, name, ... }). */
 export const onWatchMessage = (fn) => (handlers.watch.add(fn), () => handlers.watch.delete(fn));
@@ -511,6 +532,7 @@ export function startSocial({ status, watch } = {}) {
   if (status) statusOf = status;
   if (watch) watchOf = watch;
   stopSocial();
+  pendingNames.length = 0;
   state = load();
   persist();
   pool = new SimplePool({ enablePing: true, enableReconnect: true });

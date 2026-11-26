@@ -177,7 +177,15 @@ input[type="range"] { accent-color: var(--accent); }
 /* Versione beta: badge accanto al numero di versione. */
 .beta-badge { align-self: center; margin-left: 8px; padding: 2px 7px; font: 700 12px var(--mono); letter-spacing: 0.12em; color: var(--on-gold); background: var(--accent); }
 .home-user { margin-left: auto; text-align: right; font: 500 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
-.home-user b { display: block; color: var(--accent); font-size: 14px; }
+.home-user { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 12px; }
+.home-user > .avatar { grid-row: 1; grid-column: 2; border: 2px solid var(--accent); }
+.home-user-info { grid-row: 1; grid-column: 1; display: grid; justify-items: end; gap: 3px; }
+.home-user-name { display: flex; align-items: center; gap: 6px; }
+.home-user-name b { color: var(--accent); font-size: 15px; }
+.home-user-name .verified-tag .icon { font-size: 16px; }
+.home-rank { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+.home-rank b { color: var(--text); }
+.home-user .friends-badge { grid-column: 1 / -1; }
 .btn.round { width: 44px; height: 44px; padding: 0; border-radius: 50%; clip-path: none; display: grid; place-items: center; font-size: 22px; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.5); color: var(--accent); }
 .btn.round:hover:not(:disabled) { border-color: var(--accent); background: rgba(56, 198, 255, 0.12); color: var(--accent); }
 .menu { grid-row: 2 / 4; display: flex; flex-direction: column; justify-content: center; gap: clamp(4px, calc(var(--vh) * 1.2), 14px); padding: 20px 48px; position: relative; z-index: 2; }
@@ -370,6 +378,21 @@ input[type="range"] { accent-color: var(--accent); }
 .editor-toolbar > .select { width: auto; min-width: 200px; }
 .editor-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr 360px; gap: 12px; }
 .editor.view-mode .editor-body { grid-template-columns: 260px 1fr; }
+.editor.decks-mode .editor-body { grid-template-columns: 260px 1fr 320px; }
+/* Scelta di mazzi interi (openDecksChooser): elenco dei mazzi con la copertina */
+.dc-panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.dc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.dc-head h3 { margin: 0; }
+.dc-count { color: var(--accent); font-weight: 700; font-size: 13px; }
+.dc-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
+.dc-deck { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; }
+.dc-deck:hover { border-color: var(--line-strong); }
+.dc-deck.shown { border-color: var(--accent); background: rgba(56, 198, 255, 0.08); }
+.dc-deck.on { box-shadow: inset 3px 0 0 var(--accent); }
+.dc-deck .card { width: 52px; }
+.dc-info { display: grid; gap: 2px; min-width: 0; }
+.dc-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-info .check { justify-self: start; }
 .deck-area { overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
 .deck-part { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
 .deck-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }

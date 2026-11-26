@@ -1672,6 +1672,11 @@ function practice(app, combo, { video = null, autoplay = false, watch = null } =
     session.view.minSpeed = on ? 1 : 0;
   };
   trainer.onAutoChange(autoplay);
+  // Skip to end board: niente animazioni finché la combo non finisce (o l'auto-play si ferma), poi il campo si ridisegna.
+  trainer.onSkip = (on) => {
+    session.view.instant = on;
+    if (!on && session.view.board.snapshot) session.view.render(session.view.board.snapshot);
+  };
   // Combo completa: tag sulle carte, poi "Play again" (o fine del video in auto-play).
   trainer.onComplete = () => {
     if (combo.tags?.length) session.view.board.setTags(combo.tags);

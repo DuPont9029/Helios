@@ -17,6 +17,7 @@ import { cachedLeaderboard } from "../net/elo.js";
 import { schedulePublish, forgetPlayedDecks, MAX_AVATAR, MAX_DECKS, cardDecks, playedDecks } from "../net/public-profile.js";
 import { loadDecks } from "../deck/deck.js";
 import { cardFace } from "./card.js";
+import { openDecksChooser } from "./editor.js";
 import { identity, importIdentity, profileKind, npubOf, nsec, passwordBackup, shortKey } from "../net/identity.js";
 import { copyText } from "../net/clipboard.js";
 import { statusChanged } from "../net/social.js";
@@ -189,12 +190,11 @@ function titleBox() {
 }
 
 /**
- * Mazzi della scheda (e della card NFT): fino a 3 tra quelli salvati nel deck builder e quelli giocati online, con la
- * copertina. Senza scelta valgono i 3 giocati online più di recente.
+ * Mazzi della scheda (e della card NFT): fino a 3 tra quelli salvati nel deck builder e quelli giocati online, scelti
+ * nella schermata del deck builder (openDecksChooser). Senza scelta valgono i 3 giocati online più di recente.
  */
 function deckPicker(redraw) {
   const box = h("label.field", h("span", `Decks on my card (up to ${MAX_DECKS})`));
-  const list = h("div.card-deck-pick");
   const candidates = [];
   const seen = new Set();
   // prima quelli già sulla scheda (anche se il mazzo nel deck builder è stato rinominato o cancellato: si possono togliere)
@@ -205,24 +205,26 @@ function deckPicker(redraw) {
     candidates.push({ name: String(d.name).slice(0, 40), main: [...d.main], extra: [...(d.extra ?? [])], side: [...(d.side ?? [])], cover: d.cover ?? null, online: !!d.games });
   }
   const current = cardDecks();
-  const isOn = (d) => current.some((c) => c.name === d.name && c.main.length === d.main.length);
-  const paint = () => clear(list).append(...(candidates.length ? candidates.map((d) => {
-    const on = isOn(d);
-    const cover = d.cover && [...d.main, ...d.extra].includes(d.cover) ? d.cover : d.main[0];
-    return h(`button.mint-pick-deck${on ? ".on" : ""}`, {
-      type: "button",
-      disabled: !on && current.length >= MAX_DECKS,
-      title: d.online ? "Played online" : "Saved deck",
-      onclick: () => {
-        const next = on ? current.filter((c) => !(c.name === d.name && c.main.length === d.main.length)) : [...current, d];
-        settings.cardDecks = next.map(({ name, main, extra, side, cover: cv }) => ({ name, main, extra, side, cover: cv, at: Date.now() }));
-        schedulePublish(300);
-        redraw();
-      },
-    }, cardFace(cover), h("b", d.name), h("span.muted.small", `${d.main.length}+${d.extra.length}${d.online ? " · online" : ""}`));
-  }) : [h("span.muted.small", "No decks yet: build one in the Deck editor.")]));
-  paint();
-  box.append(list);
+  const same = (a, b) => a.name === b.name && a.main.length === b.main.length;
+  const coverOf = (d) => (d.cover && [...d.main, ...(d.extra ?? [])].includes(d.cover) ? d.cover : d.main[0]);
+  const choose = async () => {
+    const picked = current.map((c) => candidates.findIndex((d) => same(c, d))).filter((i) => i >= 0);
+    const r = await openDecksChooser({
+      title: "Decks on my card",
+      subtitle: "Saved decks and decks played online",
+      decks: candidates.map((d) => ({ ...d, note: d.online ? "played online" : "saved" })),
+      picked, max: MAX_DECKS, label: "On my card",
+    });
+    if (!r) return;
+    settings.cardDecks = r.map((i) => candidates[i]).map(({ name, main, extra, side, cover }) => ({ name, main, extra, side, cover, at: Date.now() }));
+    schedulePublish(300);
+    redraw();
+  };
+  box.append(h("div.card-deck-pick",
+    current.length
+      ? current.map((d) => h("div.mint-pick-deck.on", { title: d.name }, cardFace(coverOf(d)), h("b", d.name), h("span.muted.small", `${d.main.length}+${(d.extra ?? []).length}`)))
+      : h("span.muted.small", candidates.length ? "None chosen: your card shows the 3 decks you played online most recently." : "No decks yet: build one in the Deck editor."),
+    candidates.length ? h("button.btn.small", { type: "button", onclick: (e) => { e.preventDefault(); choose(); } }, icon("style"), current.length ? " Change decks" : " Choose decks") : null));
   return box;
 }
 

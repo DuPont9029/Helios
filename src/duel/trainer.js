@@ -328,11 +328,13 @@ export class ComboTrainer {
     const strictBox = h("input", { type: "checkbox", checked: strict, onchange: (e) => { this.strict = e.target.checked; onStrictChange?.(this.strict); this.render(); } });
     // Auto-play: il trainer gioca la combo da solo da questo punto (anche senza registrare un video).
     this.autoBox = h("input", { type: "checkbox", checked: autoplay, disabled: autoplay && lockAuto, onchange: (e) => { this.autoplay = e.target.checked; if (!this.autoplay) this.togglePause(false); this.pauseBtn.hidden = !this.autoplay; this.render(); this.onAutoplay?.(this.autoplay); this.onAutoChange?.(this.autoplay); } });
+    // Salta alla board finale: il trainer gioca il resto della combo da solo e senza animazioni.
+    this.skipBtn = h("button.btn.small.ghost.trainer-skip", { title: "Play the rest of the combo instantly and show the end board", onclick: () => this.skipToEnd() }, "⏭ Skip to end board");
     this.el = h(
       "div.trainer-panel",
       h(
         "div.trainer-top",
-        h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, this.restartBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
+        h("div.trainer-head", h("b", combo.name), (this.btns = h("div.trainer-btns", this.backBtn, this.restartBtn, this.skipBtn, h("button.btn.small.ghost", { title: "Restart the practice with the same hand", onclick: () => onRestart?.() }, "Restart")))),
         h(
           "div.trainer-toggles",
           h("label.check.trainer-strict", { title: "Strict mode: actions and choices that differ from the combo are blocked, and the trainer tells you what to do instead" }, strictBox, "Strict mode"),
@@ -382,7 +384,32 @@ export class ComboTrainer {
     this.onBack?.();
   }
 
+  /** "Skip to end board": auto-play acceso fino alla fine della combo, con le animazioni spente (onSkip). */
+  skipToEnd() {
+    if (this.done || this.interrupted) return;
+    this.skipping = true;
+    this.onSkip?.(true);
+    this.togglePause(false);
+    if (!this.autoplay) {
+      this.autoplay = true;
+      this.autoBox.checked = true;
+      this.pauseBtn.hidden = false;
+      this.onAutoplay?.(true);
+      this.onAutoChange?.(true);
+    }
+    this.render();
+  }
+
+  /** Fine del salto (combo finita o auto-play fermo): tornano le animazioni. */
+  endSkip() {
+    if (!this.skipping) return;
+    this.skipping = false;
+    this.onSkip?.(false);
+    this.render();
+  }
+
   render() {
+    this.skipBtn.hidden = this.done || !!this.interrupted || !!this.skipping;
     this.backBtn.hidden = !this.backTarget;
     this.restartBtn.hidden = !this.backTarget;
     if (this.backTarget) this.backBtn.textContent = `↶ Back to step ${this.backTarget.next + 1}`;
@@ -635,6 +662,7 @@ export class ComboTrainer {
   }
 
   stopAuto() {
+    this.endSkip();
     this.autoplay = false;
     this.togglePause(false);
     if (this.pauseBtn) this.pauseBtn.hidden = true;
