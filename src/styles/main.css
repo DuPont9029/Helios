@@ -386,21 +386,6 @@ input[type="range"] { accent-color: var(--accent); }
 .editor-toolbar > .select { width: auto; min-width: 200px; }
 .editor-body { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px 1fr 360px; gap: 12px; }
 .editor.view-mode .editor-body { grid-template-columns: 260px 1fr; }
-.editor.decks-mode .editor-body { grid-template-columns: 260px 1fr 320px; }
-/* Scelta di mazzi interi (openDecksChooser): elenco dei mazzi con la copertina */
-.dc-panel { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.dc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.dc-head h3 { margin: 0; }
-.dc-count { color: var(--accent); font-weight: 700; font-size: 13px; }
-.dc-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 6px; padding-right: 4px; }
-.dc-deck { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: center; padding: 6px 8px; border: 1px solid var(--line); background: var(--panel-2); cursor: pointer; }
-.dc-deck:hover { border-color: var(--line-strong); }
-.dc-deck.shown { border-color: var(--accent); background: rgba(56, 198, 255, 0.08); }
-.dc-deck.on { box-shadow: inset 3px 0 0 var(--accent); }
-.dc-deck .card { width: 52px; }
-.dc-info { display: grid; gap: 2px; min-width: 0; }
-.dc-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dc-info .check { justify-self: start; }
 .deck-area { overflow: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
 .deck-part { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px; }
 .deck-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 8px; }
@@ -499,6 +484,13 @@ button.search-tab { border: 0; background: none; cursor: pointer; white-space: n
 .deck-tile-check { color: var(--text); }
 .deck-tile.chosen .deck-tile-check { color: var(--danger); }
 @media (hover: none) { .deck-tile-del { opacity: 1; } }
+/* scelta di mazzi dalle deck box (editor.js: openDeckBoxChooser) */
+.side-editor-layer > .page.decks { flex: 1; min-height: 0; }
+.deck-tile.pick.picked { border-color: var(--accent); box-shadow: inset 0 0 28px rgba(56, 198, 255, 0.35); }
+.deck-tile.pick.full { opacity: 0.45; }
+.deck-tile.pick .deck-tile-check b { font: 800 15px var(--mono); color: var(--on-gold); background: var(--accent); width: 100%; height: 100%; display: grid; place-items: center; }
+.deck-tile-view { position: absolute; top: 6px; left: 6px; width: 32px; height: 32px; display: grid; place-items: center; background: rgba(0, 0, 0, 0.6); border: 1px solid transparent; color: var(--muted); cursor: pointer; font-size: 18px; }
+.deck-tile-view:hover { color: var(--accent); border-color: var(--accent); }
 
 /* scatola del mazzo (editor.js: deckBox): proiezione obliqua, cima e fianco agganciati agli spigoli del fronte */
 .deck-box { --box: #b8323c; --d: 12px; position: relative; width: 94px; height: 120px; flex: none; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, 0.65)); }
