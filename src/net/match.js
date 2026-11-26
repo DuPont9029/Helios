@@ -2,6 +2,7 @@
 //  - scambio di nomi, versione dei dati e mazzi;
 //  - seed condiviso con commit-reveal (nessuno dei due può sceglierlo da solo);
 //  - lancio della moneta e scelta di chi inizia.
+import { MAX_AVATAR } from "./public-profile.js";
 import { db } from "../data/db.js";
 import { banlistByName, validateDeck } from "../deck/deck.js";
 import { validSleeve } from "../data/sleeve.js";
@@ -155,10 +156,15 @@ async function myCustomCards(deck) {
   return list.length ? list : undefined;
 }
 
+/** Foto del profilo dalla rete: solo un data URL d'immagine piccolo (come le schede, net/public-profile.js). */
+function validAvatar(v) {
+  return typeof v === "string" && v.length <= MAX_AVATAR && /^data:image\/(webp|jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(v) ? v : null;
+}
+
 export async function negotiate(mux, opts) {
   const myRand = randomHex();
   const myCustom = await myCustomCards(opts.deck);
-  mux.send({
+  const helloMsg = {
     t: "hello",
     v: PROTOCOL,
     name: opts.name,
@@ -170,13 +176,18 @@ export async function negotiate(mux, opts) {
     pendulum: opts.pendulum ?? null,
     // Aspetto del Moai (campo facoltativo, come le gemme).
     moai: opts.moai ?? null,
+    // Foto del profilo (campo facoltativo): l'avversario la vede accanto al nome anche senza la scheda sui relay.
+    avatar: validAvatar(opts.avatar),
     options: opts.host ? opts.options : undefined,
     // Partite classificate (ELO): identità del giocatore e se vuole che il duello conti.
     pk: identity().pk,
     ranked: !!opts.ranked,
     // Carte personalizzate del mio mazzo (dati, script e artwork piccolo): l'avversario le vede e le gioca uguali.
     custom: myCustom,
-  });
+  };
+  // La foto è facoltativa: se con le carte personalizzate il messaggio supera il limite (net/guard.js) si toglie.
+  if (helloMsg.avatar && JSON.stringify(helloMsg).length > 380 * 1024) helloMsg.avatar = null;
+  mux.send(helloMsg);
   const hello = await mux.next("hello", opts.helloTimeout);
   if (hello.v !== PROTOCOL) throw new Error("Protocol version mismatch: both players must update the client");
   // Ospite: le regole dell'host si controllano (valori ammessi, flag del motore della modalità indicata).
@@ -250,6 +261,8 @@ export async function negotiate(mux, opts) {
   return {
     me: iAmFirst ? 0 : 1,
     names,
+    // foto dell'avversario arrivata nel "hello" ("" se non c'è o non è un'immagine piccola)
+    opponentAvatar: validAvatar(hello.avatar) ?? "",
     sleeves,
     pendulums,
     moais,

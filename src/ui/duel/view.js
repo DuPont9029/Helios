@@ -644,7 +644,13 @@ export class DuelView {
     lp.info.hidden = rating == null;
     lp.info.textContent = rating == null ? "" : `(${rating})`;
     lp.info.title = title ? `${title.name}${rating != null ? ` · ELO ${rating}` : ""}` : "";
-    if (avatar) lp.avatar.replaceChildren(h("img", { src: avatar, alt: "" }));
+    if (avatar) this.setAvatar(side, avatar);
+  }
+
+  /** Foto del profilo di un giocatore (side 0 = io, 1 = avversario) al posto dell'iniziale. */
+  setAvatar(side, avatar) {
+    const lp = this.lpEls?.[side];
+    if (lp && avatar) lp.avatar.replaceChildren(h("img", { src: avatar, alt: "" }));
   }
 
   setWatchers(names) {

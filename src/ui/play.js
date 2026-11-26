@@ -528,6 +528,7 @@ async function playMatch(app, match, old = null) {
       sleeve: validSleeve(settings.sleeve),
       pendulum: pendulumIcons(),
       moai: moaiConfig(),
+      avatar: settings.avatar || null,
       options: match.options,
       ranked: !!settings.ranked,
       chooseFirst: coinToss(toss),
@@ -580,16 +581,20 @@ async function playMatch(app, match, old = null) {
         });
     },
   });
-  showPlayerInfo(app.current, result.opponent?.pk);
+  showPlayerInfo(app.current, result.opponent?.pk, result.opponentAvatar);
 }
 
 /**
  * Titolo, ELO e immagine dei due giocatori accanto ai nomi in partita (come su chess.com): arrivano dopo, dalla
  * classifica e dalle schede sui relay. Chi non ha Duel classificati mostra il rating di partenza.
  */
-function showPlayerInfo(session, opponentPk) {
+function showPlayerInfo(session, opponentPk, opponentAvatar = "") {
   const pks = [identity().pk, opponentPk];
-  if (!session?.view || !opponentPk) return;
+  if (!session?.view) return;
+  // Foto subito: la mia da qui, quella dell'avversario dal suo "hello" (net/match.js); le schede sui relay arrivano dopo.
+  const avatars = [settings.avatar || "", opponentAvatar || ""];
+  avatars.forEach((a, side) => a && session.view.setAvatar(side, a));
+  if (!opponentPk) return;
   Promise.all([cachedLeaderboard().catch(() => null), fetchProfiles(pks).catch(() => new Map()), resolveNames(pks).catch(() => {})]).then(([board, profiles]) => {
     pks.forEach((pk, side) => {
       const p = board?.players.find((x) => x.pk === pk);
@@ -597,7 +602,7 @@ function showPlayerInfo(session, opponentPk) {
       session.view.setPlayerInfo(side, {
         title: t ? { ...t, master: MASTER_TITLES.has(t.abbr) } : null,
         rating: board ? p?.rating ?? START_RATING : null,
-        avatar: profiles.get(pk)?.avatar ?? "",
+        avatar: avatars[side] || profiles.get(pk)?.avatar || "",
         // username on-chain verificato (o Duelist-xxxxxx): con il registro attivo nessuno ha il nome di un altro
         name: namesActive() ? displayName(pk) : null,
       });
