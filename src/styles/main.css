@@ -176,16 +176,24 @@ input[type="range"] { accent-color: var(--accent); }
 .logo small { font: 600 16px var(--mono); color: var(--muted); letter-spacing: 0.04em; margin-left: 6px; }
 /* Versione beta: badge accanto al numero di versione. */
 .beta-badge { align-self: center; margin-left: 8px; padding: 2px 7px; font: 700 12px var(--mono); letter-spacing: 0.12em; color: var(--on-gold); background: var(--accent); }
-.home-user { margin-left: auto; text-align: right; font: 500 12px var(--mono); letter-spacing: 0.06em; color: var(--muted); }
-.home-user { display: grid; grid-template-columns: auto auto; align-items: center; column-gap: 12px; }
-.home-user > .avatar { grid-row: 1; grid-column: 2; border: 2px solid var(--accent); }
-.home-user-info { grid-row: 1; grid-column: 1; display: grid; justify-items: end; gap: 3px; }
-.home-user-name { display: flex; align-items: center; gap: 6px; }
-.home-user-name b { color: var(--accent); font-size: 15px; }
-.home-user-name .verified-tag .icon { font-size: 16px; }
-.home-rank { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.home-rank b { color: var(--text); }
-.home-user .friends-badge { grid-column: 1 / -1; }
+/* Profilo nella home (main.js: homeProfile): testo a destra, foto con l'anello del grado */
+.hp { margin-left: auto; display: flex; align-items: center; gap: 14px; position: relative; }
+.hp-txt { display: grid; justify-items: end; gap: 5px; }
+.hp-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.hp-name b { font: 700 22px/1.05 var(--display); color: var(--text); letter-spacing: 0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px; }
+.hp-verified { font-size: 19px; color: var(--ok); flex: none; }
+.hp .og-tag { flex: none; padding: 2px 6px; font-size: 10px; }
+.hp-meta { display: flex; align-items: center; gap: 8px; font: 500 12px var(--mono); color: var(--muted); white-space: nowrap; }
+.hp-meta b { color: var(--text); font-size: 13px; }
+.hp-title { --tc: #8b93a7; font: 800 11px var(--mono); padding: 3px 8px; background: var(--tc); color: #0b0c12; clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%); }
+.hp-friends { display: inline-flex; align-items: center; gap: 2px; padding: 0 0 0 8px; border: 0; border-left: 1px solid var(--line); background: none; cursor: pointer; font: 600 12px var(--mono); color: var(--muted); }
+.hp-friends .icon { font-size: 16px; }
+.hp-friends.on { color: var(--ok); }
+.hp-friends:hover { color: var(--text); }
+.hp-ring { --tc: #8b93a7; --pct: 0%; width: 64px; height: 64px; border-radius: 50%; padding: 3px; display: grid; place-items: center; flex: none;
+  background: conic-gradient(var(--tc) 0 var(--pct), rgba(255, 255, 255, 0.14) var(--pct) 100%); box-shadow: 0 0 18px color-mix(in srgb, var(--tc) 35%, transparent); }
+.hp-photo { padding: 0; border: 0; background: none; cursor: pointer; display: block; border-radius: 50%; }
+.hp-photo .avatar { display: grid; place-items: center; object-fit: cover; border-radius: 50%; border: 3px solid var(--bg); }
 .btn.round { width: 44px; height: 44px; padding: 0; border-radius: 50%; clip-path: none; display: grid; place-items: center; font-size: 22px; border: 2px solid var(--line-strong); background: rgba(0, 0, 0, 0.5); color: var(--accent); }
 .btn.round:hover:not(:disabled) { border-color: var(--accent); background: rgba(56, 198, 255, 0.12); color: var(--accent); }
 .menu { grid-row: 2 / 4; display: flex; flex-direction: column; justify-content: center; gap: clamp(4px, calc(var(--vh) * 1.2), 14px); padding: 20px 48px; position: relative; z-index: 2; }

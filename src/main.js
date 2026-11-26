@@ -104,45 +104,51 @@ function installButton() {
   }, icon("install_desktop"), " Install app");
 }
 
-/** Amici online nella home: porta alla scheda Friends della pagina Online. */
-function friendsBadge(go) {
-  const b = h("button.friends-badge", { title: "Friends", onclick: go(() => showOnline(app, { tab: "social" })) });
-  const draw = () => {
-    const n = onlineCount();
-    b.replaceChildren(icon("group"), n ? ` ${n} online` : " Friends");
-    b.classList.toggle("on", n > 0);
-  };
-  draw();
-  const off = onSocialChange(() => (b.isConnected ? draw() : off()));
-  return b;
-}
-
 /**
- * Profilo nella home: foto, username (verificato on-chain, se c'è), tag OG, titolo e rating ELO (dalla classifica
- * su Nostr, arriva dopo).
+ * Profilo nella home: foto con l'anello del grado (nel colore del titolo, pieno quanto manca al titolo successivo),
+ * username (verificato on-chain, se c'è), tag OG, titolo, rating ELO e amici online. La classifica arriva dopo (Nostr).
  */
 function homeProfile(go) {
   const me = identity().pk;
-  const verified = namesActive() && !!settings.username;
-  const name = verified ? settings.username : namesActive() ? provisionalName(me) : settings.name;
-  const og = verified && settings.usernameNumber > 0 && settings.usernameNumber <= OG_LIMIT;
-  const rank = h("div.home-rank", h("span.muted", "Rating…"));
+  // Sviluppo: ?mock-profile mostra un giocatore OG verificato con rating e amici online (per provare l'aspetto).
+  const mock = !!import.meta.env?.DEV && new URLSearchParams(location.search).has("mock-profile");
+  const verified = mock || (namesActive() && !!settings.username);
+  const name = mock ? "DuPont9029" : verified ? settings.username : namesActive() ? provisionalName(me) : settings.name;
+  const og = mock || (verified && settings.usernameNumber > 0 && settings.usernameNumber <= OG_LIMIT);
+  const openFriends = go(() => showOnline(app, { tab: "social" }));
+  const openCard = () => import("./ui/profile-card.js").then((pc) => pc.openProfileCard(me, { name }));
+  const el = h("div.hp");
+  let rank = null; // { p, t } dalla classifica
+
+  const paint = () => {
+    const p = rank?.p ?? null;
+    const t = rank?.t ?? null;
+    const n = mock ? 3 : onlineCount();
+    const from = t && Number.isFinite(t.min) ? t.min : 1400;
+    const pct = p && t?.next ? Math.max(0.04, Math.min(1, (p.rating - from) / (t.next.min - from))) : p ? 1 : 0;
+    el.replaceChildren(
+      h("div.hp-txt",
+        h("div.hp-name",
+          h("b", { title: name }, name),
+          verified ? h("span.icon.hp-verified", { title: `Username registered on Ethereum${settings.usernameNumber ? ` (#${settings.usernameNumber})` : ""}` }, "verified") : null,
+          og ? h("span.og-tag", { title: `One of the first ${OG_LIMIT} Helios usernames` }, "OG") : null),
+        h("div.hp-meta",
+          ...(p
+            ? [h("span.hp-title", { style: { "--tc": t.color }, title: t.name }, t.abbr), h("span", h("b", p.rating), " ELO")]
+            : [h("span", rank ? "Unranked" : "…")]),
+          h(`button.hp-friends${n ? ".on" : ""}`, { title: "Friends", onclick: openFriends }, icon("group"), n ? ` ${n} online` : " Friends"))),
+      // l'anello è l'avanzamento verso il titolo successivo (i punti che mancano al passaggio del mouse)
+      h("div.hp-ring", { style: { "--tc": t?.color ?? "#8b93a7", "--pct": `${pct * 100}%` }, title: p ? (t.next ? `${t.name} · ${Math.max(0, t.next.min - p.rating)} points to ${t.next.name}` : `${t.name} · the highest title`) : "Unranked: play ranked Duels to get a title" },
+        h("button.hp-photo", { title: "Open my player card", onclick: openCard }, avatarEl(me, { avatar: settings.avatar, name }, name, 54))));
+  };
+  paint();
   cachedLeaderboard().then(({ players }) => {
-    if (!rank.isConnected) return; // home già chiusa
-    const p = players.find((x) => x.pk === me);
-    const t = titleOf(p?.rating ?? 1500, p?.games ?? 0, p?.peak);
-    rank.replaceChildren(...(p ? [h("span.title-badge.small", { style: { "--tc": t.color }, title: t.name }, t.abbr), h("span", "Rating ", h("b", p.rating))] : [h("span.muted", "No ranked Duels yet")]));
-  }, () => rank.replaceChildren());
-  return h("div.home-user",
-    avatarEl(me, { avatar: settings.avatar, name }, name, 48),
-    h("div.home-user-info",
-      h("span", "Welcome,"),
-      h("div.home-user-name",
-        h("b", name),
-        verified ? h("span.verified-tag", { title: `Username registered on Ethereum${settings.usernameNumber ? ` (#${settings.usernameNumber})` : ""}` }, icon("verified")) : null,
-        og ? h("span.og-tag", { title: `One of the first ${OG_LIMIT} Helios usernames` }, "OG") : null),
-      rank),
-    friendsBadge(go));
+    const p = mock ? { rating: 1674, games: 42, peak: 1674 } : players.find((x) => x.pk === me) ?? null;
+    rank = { p, t: p ? titleOf(p.rating, p.games, p.peak) : null };
+    if (el.isConnected) paint();
+  }, () => {});
+  const off = onSocialChange(() => (el.isConnected ? paint() : off()));
+  return el;
 }
 
 /** Home; section "duel" o "training" = sottomenu (duelli online e Limited; modalità di allenamento). */
