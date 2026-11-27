@@ -33,7 +33,7 @@ Tre sezioni:
 
 ### Duello
 - [ ] **Foto profilo nei duelli online**: nei duelli tra giocatori ognuno vede la foto dell'altro accanto al nome (e la propria). La foto viaggia nel messaggio iniziale della partita P2P, quindi si vede anche se la scheda dell'avversario non è pubblicata o i relay non rispondono; prima arrivava solo dai relay.
-- [ ] **Mano e board di partenza in Vs CPU e Test Duel**: nel setup "Starting hand and board" apre il deck builder con mano, campo, GY e carte bandite di entrambi i giocatori. Le carte della mano sono sempre in mano (il resto si pesca normalmente), quelle in gioco si tolgono dal mazzo se ci sono, altrimenti si aggiungono; mostri scoperti in Attacco, Magie Terreno scoperte, altre Magie/Trappole coperte. L'ultima scelta resta salvata, "Clear" torna alla partenza normale.
+- [ ] **Mano e board di partenza in Vs CPU e Test Duel**: nel setup "Starting hand and board" apre il deck builder con mano, campo, GY e carte bandite di entrambi i giocatori. Le carte della mano sono sempre in mano (il resto si pesca normalmente), quelle in gioco si tolgono dal mazzo se ci sono, altrimenti si aggiungono; mostri scoperti in Attacco, Magie Terreno scoperte, altre Magie/Trappole coperte. Le carte bandite si girano una per una con l'occhio nel riepilogo (scoperte o coperte). L'ultima scelta resta salvata, "Clear" torna alla partenza normale.
 - [ ] **Costi di scarto dalla mano**: per i costi che scartano non si apre una finestra, si sceglie direttamente dalla mano.
 - [ ] **Spessore di Deck ed Extra Deck**: mostrare lo spessore del Deck e dell'Extra Deck nella vista inclinata ("Tilted view in the Duel (like Master Duel) instead of from above").
 
